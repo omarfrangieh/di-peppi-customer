@@ -1,0 +1,534 @@
+"use client";
+import React from "react";
+
+import { useEffect, useState } from "react";
+import { collection, getDocs, doc, updateDoc, getDoc, setDoc, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+
+const DEFAULT_OPTIONS = {
+  unit: ["KG", "Piece", "Tin", "Jar", "Tube"],
+  storageType: ["Ambient", "Refrigerated", "Frozen", "Chilled", "Fresh"],
+  category: [],
+  origin: [],
+};
+
+function Badge({ label, color }: { label: string; color: string }) {
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
+      {label}
+    </span>
+  );
+}
+
+export default function AdminProductsPage() {
+  const [products, setProducts] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [options, setOptions] = useState(DEFAULT_OPTIONS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editData, setEditData] = useState<any>({});
+  const [search, setSearch] = useState("");
+  const [newOption, setNewOption] = useState<Record<string, string>>({});
+  const [showOptionsFor, setShowOptionsFor] = useState<string | null>(null);
+  const [stockInProduct, setStockInProduct] = useState<any | null>(null);
+  const [historyProduct, setHistoryProduct] = useState<any | null>(null);
+  const [historyMovements, setHistoryMovements] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [stockInQty, setStockInQty] = useState("");
+  const [stockInNotes, setStockInNotes] = useState("");
+  const [stockInSaving, setStockInSaving] = useState(false);
+
+  useEffect(() => { void load(); }, []);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [snap, optSnap, suppSnap] = await Promise.all([
+        getDocs(collection(db, "products")),
+        getDoc(doc(db, "settings", "productOptions")),
+        getDocs(collection(db, "suppliers")),
+      ]);
+      setSuppliers(suppSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a:any, b:any) => (a.name||'').localeCompare(b.name||'')));
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setProducts(data);
+      if (optSnap.exists()) {
+        setOptions({ ...DEFAULT_OPTIONS, ...optSnap.data() });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEdit = (product: any) => {
+    setEditing(product.id);
+    setEditData({ ...product });
+  };
+
+  const cancelEdit = () => { setEditing(null); setEditData({}); };
+
+  const saveProduct = async (id: string) => {
+    setSaving(id);
+    try {
+      const { id: _, ...data } = editData;
+      // supplierId and supplier name both saved
+      await updateDoc(doc(db, "products", id), {
+        ...data,
+        active: Boolean(editData.active),
+        minStock: Number(editData.minStock || 0),
+        minWeightPerUnit: editData.minWeightPerUnit ? Number(editData.minWeightPerUnit) : null,
+        maxWeightPerUnit: editData.maxWeightPerUnit ? Number(editData.maxWeightPerUnit) : null,
+        requiresWeighing: Boolean(editData.requiresWeighing || false),
+        trackExpiry: Boolean(editData.trackExpiry || false),
+        updatedAt: new Date().toISOString(),
+      });
+      setProducts(prev => prev.map(p => p.id === id ? { ...editData } : p));
+      setEditing(null);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const saveOptions = async (field: string, newList: string[]) => {
+    const updated = { ...options, [field]: newList };
+    setOptions(updated);
+    await setDoc(doc(db, "settings", "productOptions"), updated, { merge: true });
+  };
+
+  const loadHistory = async (product: any) => {
+    setHistoryProduct(product);
+    setHistoryLoading(true);
+    try {
+      const snap = await getDocs(collection(db, "stockMovements"));
+      const movements = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter((d: any) => d.productId === product.id)
+        .sort((a: any, b: any) => {
+          const aDate = a.createdAt?.seconds || 0;
+          const bDate = b.createdAt?.seconds || 0;
+          return bDate - aDate;
+        });
+      setHistoryMovements(movements);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleStockIn = async () => {
+    if (!stockInProduct || !stockInQty || Number(stockInQty) <= 0) return;
+    setStockInSaving(true);
+    try {
+      const qty = Number(stockInQty);
+      await addDoc(collection(db, "stockMovements"), {
+        productId: stockInProduct.id,
+        quantity: qty,
+        movementType: "In",
+        source: "purchase",
+        notes: stockInNotes || "",
+        movementDate: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      });
+      // Recalculate stock
+      const movSnap = await getDocs(collection(db, "stockMovements"));
+      const movements = movSnap.docs
+        .map(d => d.data())
+        .filter(d => d.productId === stockInProduct.id);
+      const newStock = movements.reduce((sum, m) => {
+        return m.movementType === "In" ? sum + Number(m.quantity) : sum - Number(m.quantity);
+      }, 0);
+      await updateDoc(doc(db, "products", stockInProduct.id), { currentStock: newStock });
+      setProducts(prev => prev.map(p => p.id === stockInProduct.id ? { ...p, currentStock: newStock } : p));
+      setStockInProduct(null);
+      setStockInQty("");
+      setStockInNotes("");
+    } catch(e) {
+      console.error(e);
+      alert("Error adding stock");
+    } finally {
+      setStockInSaving(false);
+    }
+  };
+
+  const addOption = async (field: string) => {
+    const val = (newOption[field] || "").trim();
+    if (!val) return;
+    const list = options[field as keyof typeof options] as string[];
+    if (list.includes(val)) return;
+    const newList = [...list, val];
+    await saveOptions(field, newList);
+    setNewOption(prev => ({ ...prev, [field]: "" }));
+  };
+
+  const removeOption = async (field: string, val: string) => {
+    const list = (options[field as keyof typeof options] as string[]).filter(v => v !== val);
+    await saveOptions(field, list);
+  };
+
+  const filtered = products.filter(p =>
+    (p.name || "").toLowerCase().includes(search.toLowerCase()) ||
+    (p.category || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  const storageColor: Record<string, string> = {
+    Frozen: "bg-blue-100 text-blue-700",
+    Refrigerated: "bg-cyan-100 text-cyan-700",
+    Chilled: "bg-sky-100 text-sky-700",
+    Fresh: "bg-green-100 text-green-700",
+    Ambient: "bg-orange-100 text-orange-700",
+  };
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <a href="/" className="text-sm text-gray-500 hover:text-gray-900">← Back</a>
+          <div className="h-4 w-px bg-gray-200" />
+          <h1 className="text-sm font-semibold text-gray-900">Product Admin</h1>
+          <span className="text-xs text-gray-400">{products.length} products</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowOptionsFor(showOptionsFor ? null : "unit")}
+            className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+          >
+            ⚙️ Manage Dropdowns
+          </button>
+          <input
+            type="text"
+            placeholder="Search products..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 w-48"
+          />
+        </div>
+      </div>
+
+      {/* Options Manager */}
+      {showOptionsFor && (
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex gap-6">
+            {(["unit", "storageType", "category", "origin"] as const).map(field => (
+              <div key={field} className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider">{field}</p>
+                </div>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {(options[field] as string[]).map(val => (
+                    <span key={val} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 rounded text-xs">
+                      {val}
+                      <button onClick={() => removeOption(field, val)} className="text-gray-400 hover:text-red-500">×</button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    placeholder="Add..."
+                    value={newOption[field] || ""}
+                    onChange={e => setNewOption(prev => ({ ...prev, [field]: e.target.value }))}
+                    onKeyDown={e => e.key === "Enter" && addOption(field)}
+                    className="flex-1 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none"
+                  />
+                  <button onClick={() => addOption(field)} className="px-2 py-1 bg-gray-900 text-white text-xs rounded">+</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Product</th>
+                <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Category</th>
+                <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Origin</th>
+                <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Unit</th>
+                <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Storage Type</th>
+                <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">Cost</th>
+                <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">B2B</th>
+                <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">B2C</th>
+                <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">Stock</th>
+                <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">Min</th>
+                <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Active</th>
+                <th className="px-3 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filtered.map(product => (
+                <React.Fragment key={product.id}>
+                {editing === product.id ? (
+                  <tr key={product.id} className="bg-blue-50">
+                    <td className="px-4 py-2">
+                      <input value={editData.name || ""} onChange={e => setEditData((p: any) => ({ ...p, name: e.target.value }))}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                      <input value={editData.productSubName || ""} onChange={e => setEditData((p: any) => ({ ...p, productSubName: e.target.value }))}
+                        placeholder="Sub name..." className="w-full border border-gray-200 rounded px-2 py-1 text-xs mt-1 text-gray-500" />
+                      <select value={editData.supplierId || ""} onChange={e => {
+                          const s = suppliers.find((s:any) => s.id === e.target.value);
+                          setEditData((p: any) => ({ ...p, supplierId: e.target.value, supplier: s?.name || "" }));
+                        }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs mt-1 bg-white text-gray-500">
+                        <option value="">— Supplier —</option>
+                        {suppliers.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <select value={editData.category || ""} onChange={e => setEditData((p: any) => ({ ...p, category: e.target.value }))}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm">
+                        <option value="">—</option>
+                        {options.category.map(o => <option key={o}>{o}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <select value={editData.origin || ""} onChange={e => setEditData((p: any) => ({ ...p, origin: e.target.value }))}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm">
+                        <option value="">—</option>
+                        {options.origin.map(o => <option key={o}>{o}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <select value={editData.unit || ""} onChange={e => setEditData((p: any) => ({ ...p, unit: e.target.value }))}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm">
+                        <option value="">—</option>
+                        {options.unit.map(o => <option key={o}>{o}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <select value={editData.storageType || ""} onChange={e => setEditData((p: any) => ({ ...p, storageType: e.target.value }))}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm">
+                        <option value="">—</option>
+                        {options.storageType.map(o => <option key={o}>{o}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2"><input type="number" value={editData.costPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, costPrice: e.target.value }))} className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
+                    <td className="px-3 py-2"><input type="number" value={editData.b2bPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, b2bPrice: e.target.value }))} className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
+                    <td className="px-3 py-2"><input type="number" value={editData.b2cPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, b2cPrice: e.target.value }))} className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
+                    <td className="px-3 py-2 text-right text-sm text-gray-500">{Number(product.currentStock).toFixed(3).replace(/\.?0+$/, "")}</td>
+                    <td className="px-3 py-2"><input type="number" value={editData.minStock || ""} onChange={e => setEditData((p: any) => ({ ...p, minStock: e.target.value }))} className="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
+                    <td className="px-3 py-2 text-center">
+                      <input type="checkbox" checked={editData.active !== false} onChange={e => setEditData((p: any) => ({ ...p, active: e.target.checked }))} className="w-4 h-4" />
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-1">
+                        <button onClick={() => saveProduct(product.id)} disabled={saving === product.id}
+                          className="px-2 py-1 bg-gray-900 text-white text-xs rounded hover:bg-gray-700 disabled:opacity-50">
+                          {saving === product.id ? "..." : "Save"}
+                        </button>
+                        <button onClick={cancelEdit} className="px-2 py-1 border border-gray-200 text-gray-600 text-xs rounded hover:bg-gray-50">Cancel</button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={product.id} className={`hover:bg-gray-50 transition-colors ${product.active === false ? "opacity-40" : ""}`}>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-900">{product.name}</p>
+                      {product.productSubName && <p className="text-xs text-gray-400">{product.productSubName}</p>}
+                      {product.supplier && <p className="text-xs text-gray-400">🏭 {product.supplier}</p>}
+                      {product.requiresWeighing && <span className="text-xs text-purple-600">⚖️ Weighing req.</span>}
+                      {product.trackExpiry && <span className="text-xs text-blue-500 ml-2">📅 Expiry/FIFO</span>}
+                    </td>
+                    <td className="px-3 py-3 text-gray-600">{product.category || "—"}</td>
+                    <td className="px-3 py-3 text-gray-600">{product.origin || "—"}</td>
+                    <td className="px-3 py-3 text-gray-600">
+                      <div>{product.unit || "—"}</div>
+                      {(product.minWeightPerUnit || product.maxWeightPerUnit) && (
+                        <div className="text-xs text-amber-600">⚖️ {product.minWeightPerUnit}–{product.maxWeightPerUnit} kg</div>
+                      )}
+
+                    </td>
+                    <td className="px-3 py-3">
+                      {product.storageType
+                        ? <Badge label={product.storageType} color={storageColor[product.storageType] || "bg-gray-100 text-gray-600"} />
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-3 text-right text-gray-700">${Number(product.costPrice || 0).toFixed(2)}</td>
+                    <td className="px-3 py-3 text-right text-gray-700">
+                      <div>${Number(product.b2bPrice || 0).toFixed(2)}</div>
+                      {product.costPrice > 0 && product.b2bPrice > 0 && (
+                        <div className={`text-xs ${((product.b2bPrice - product.costPrice) / product.b2bPrice * 100) < 10 ? "text-red-500" : "text-blue-600"}`}>
+                          {((product.b2bPrice - product.costPrice) / product.b2bPrice * 100).toFixed(0)}% margin
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-right text-gray-700">
+                      <div>${Number(product.b2cPrice || 0).toFixed(2)}</div>
+                      {product.costPrice > 0 && product.b2cPrice > 0 && (
+                        <div className={`text-xs ${((product.b2cPrice - product.costPrice) / product.b2cPrice * 100) < 15 ? "text-red-500" : "text-green-600"}`}>
+                          {((product.b2cPrice - product.costPrice) / product.b2cPrice * 100).toFixed(0)}% margin
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <span className={Number(product.currentStock) <= Number(product.minStock || 0) && Number(product.minStock) > 0 ? "text-red-600 font-semibold" : "text-gray-700"}>
+                        {product.currentStock != null ? Number(product.currentStock).toFixed(3).replace(/\.?0+$/, "") : "—"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right text-gray-500">{product.minStock || "—"}</td>
+                    <td className="px-3 py-3 text-center">
+                      <span className={`w-2 h-2 rounded-full inline-block ${product.active !== false ? "bg-green-500" : "bg-gray-300"}`} />
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex gap-1">
+                      <button onClick={() => startEdit(product)} className="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100">Edit</button>
+                      <button onClick={() => { setStockInProduct(product); setStockInQty(""); setStockInNotes(""); }}
+                        className="px-2 py-1 text-xs border border-green-300 text-green-700 rounded hover:bg-green-50">+Stock</button>
+                      <button onClick={() => loadHistory(product)}
+                        className="px-2 py-1 text-xs border border-blue-300 text-blue-700 rounded hover:bg-blue-50">History</button>
+                    </div>
+                    </td>
+                  </tr>
+                )}
+                {editing === product.id && (editData.unit === "KG" || editData.unit === "Piece") && (
+                  <tr className="bg-amber-50">
+                    <td colSpan={12} className="px-4 py-2 border-t border-amber-100">
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <span className="text-xs font-medium text-amber-700">{editData.unit === "KG" ? "⚖️ Weight variance range (kg):" : "⚖️ Weight per piece (kg):"}</span>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-gray-500">Min kg</label>
+                          <input type="number" step="0.01"
+                            value={editData.minWeightPerUnit || ""}
+                            onChange={e => setEditData((p: any) => ({ ...p, minWeightPerUnit: e.target.value }))}
+                            placeholder="e.g. 0.9"
+                            className="w-20 border border-amber-200 rounded px-2 py-1 text-sm text-right" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-gray-500">Max kg</label>
+                          <input type="number" step="0.01"
+                            value={editData.maxWeightPerUnit || ""}
+                            onChange={e => setEditData((p: any) => ({ ...p, maxWeightPerUnit: e.target.value }))}
+                            placeholder="e.g. 1.4"
+                            className="w-20 border border-amber-200 rounded px-2 py-1 text-sm text-right" />
+                        </div>
+                        <span className="text-xs text-gray-400">Leave empty if fixed weight</span>
+                        {editData.minWeightPerUnit && editData.maxWeightPerUnit && (
+                          <span className="text-xs font-medium text-amber-700">
+                            PO note: Approx. {editData.minWeightPerUnit}–{editData.maxWeightPerUnit} kg each
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-6 mt-2">
+                        <label className="flex items-center gap-1.5 text-xs text-purple-700 font-medium cursor-pointer">
+                          <input type="checkbox"
+                            checked={!!editData.requiresWeighing}
+                            onChange={e => setEditData((p: any) => ({ ...p, requiresWeighing: e.target.checked }))}
+                            className="w-3.5 h-3.5" />
+                          ⚖️ Requires weighing at delivery (variable weight)
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs text-blue-700 font-medium cursor-pointer">
+                          <input type="checkbox"
+                            checked={!!editData.trackExpiry}
+                            onChange={e => setEditData((p: any) => ({ ...p, trackExpiry: e.target.checked }))}
+                            className="w-3.5 h-3.5" />
+                          📅 Track expiry date — First In / First Out (FIFO)
+                        </label>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {/* Stock History Modal */}
+      {historyProduct && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Stock History</h3>
+                <p className="text-sm text-gray-500">{historyProduct.name}</p>
+              </div>
+              <button onClick={() => setHistoryProduct(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+            {historyLoading ? (
+              <div className="text-center py-8 text-sm text-gray-400">Loading...</div>
+            ) : historyMovements.length === 0 ? (
+              <div className="text-center py-8 text-sm text-gray-400">No movements found</div>
+            ) : (
+              <div className="max-h-96 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <th className="text-left px-3 py-2">Type</th>
+                      <th className="text-right px-3 py-2">Qty</th>
+                      <th className="text-left px-3 py-2">Source</th>
+                      <th className="text-left px-3 py-2">Notes</th>
+                      <th className="text-left px-3 py-2">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {historyMovements.map((m: any) => (
+                      <tr key={m.id}>
+                        <td className="px-3 py-2">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${m.movementType === "In" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                            {m.movementType === "In" ? "↑ In" : "↓ Out"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium">{Number(m.quantity).toFixed(3)}</td>
+                        <td className="px-3 py-2 text-gray-500">{m.source || "—"}</td>
+                        <td className="px-3 py-2 text-gray-400">{m.notes || "—"}</td>
+                        <td className="px-3 py-2 text-gray-400 text-xs">
+                          {m.createdAt?.seconds ? new Date(m.createdAt.seconds * 1000).toLocaleDateString() : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
+              <span className="text-xs text-gray-500">Current stock: <span className="font-semibold text-gray-900">{Number(historyProduct.currentStock).toFixed(3)}</span></span>
+              <button onClick={() => setHistoryProduct(null)} className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stock In Modal */}
+      {stockInProduct && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Add Stock</h3>
+            <p className="text-sm text-gray-500 mb-4">{stockInProduct.name}</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Quantity to Add</label>
+                <input type="number" min="0" step="0.001" value={stockInQty}
+                  onChange={e => setStockInQty(e.target.value)}
+                  placeholder="e.g. 10"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  autoFocus />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Notes (optional)</label>
+                <input type="text" value={stockInNotes}
+                  onChange={e => setStockInNotes(e.target.value)}
+                  placeholder="e.g. Purchase from supplier"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div className="text-xs text-gray-400">Current stock: <span className="font-semibold text-gray-700">{Number(stockInProduct.currentStock).toFixed(3)}</span> → After: <span className="font-semibold text-green-600">{(Number(stockInProduct.currentStock) + Number(stockInQty || 0)).toFixed(3)}</span></div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setStockInProduct(null)}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50">Cancel</button>
+                <button onClick={handleStockIn} disabled={stockInSaving || !stockInQty || Number(stockInQty) <= 0}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50">
+                  {stockInSaving ? "Saving..." : "Add Stock"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+  </div>
+  );
+}
