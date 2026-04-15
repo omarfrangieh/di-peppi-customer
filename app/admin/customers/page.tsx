@@ -52,7 +52,7 @@ export default function AdminCustomersPage() {
     setPriceSearch("");
   };
 
-  const cancelEdit = () => { setEditing(null); setEditData({}); setEditPrices({}); };
+  const cancelEdit = () => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(false); };
 
   const addCustomer = async () => {
     if (!newCustomer.name?.trim()) { alert("Customer name is required."); return; }
@@ -87,7 +87,7 @@ export default function AdminCustomersPage() {
       const { id: _, ...data } = editData;
       await updateDoc(doc(db, "customers", id), {
         ...data,
-        active: Boolean(editData.active),
+        active: editData.active !== false && editData.active !== undefined ? true : Boolean(editData.active),
         manualHold: Boolean(editData.manualHold),
         deliveryFee: Number(editData.deliveryFee || 0),
         clientMargin: Number(editData.clientMargin || 0),
@@ -142,8 +142,10 @@ export default function AdminCustomersPage() {
             <option value="all">All Types</option>
             {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
           </select>
-          <button onClick={() => setShowAdd(p => !p)}
-            className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700">
+          <button onClick={() => { setShowAdd(p => !p); cancelEdit(); }}
+            disabled={!!editing}
+            title={editing ? "Save or cancel current edit first" : ""}
+            className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed">
             + Add Customer
           </button>
           <input type="text" placeholder="Search customers..." value={search}
@@ -299,7 +301,7 @@ export default function AdminCustomersPage() {
                   <input type="text" placeholder="Search products..." value={priceSearch}
                     onChange={e => setPriceSearch(e.target.value)}
                     className="mb-3 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 w-64" />
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-y-auto border border-gray-100 rounded-lg p-3">
+                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto border border-gray-100 rounded-lg p-3">
                     {filteredProducts.map(product => {
                       const sp = Number(editPrices[product.id] || 0);
                       const cost = Number(product.costPrice || 0);
@@ -308,21 +310,21 @@ export default function AdminCustomersPage() {
                         <div key={product.id} className="flex items-center gap-2">
                           <div className="flex-1 min-w-0">
                             <p className="text-xs text-gray-700 truncate">{product.name}</p>
-                            <p className="text-xs text-gray-400">Default: ${Number(editData.customerType === "B2B" ? product.b2bPrice : product.b2cPrice || 0).toFixed(2)} · Cost: ${cost.toFixed(2)}</p>
+                            <p className="text-xs text-gray-400">Selling: ${Number(editData.customerType === "B2B" ? product.b2bPrice : product.b2cPrice || 0).toFixed(2)} · Cost: ${cost.toFixed(2)}</p>
                           </div>
-                          <div className="flex flex-col items-end gap-0.5">
+                          <div className="flex items-center gap-3 justify-end">
+                            {margin !== null && (
+                              <span className={`text-xs font-semibold w-20 text-left ${margin < 0 ? "text-red-500" : margin < 15 ? "text-yellow-600" : "text-green-600"}`}>
+                                {margin < 0 ? "⛔" : margin < 15 ? "⚠️" : "✅"} {margin.toFixed(1)}%
+                              </span>
+                            )}
                             <input
                               type="number"
                               placeholder="—"
                               value={editPrices[product.id] || ""}
                               onChange={e => setEditPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
-                              className={`w-20 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-gray-900 ${editPrices[product.id] ? "border-blue-300 bg-blue-50" : "border-gray-200"}`}
+                              className={`w-24 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-gray-900 ${editPrices[product.id] ? "border-blue-300 bg-blue-50" : "border-gray-200"}`}
                             />
-                            {margin !== null && (
-                              <span className={`text-xs font-semibold ${margin < 0 ? "text-red-500" : margin < 15 ? "text-yellow-600" : "text-green-600"}`}>
-                                {margin < 0 ? "⛔" : margin < 15 ? "⚠️" : "✅"} {margin.toFixed(1)}%
-                              </span>
-                            )}
                           </div>
                         </div>
                       );
@@ -367,7 +369,7 @@ export default function AdminCustomersPage() {
                         {customer.mapsLink && <a href={customer.mapsLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs">📍 Maps</a>}
                       </div>
                     </div>
-                    <button onClick={() => startEdit(customer)} className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-100 ml-4">Edit</button>
+                    <button onClick={() => { setShowAdd(false); startEdit(customer); }} className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-100 ml-4">Edit</button>
                   </div>
 
                   {/* Special Prices Summary */}
@@ -380,7 +382,7 @@ export default function AdminCustomersPage() {
                         <span className={`transition-transform duration-200 ${showPricesFor === customer.id ? "rotate-180" : ""}`}>▾</span>
                       </button>
                       {showPricesFor === customer.id && (
-                        <div className="mt-2 flex flex-wrap gap-2">
+                        <div className="mt-2 flex flex-col gap-1.5">
                           {Object.entries(customer.specialPrices || {}).map(([pid, price]) => {
                             const product = products.find(p => p.id === pid);
                             const cost = Number(product?.costPrice || 0);
