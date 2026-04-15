@@ -192,6 +192,7 @@ export default function AdminProductsPage() {
         notes: stockInNotes || "Manual stock addition",
         expiryDate: stockInExpiry || null,
         batchDate: new Date().toISOString().slice(0, 10),
+        remainingQty: qty,
         movementDate: serverTimestamp(),
         createdAt: serverTimestamp(),
       });
