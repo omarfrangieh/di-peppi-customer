@@ -1025,11 +1025,31 @@ export default function Page() {
               "bg-gray-100 text-gray-600"
             }`}>{order?.status}</span>
           </div>
-          <button onClick={() => router.push(`/invoices/${existingInvoiceId}`)}
-            className="px-3 py-1.5 text-xs text-white rounded-lg font-medium"
-            style={{backgroundColor: existingInvoiceStatus === "draft" ? "#1B2A5E" : "#6b7280"}}>
-            {existingInvoiceStatus === "draft" ? "Edit Invoice →" : "View Invoice →"}
-          </button>
+          <div className="flex items-center gap-2">
+            {existingInvoiceStatus === "draft" && (
+              <button
+                onClick={async () => {
+                  if (!confirm("Delete this order and its draft invoice? This cannot be undone.")) return;
+                  try {
+                    const { doc, deleteDoc } = await import("firebase/firestore");
+                    const { db } = await import("@/lib/firebase");
+                    await deleteDoc(doc(db, "invoices", existingInvoiceId));
+                    await deleteDoc(doc(db, "orders", selectedOrderId));
+                    router.push("/admin/orders");
+                  } catch (e) {
+                    alert("Failed to delete order");
+                  }
+                }}
+                className="px-3 py-1.5 text-xs rounded-lg font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
+                🗑 Delete
+              </button>
+            )}
+            <button onClick={() => router.push(`/invoices/${existingInvoiceId}`)}
+              className="px-3 py-1.5 text-xs text-white rounded-lg font-medium"
+              style={{backgroundColor: existingInvoiceStatus === "draft" ? "#1B2A5E" : "#6b7280"}}>
+              {existingInvoiceStatus === "draft" ? "Edit Invoice →" : "View Invoice →"}
+            </button>
+          </div>
         </div>
         <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
           {/* Order Info */}
@@ -1133,6 +1153,23 @@ export default function Page() {
                     ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
                 }`}>📦 POs {poReadiness[selectedOrderId].delivered}/{poReadiness[selectedOrderId].total}</span>
               )}
+              {(orderStatus === "Draft" || orderStatus === "Preparing") && !existingInvoiceId && (
+                <button
+                  onClick={async () => {
+                    if (!confirm("Delete this order? This cannot be undone.")) return;
+                    try {
+                      const { doc, deleteDoc } = await import("firebase/firestore");
+                      const { db } = await import("@/lib/firebase");
+                      await deleteDoc(doc(db, "orders", selectedOrderId));
+                      router.push("/admin/orders");
+                    } catch (e) {
+                      alert("Failed to delete order");
+                    }
+                  }}
+                  className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
+                  🗑 Delete
+                </button>
+              )}
             </>
           )}
         </div>
@@ -1162,12 +1199,17 @@ export default function Page() {
               </div>
             )}
           </div>
-          {isNewPage && (
+          {isNewPage && !selectedOrderId && (
             <button onClick={createNewOrder} disabled={!customerId}
               className="w-full py-2 text-sm text-white rounded-lg font-bold disabled:opacity-40"
               style={{backgroundColor: "#1B2A5E"}}>
               + New Order
             </button>
+          )}
+          {selectedOrderId && !existingInvoiceId && (
+            <div className="flex items-center gap-2 text-xs text-green-600 font-medium">
+              ✅ Order saved automatically as Draft
+            </div>
           )}
         </div>
 

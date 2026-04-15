@@ -104,6 +104,14 @@ export default function InvoiceDetailPage() {
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [lines, setLines] = useState<InvoiceLine[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [showAddLine, setShowAddLine] = useState(false);
+  const [newLineProductId, setNewLineProductId] = useState("");
+  const [newLineProductName, setNewLineProductName] = useState("");
+  const [newLineQty, setNewLineQty] = useState("");
+  const [newLinePrice, setNewLinePrice] = useState("");
+  const [newLineDiscount, setNewLineDiscount] = useState("0");
+  const [addingLine, setAddingLine] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
@@ -175,6 +183,9 @@ export default function InvoiceDetailPage() {
         ...d.data(),
       })) as InvoiceLine[];
       setLines(linesData);
+      // Load products for add line
+      const prodSnap = await getDocs(collection(db, "products"));
+      setProducts(prodSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter((p:any) => p.active !== false));
 
       // Load payments
       const paymentsQuery = query(
@@ -443,7 +454,9 @@ Please call/message the supplier(s): ${suppliers}`);
   const handleDeleteLine = async (lineId: string) => {
     if (!confirm("Remove this item from the invoice?")) return;
     await deleteDoc(doc(db, "invoiceLines", lineId));
-    setLines(prev => prev.filter(l => l.id !== lineId));
+    const updated = lines.filter(l => l.id !== lineId);
+    setLines(updated);
+    await recalculateTotalsFromLines(updated);
   };
 
   const handleSaveLine = async (line: InvoiceLine) => {
@@ -494,6 +507,74 @@ Please call/message the supplier(s): ${suppliers}`);
       alert("Error saving changes");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const recalculateTotalsFromLines = async (currentLines: typeof lines) => {
+    try {
+      const gross = currentLines.reduce((sum, l) => sum + Number(l.lineGross || 0), 0);
+      const deliveryFee = Number(invoice?.deliveryFee || 0);
+      const finalTotal = gross + deliveryFee;
+      await updateDoc(doc(db, "invoices", invoiceId), {
+        subtotalGross: gross,
+        subtotalNet: gross,
+        finalTotal: finalTotal,
+        updatedAt: serverTimestamp(),
+      });
+      setInvoice((prev: any) => prev ? { ...prev, subtotalGross: gross, subtotalNet: gross, finalTotal } : prev);
+      } catch(e) {
+      console.error("Failed to recalculate", e);
+    }
+  };
+
+  const handleAddLine = async () => {
+    if (!newLineProductId || !newLineQty || !newLinePrice) return;
+    setAddingLine(true);
+    try {
+      const qty = Number(newLineQty);
+      const price = Number(newLinePrice);
+      const discount = Number(newLineDiscount || 0);
+      const net = qty * price * (1 - discount / 100);
+      const newLineRef = await addDoc(collection(db, "invoiceLines"), {
+        invoiceId: invoiceId,
+        productId: newLineProductId,
+        productName: newLineProductName,
+        quantity: qty,
+        unitPrice: price,
+        itemDiscountPercent: discount,
+        lineGross: net,
+        lineNet: net,
+        preparation: "",
+        sample: false,
+        gift: false,
+        notes: "",
+        createdAt: serverTimestamp(),
+      });
+      setLines(prev => [...prev, {
+        id: newLineRef.id,
+        productId: newLineProductId,
+        productName: newLineProductName,
+        quantity: qty,
+        unitPrice: price,
+        itemDiscountPercent: discount,
+        lineGross: net,
+        lineNet: net,
+        preparation: "",
+        sample: false,
+        gift: false,
+        notes: "",
+      } as any]);
+      setShowAddLine(false);
+      setNewLineProductId("");
+      setNewLineProductName("");
+      setNewLineQty("");
+      setNewLinePrice("");
+      setNewLineDiscount("0");
+      await recalculateTotalsFromLines([...lines, { lineGross: net } as any]);
+    } catch(e) {
+      alert("Failed to add line item");
+    } finally {
+      setAddingLine(false);
     }
   };
 
@@ -668,7 +749,18 @@ Please call/message the supplier(s): ${suppliers}`);
 
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-900">Line Items</h3>
+            <div className="flex items-center justify-between w-full">
+              <h3 className="text-sm font-semibold text-gray-900">Line Items</h3>
+              {invoice?.status === "draft" && (
+                <div className="flex gap-2">
+<button onClick={() => setShowAddLine(!showAddLine)}
+                    className="text-xs px-3 py-1.5 text-white rounded-lg font-medium"
+                    style={{backgroundColor: "#1B2A5E"}}>
+                    + Add Line
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           {lines.length === 0 ? (
             <div className="px-6 py-8 text-center text-sm text-gray-400">No line items found</div>
@@ -747,6 +839,58 @@ Please call/message the supplier(s): ${suppliers}`);
                 ))}
               </tbody>
             </table>
+          )}
+          {/* Add Line Form */}
+          {showAddLine && (
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 space-y-3">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">New Line Item</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <select value={newLineProductId} onChange={e => {
+                    const p = products.find((p:any) => p.id === e.target.value);
+                    setNewLineProductId(e.target.value);
+                    setNewLineProductName(p?.name || "");
+                    setNewLinePrice(String(p?.b2cPrice || p?.b2bPrice || ""));
+                  }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="">Select Product</option>
+                    {products.map((p:any) => (
+                      <option key={p.id} value={p.id}>{p.name} (stock: {Number(p.currentStock).toFixed(3).replace(/\.?0+$/, "")})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Quantity</label>
+                  <input type="number" value={newLineQty} onChange={e => setNewLineQty(e.target.value)}
+                    placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Unit Price ($)</label>
+                  <input type="number" value={newLinePrice} onChange={e => setNewLinePrice(e.target.value)}
+                    placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Discount %</label>
+                  <input type="number" value={newLineDiscount} onChange={e => setNewLineDiscount(e.target.value)}
+                    placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                {newLineQty && newLinePrice && (
+                  <div className="flex items-end">
+                    <p className="text-sm font-semibold text-gray-900">
+                      Total: ${(Number(newLineQty) * Number(newLinePrice) * (1 - Number(newLineDiscount || 0) / 100)).toFixed(2)}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleAddLine} disabled={addingLine || !newLineProductId || !newLineQty || !newLinePrice}
+                  className="px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-40"
+                  style={{backgroundColor: "#1B2A5E"}}>
+                  {addingLine ? "Adding..." : "Add Line Item"}
+                </button>
+                <button onClick={() => setShowAddLine(false)}
+                  className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
+              </div>
+            </div>
           )}
         </div>
 
