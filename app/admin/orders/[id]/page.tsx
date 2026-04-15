@@ -1227,6 +1227,7 @@ export default function Page() {
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Delivery Date *</label>
                   <Input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
                     className={!deliveryDate ? "border-red-300" : ""} />
                 </div>
               </div>
