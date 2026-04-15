@@ -38,6 +38,16 @@ export default function AdminProductsPage() {
   const [stockInQty, setStockInQty] = useState("");
   const [stockInNotes, setStockInNotes] = useState("");
   const [stockInSaving, setStockInSaving] = useState(false);
+  const [stockInExpiry, setStockInExpiry] = useState("");
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [newProduct, setNewProduct] = useState<any>({
+    name: "", productSubName: "", supplierId: "", supplier: "",
+    category: "", origin: "", unit: "KG", storageType: "",
+    costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "",
+    active: true, requiresWeighing: false, trackExpiry: false,
+    minWeightPerUnit: "", maxWeightPerUnit: "",
+  });
+  const [addingSaving, setAddingSaving] = useState(false);
 
   useEffect(() => { void load(); }, []);
 
@@ -57,6 +67,40 @@ export default function AdminProductsPage() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveNewProduct = async () => {
+    if (!newProduct.name.trim()) { alert("Product name is required"); return; }
+    setAddingSaving(true);
+    try {
+      await addDoc(collection(db, "products"), {
+        name: newProduct.name.trim(),
+        productSubName: newProduct.productSubName || "",
+        supplierId: newProduct.supplierId || "",
+        supplier: newProduct.supplier || "",
+        category: newProduct.category || "",
+        origin: newProduct.origin || "",
+        unit: newProduct.unit || "KG",
+        storageType: newProduct.storageType || "",
+        costPrice: Number(newProduct.costPrice || 0),
+        b2bPrice: Number(newProduct.b2bPrice || 0),
+        b2cPrice: Number(newProduct.b2cPrice || 0),
+        minStock: Number(newProduct.minStock || 0),
+        currentStock: 0,
+        active: true,
+        requiresWeighing: Boolean(newProduct.requiresWeighing),
+        trackExpiry: Boolean(newProduct.trackExpiry),
+        minWeightPerUnit: newProduct.minWeightPerUnit ? Number(newProduct.minWeightPerUnit) : null,
+        maxWeightPerUnit: newProduct.maxWeightPerUnit ? Number(newProduct.maxWeightPerUnit) : null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      setShowAddProduct(false);
+      setNewProduct({ name: "", productSubName: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "" });
+      await load();
+    } finally {
+      setAddingSaving(false);
     }
   };
 
@@ -198,6 +242,13 @@ export default function AdminProductsPage() {
             className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
           >
             ⚙️ Manage Dropdowns
+          </button>
+          <button
+            onClick={() => setShowAddProduct(true)}
+            className="px-4 py-1.5 text-sm text-white rounded-lg font-medium"
+            style={{backgroundColor: "#1B2A5E"}}
+          >
+            + Add Product
           </button>
           <input
             type="text"
@@ -378,7 +429,7 @@ export default function AdminProductsPage() {
                     <td className="px-3 py-3">
                       <div className="flex gap-1">
                       <button onClick={() => startEdit(product)} className="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100">Edit</button>
-                      <button onClick={() => { setStockInProduct(product); setStockInQty(""); setStockInNotes(""); }}
+                      <button onClick={() => { setStockInProduct(product); setStockInQty(""); setStockInNotes(""); setStockInExpiry(""); }}
                         className="px-2 py-1 text-xs border border-green-300 text-green-700 rounded hover:bg-green-50">+Stock</button>
                       <button onClick={() => loadHistory(product)}
                         className="px-2 py-1 text-xs border border-blue-300 text-blue-700 rounded hover:bg-blue-50">History</button>
@@ -494,6 +545,145 @@ export default function AdminProductsPage() {
         </div>
       )}
 
+      {/* Add Product Modal */}
+      {showAddProduct && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-900">Add New Product</h3>
+              <button onClick={() => setShowAddProduct(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-500 mb-1 block">Product Name *</label>
+                  <input value={newProduct.name} onChange={e => setNewProduct((p:any) => ({...p, name: e.target.value}))}
+                    placeholder="e.g. Octopus Cooked Skin" autoFocus
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-500 mb-1 block">Sub Name</label>
+                  <input value={newProduct.productSubName} onChange={e => setNewProduct((p:any) => ({...p, productSubName: e.target.value}))}
+                    placeholder="e.g. Scientific name or French name"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-500 mb-1 block">Supplier</label>
+                  <select value={newProduct.supplierId} onChange={e => {
+                    const s = suppliers.find((s:any) => s.id === e.target.value);
+                    setNewProduct((p:any) => ({...p, supplierId: e.target.value, supplier: s?.name || ""}));
+                  }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="">— Select Supplier —</option>
+                    {suppliers.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Category</label>
+                  <select value={newProduct.category} onChange={e => setNewProduct((p:any) => ({...p, category: e.target.value}))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="">—</option>
+                    {options.category.map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Origin</label>
+                  <select value={newProduct.origin} onChange={e => setNewProduct((p:any) => ({...p, origin: e.target.value}))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="">—</option>
+                    {options.origin.map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Unit</label>
+                  <select value={newProduct.unit} onChange={e => setNewProduct((p:any) => ({...p, unit: e.target.value}))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    {options.unit.map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Storage Type</label>
+                  <select value={newProduct.storageType} onChange={e => setNewProduct((p:any) => ({...p, storageType: e.target.value}))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="">—</option>
+                    {options.storageType.map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Cost Price ($)</label>
+                  <input type="number" value={newProduct.costPrice} onChange={e => setNewProduct((p:any) => ({...p, costPrice: e.target.value}))}
+                    placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Min Stock</label>
+                  <input type="number" value={newProduct.minStock} onChange={e => setNewProduct((p:any) => ({...p, minStock: e.target.value}))}
+                    placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">B2B Price ($)</label>
+                  <input type="number" value={newProduct.b2bPrice} onChange={e => setNewProduct((p:any) => ({...p, b2bPrice: e.target.value}))}
+                    placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                  {Number(newProduct.b2bPrice) > 0 && Number(newProduct.costPrice) > 0 && (
+                    <p className={`text-xs mt-1 font-medium ${((Number(newProduct.b2bPrice) - Number(newProduct.costPrice)) / Number(newProduct.b2bPrice) * 100) < 10 ? "text-red-500" : "text-blue-600"}`}>
+                      Margin: {((Number(newProduct.b2bPrice) - Number(newProduct.costPrice)) / Number(newProduct.b2bPrice) * 100).toFixed(1)}%
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">B2C Price ($)</label>
+                  <input type="number" value={newProduct.b2cPrice} onChange={e => setNewProduct((p:any) => ({...p, b2cPrice: e.target.value}))}
+                    placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                  {Number(newProduct.b2cPrice) > 0 && Number(newProduct.costPrice) > 0 && (
+                    <p className={`text-xs mt-1 font-medium ${((Number(newProduct.b2cPrice) - Number(newProduct.costPrice)) / Number(newProduct.b2cPrice) * 100) < 15 ? "text-red-500" : "text-green-600"}`}>
+                      Margin: {((Number(newProduct.b2cPrice) - Number(newProduct.costPrice)) / Number(newProduct.b2cPrice) * 100).toFixed(1)}%
+                    </p>
+                  )}
+                </div>
+              </div>
+              {(newProduct.unit === "KG" || newProduct.unit === "Piece") && (
+                <div className="bg-amber-50 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-4">
+                    <span className="text-xs font-medium text-amber-700">Weight range (kg):</span>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-500">Min</label>
+                      <input type="number" step="0.01" value={newProduct.minWeightPerUnit}
+                        onChange={e => setNewProduct((p:any) => ({...p, minWeightPerUnit: e.target.value}))}
+                        className="w-20 border border-amber-200 rounded px-2 py-1 text-sm" placeholder="e.g. 0.9" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-500">Max</label>
+                      <input type="number" step="0.01" value={newProduct.maxWeightPerUnit}
+                        onChange={e => setNewProduct((p:any) => ({...p, maxWeightPerUnit: e.target.value}))}
+                        className="w-20 border border-amber-200 rounded px-2 py-1 text-sm" placeholder="e.g. 1.4" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-6">
+                    <label className="flex items-center gap-1.5 text-xs text-purple-700 cursor-pointer">
+                      <input type="checkbox" checked={!!newProduct.requiresWeighing}
+                        onChange={e => setNewProduct((p:any) => ({...p, requiresWeighing: e.target.checked}))} />
+                      ⚖️ Requires weighing at delivery
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-blue-700 cursor-pointer">
+                      <input type="checkbox" checked={!!newProduct.trackExpiry}
+                        onChange={e => setNewProduct((p:any) => ({...p, trackExpiry: e.target.checked}))} />
+                      📅 Track expiry / FIFO
+                    </label>
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowAddProduct(false)}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50">Cancel</button>
+                <button onClick={saveNewProduct} disabled={addingSaving || !newProduct.name.trim()}
+                  className="flex-1 px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+                  style={{backgroundColor: "#1B2A5E"}}>
+                  {addingSaving ? "Saving..." : "Create Product"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stock In Modal */}
       {stockInProduct && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -516,11 +706,35 @@ export default function AdminProductsPage() {
                   placeholder="e.g. Purchase from supplier"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
               </div>
+              {stockInProduct?.trackExpiry && (
+                <div>
+                  <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">
+                    📅 Expiry Date <span className="text-red-400">*</span>
+                  </label>
+                  <input type="date" value={stockInExpiry}
+                    onChange={e => setStockInExpiry(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  {stockInExpiry && (
+                    <p className={`text-xs mt-1 font-medium ${
+                      new Date(stockInExpiry) < new Date() ? "text-red-700 font-bold" :
+                      new Date(stockInExpiry) < new Date(Date.now() + 30*24*60*60*1000) ? "text-red-500" :
+                      new Date(stockInExpiry) < new Date(Date.now() + 90*24*60*60*1000) ? "text-orange-500" :
+                      "text-green-600"
+                    }`}>
+                      Expires: {new Date(stockInExpiry).toLocaleDateString("en-GB")}
+                      {new Date(stockInExpiry) < new Date() ? " ❌ Already expired!" :
+                       new Date(stockInExpiry) < new Date(Date.now() + 30*24*60*60*1000) ? " ⚠️ Expiring soon!" :
+                       new Date(stockInExpiry) < new Date(Date.now() + 90*24*60*60*1000) ? " 🟡 Within 3 months" :
+                       " ✅ Good"}
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="text-xs text-gray-400">Current stock: <span className="font-semibold text-gray-700">{Number(stockInProduct.currentStock).toFixed(3)}</span> → After: <span className="font-semibold text-green-600">{(Number(stockInProduct.currentStock) + Number(stockInQty || 0)).toFixed(3)}</span></div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setStockInProduct(null)}
                   className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50">Cancel</button>
-                <button onClick={handleStockIn} disabled={stockInSaving || !stockInQty || Number(stockInQty) <= 0}
+                <button onClick={handleStockIn} disabled={stockInSaving || !stockInQty || Number(stockInQty) <= 0 || (stockInProduct?.trackExpiry && !stockInExpiry)}
                   className="flex-1 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50">
                   {stockInSaving ? "Saving..." : "Add Stock"}
                 </button>
