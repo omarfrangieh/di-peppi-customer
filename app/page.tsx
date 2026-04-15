@@ -71,13 +71,13 @@ export default function Dashboard() {
     }
   };
 
-  const toDeliver = orders.filter(o =>
-    ["Draft", "Preparing", "To Deliver"].includes(o.status)
+  const preparing = orders.filter(o =>
+    ["Draft", "Preparing"].includes(o.status)
   ).sort((a, b) => (a.deliveryDate || "").localeCompare(b.deliveryDate || ""));
 
-  const toWeigh = orders.filter(o =>
-    ["Draft", "Preparing", "To Deliver"].includes(o.status) && weighingOrderIds.has(o.id)
-  );
+  const toDeliver = orders.filter(o =>
+    o.status === "To Deliver"
+  ).sort((a, b) => (a.deliveryDate || "").localeCompare(b.deliveryDate || ""));
 
   const deliveredUnpaid = orders.filter(o => o.status === "Delivered");
 
@@ -93,7 +93,14 @@ export default function Dashboard() {
     const isOverdue = order.deliveryDate && order.deliveryDate < todayISO;
     return (
       <div onClick={() => router.push(`/admin/orders/${order.id}`)}
-        className="bg-white rounded-lg border border-gray-200 px-4 py-3 cursor-pointer hover:border-gray-300 hover:shadow-sm transition-all">
+        className={`rounded-lg border px-4 py-3 cursor-pointer hover:shadow-sm transition-all ${
+        order.status === "Draft" ? "bg-gray-50 border-gray-300" :
+        order.status === "Preparing" ? "bg-yellow-50 border-yellow-200" :
+        order.status === "To Deliver" ? "bg-orange-50 border-orange-200" :
+        order.status === "Delivered" ? "bg-green-50 border-green-200" :
+        order.status === "Cancelled" || order.status === "Canceled" ? "bg-red-50 border-red-200" :
+        "bg-white border-gray-200"
+      }`}>
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
@@ -101,14 +108,21 @@ export default function Dashboard() {
               <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{order.customerType || "B2C"}</span>
             </div>
             <p className="text-xs text-gray-400 mt-0.5">{order.name}</p>
-            <span className={`mt-1 inline-block text-xs px-2 py-0.5 rounded-full font-medium ${
-              order.status === "Draft" ? "bg-gray-100 text-gray-600" :
-              order.status === "Preparing" ? "bg-yellow-50 text-yellow-700" :
-              order.status === "To Deliver" ? "bg-orange-50 text-orange-600" :
-              order.status === "Delivered" ? "bg-green-50 text-green-700" :
-              order.status === "Cancelled" ? "bg-red-50 text-red-500" :
-              "bg-gray-100 text-gray-500"
-            }`}>{order.status || "Draft"}</span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium ${
+                order.status === "Draft" ? "bg-gray-100 text-gray-600" :
+                order.status === "Preparing" ? "bg-yellow-50 text-yellow-700" :
+                order.status === "To Deliver" ? "bg-orange-50 text-orange-600" :
+                order.status === "Delivered" ? "bg-green-50 text-green-700" :
+                order.status === "Cancelled" ? "bg-red-50 text-red-500" :
+                "bg-gray-100 text-gray-500"
+              }`}>{order.status || "Draft"}</span>
+              {weighingOrderIds.has(order.id) && ["Draft", "Preparing"].includes(order.status) && (
+                <span className="inline-block text-xs px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-600 border border-red-300">
+                  ⚖️ Weigh!
+                </span>
+              )}
+            </div>
           </div>
           <p className="text-sm font-bold text-gray-900">${Number(order.finalTotal || 0).toFixed(2)}</p>
         </div>
@@ -165,28 +179,28 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-4">
+            {/* Draft & Preparing */}
+            <div className="bg-white rounded-2xl p-4 space-y-3 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="font-bold text-gray-900 text-sm">📝 Draft & Preparing</h2>
+                <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full text-gray-600 font-medium">{preparing.length}</span>
+              </div>
+              {preparing.length === 0 && <p className="text-xs text-gray-400 text-center py-4">All clear! 🎉</p>}
+              {preparing.map(o => <OrderCard key={o.id} order={o} />)}
+            </div>
+
             {/* To Deliver */}
-            <div className="bg-gray-100 rounded-2xl p-4 space-y-3">
+            <div className="bg-white rounded-2xl p-4 space-y-3 border border-gray-200">
               <div className="flex items-center justify-between">
                 <h2 className="font-bold text-gray-900 text-sm">🚚 To Deliver</h2>
-                <span className="text-xs bg-white px-2 py-0.5 rounded-full text-gray-600 font-medium">{toDeliver.length}</span>
+                <span className="text-xs bg-orange-100 px-2 py-0.5 rounded-full text-orange-600 font-medium">{toDeliver.length}</span>
               </div>
-              {toDeliver.length === 0 && <p className="text-xs text-gray-400 text-center py-4">All clear! 🎉</p>}
+              {toDeliver.length === 0 && <p className="text-xs text-gray-400 text-center py-4">Nothing to deliver</p>}
               {toDeliver.map(o => <OrderCard key={o.id} order={o} />)}
             </div>
 
-            {/* Orders To Weigh */}
-            <div className="bg-amber-50 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="font-bold text-gray-900 text-sm">⚖️ To Weigh</h2>
-                <span className="text-xs bg-white px-2 py-0.5 rounded-full text-gray-600 font-medium">{toWeigh.length}</span>
-              </div>
-              {toWeigh.length === 0 && <p className="text-xs text-gray-400 text-center py-4">No weighing needed</p>}
-              {toWeigh.map(o => <OrderCard key={o.id} order={o} />)}
-            </div>
-
             {/* Delivered & Unpaid */}
-            <div className="bg-green-50 rounded-2xl p-4 space-y-3">
+            <div className="bg-white rounded-2xl p-4 space-y-3 border border-gray-200">
               <div className="flex items-center justify-between">
                 <h2 className="font-bold text-gray-900 text-sm">💰 Delivered & Unpaid</h2>
                 <span className="text-xs bg-white px-2 py-0.5 rounded-full text-gray-600 font-medium">{deliveredUnpaid.length}</span>

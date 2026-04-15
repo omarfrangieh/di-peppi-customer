@@ -182,7 +182,7 @@ export default function Page() {
   const [weighedQuantity, setWeighedQuantity] = useState("");
   const [preparation, setPreparation] = useState("");
   const [editingPreparation, setEditingPreparation] = useState("");
-  const [prepOptions, setPrepOptions] = useState<string[]>(["Portioned", "Whole", "Cleaned", "Skinless", "Sliced", "Head Off"]);
+  const [prepOptions, setPrepOptions] = useState<string[]>(["Portioned", "Whole", "Cleaned", "Skinless", "Sliced", "Headless & Gutted", "Gutted"]);
   const [editingQuantity, setEditingQuantity] = useState("");
   const [editingUnitPrice, setEditingUnitPrice] = useState("");
   const [priceSource, setPriceSource] = useState<PriceSource>("auto");
