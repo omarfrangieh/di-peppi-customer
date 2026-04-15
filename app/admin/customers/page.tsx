@@ -6,6 +6,16 @@ import { db } from "@/lib/firebase";
 
 const CUSTOMER_TYPES = ["B2B", "B2C", "Owner"];
 
+function Field({ label, value, onChange, type = "text" }: { label: string; value: any; onChange: (v: string) => void; type?: string }) {
+  return (
+    <div>
+      <label className="text-xs text-gray-500 block mb-0.5">{label}</label>
+      <input type={type} value={value || ""} onChange={e => onChange(e.target.value)}
+        autoComplete="off" className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900" />
+    </div>
+  );
+}
+
 export default function AdminCustomersPage() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -113,13 +123,7 @@ export default function AdminCustomersPage() {
     (p.name || "").toLowerCase().includes(priceSearch.toLowerCase())
   );
 
-  const Field = ({ label, value, onChange, type = "text" }: any) => (
-    <div>
-      <label className="text-xs text-gray-500 block mb-0.5">{label}</label>
-      <input type={type} value={value || ""} onChange={e => onChange(e.target.value)}
-        className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900" />
-    </div>
-  );
+
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
@@ -142,9 +146,7 @@ export default function AdminCustomersPage() {
             <option value="all">All Types</option>
             {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
           </select>
-          <button onClick={() => { setShowAdd(p => !p); cancelEdit(); }}
-            disabled={!!editing}
-            title={editing ? "Save or cancel current edit first" : ""}
+          <button onClick={() => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(p => !p); }}
             className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed">
             + Add Customer
           </button>
@@ -362,7 +364,7 @@ export default function AdminCustomersPage() {
                         </p>
                       </div>
                       <div className="hidden md:flex items-center gap-4 text-sm text-gray-600 flex-wrap">
-                        {customer.phone && <span>📞 {customer.phone}</span>}
+                        {customer.phone && <a href={"https://wa.me/" + String(customer.phone).replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">📞 {customer.phone}</a>}
                         {customer.deliveryFee > 0 && <span>🚚 ${customer.deliveryFee}</span>}
                         {customer.clientMargin > 0 && <span>📊 {customer.clientMargin}% margin</span>}
                         {customer.clientDiscount > 0 && <span>🏷️ {customer.clientDiscount}% disc</span>}
