@@ -39,6 +39,7 @@ export default function AdminProductsPage() {
   const [stockInNotes, setStockInNotes] = useState("");
   const [stockInSaving, setStockInSaving] = useState(false);
   const [stockInExpiry, setStockInExpiry] = useState("");
+  const [productBatches, setProductBatches] = useState<Record<string, any[]>>({});
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newProduct, setNewProduct] = useState<any>({
     name: "", productSubName: "", supplierId: "", supplier: "",
@@ -65,6 +66,25 @@ export default function AdminProductsPage() {
       if (optSnap.exists()) {
         setOptions({ ...DEFAULT_OPTIONS, ...optSnap.data() });
       }
+      // Load expiring batches per product
+      const movSnap = await getDocs(collection(db, "stockMovements"));
+      const now = new Date();
+      const in90Days = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+      const batchMap: Record<string, any[]> = {};
+      movSnap.forEach(d => {
+        const m = d.data();
+        if (!m.expiryDate || m.movementType !== "In") return;
+        const expiry = new Date(m.expiryDate);
+        if (expiry > in90Days) return;
+        if (!batchMap[m.productId]) batchMap[m.productId] = [];
+        batchMap[m.productId].push({
+          expiryDate: m.expiryDate,
+          quantity: m.quantity,
+          expired: expiry < now,
+          critical: expiry < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        });
+      });
+      setProductBatches(batchMap);
     } finally {
       setLoading(false);
     }
@@ -165,10 +185,13 @@ export default function AdminProductsPage() {
       const qty = Number(stockInQty);
       await addDoc(collection(db, "stockMovements"), {
         productId: stockInProduct.id,
+        productName: stockInProduct.name || "",
         quantity: qty,
         movementType: "In",
-        source: "purchase",
-        notes: stockInNotes || "",
+        source: "manual",
+        notes: stockInNotes || "Manual stock addition",
+        expiryDate: stockInExpiry || null,
+        batchDate: new Date().toISOString().slice(0, 10),
         movementDate: serverTimestamp(),
         createdAt: serverTimestamp(),
       });
@@ -382,9 +405,26 @@ export default function AdminProductsPage() {
                     <td className="px-4 py-3">
                       <p className="font-medium text-gray-900">{product.name}</p>
                       {product.productSubName && <p className="text-xs text-gray-400">{product.productSubName}</p>}
-                      {product.supplier && <p className="text-xs text-gray-400">🏭 {product.supplier}</p>}
-                      {product.requiresWeighing && <span className="text-xs text-purple-600">⚖️ Weighing req.</span>}
-                      {product.trackExpiry && <span className="text-xs text-blue-500 ml-2">📅 Expiry/FIFO</span>}
+                      <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                        {product.supplier && <span className="text-xs font-medium text-gray-600">🏭 {product.supplier}</span>}
+                        {product.requiresWeighing && <span className="text-xs text-purple-600">⚖️ Weighing req.</span>}
+                        {product.trackExpiry && <span className="text-xs text-blue-500">📅 Expiry/FIFO</span>}
+                      </div>
+                      {productBatches[product.id]?.length > 0 && (
+                        <div className="mt-2 flex flex-col gap-1">
+                          {productBatches[product.id].map((batch, i) => (
+                            <div key={i} className={`flex items-center justify-between text-xs px-2 py-1 rounded-lg font-medium w-full ${
+                              batch.expired ? "bg-red-100 text-red-700 border border-red-300" :
+                              batch.critical ? "bg-red-50 text-red-500 border border-red-200" :
+                              "bg-orange-50 text-orange-600 border border-orange-200"
+                            }`}>
+                              <span>{batch.expired ? "❌ Expired" : batch.critical ? "⚠️ Expiring" : "🟡 Soon"}</span>
+                              <span className="font-bold">{new Date(batch.expiryDate).toLocaleDateString("en-GB")}</span>
+                              <span>qty: {Number(batch.quantity).toFixed(3).replace(/\.?0+$/, "")}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-3 text-gray-600">{product.category || "—"}</td>
                     <td className="px-3 py-3 text-gray-600">{product.origin || "—"}</td>

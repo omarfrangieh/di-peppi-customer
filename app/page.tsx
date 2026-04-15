@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<any[]>([]);
   const [weighingOrderIds, setWeighingOrderIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [expiringBatches, setExpiringBatches] = useState<any[]>([]);
   const todayISO = new Date().toISOString().slice(0, 10);
 
   useEffect(() => { void load(); }, []);
@@ -55,6 +56,32 @@ export default function Dashboard() {
         }
       });
       setWeighingOrderIds(weighingOrders);
+
+      // Load expiring batches (within 90 days)
+      const movementsSnap = await getDocs(collection(db, "stockMovements"));
+      const now = new Date();
+      const in90Days = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+      const batches: any[] = [];
+      const productNames: Record<string, string> = {};
+      productsSnap.forEach((d: any) => { productNames[d.id] = d.data().name || "Unknown"; });
+      movementsSnap.forEach((d: any) => {
+        const m = d.data();
+        if (!m.expiryDate) return;
+        const expiry = new Date(m.expiryDate);
+        if (expiry <= in90Days && m.movementType === "In" && Number(m.quantity || 0) > 0) {
+          batches.push({
+            id: d.id,
+            productId: m.productId,
+            productName: productNames[m.productId] || m.productName || "Unknown",
+            quantity: m.quantity,
+            expiryDate: m.expiryDate,
+            expired: expiry < now,
+            critical: expiry < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          });
+        }
+      });
+      batches.sort((a, b) => a.expiryDate.localeCompare(b.expiryDate));
+      setExpiringBatches(batches);
     } finally {
       setLoading(false);
     }
@@ -171,6 +198,34 @@ export default function Dashboard() {
           <NavButton emoji="👥" label="Customers" path="/admin/customers" />
           <NavButton emoji="🏭" label="Suppliers" path="/admin/suppliers" />
         </div>
+
+        {/* Expiry Alerts */}
+        {expiringBatches.length > 0 && (
+          <div className="bg-white rounded-2xl border border-orange-200 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <h2 className="font-bold text-gray-900 text-sm">📅 Expiry Alerts</h2>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                expiringBatches.some(b => b.expired || b.critical) ? "bg-red-100 text-red-600" : "bg-orange-100 text-orange-600"
+              }`}>{expiringBatches.length} batch{expiringBatches.length !== 1 ? "es" : ""}</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              {expiringBatches.map(batch => (
+                <div key={batch.id} className={`rounded-xl border px-3 py-2 text-xs ${
+                  batch.expired ? "bg-red-50 border-red-300" :
+                  batch.critical ? "bg-red-50 border-red-200" :
+                  "bg-orange-50 border-orange-200"
+                }`}>
+                  <p className="font-semibold text-gray-900 truncate">{batch.productName}</p>
+                  <p className="text-gray-500 mt-0.5">Qty: <span className="font-medium text-gray-700">{Number(batch.quantity).toFixed(3).replace(/\.?0+$/, "")}</span></p>
+                  <p className={`font-semibold mt-0.5 ${batch.expired ? "text-red-700" : batch.critical ? "text-red-500" : "text-orange-600"}`}>
+                    {batch.expired ? "❌ " : batch.critical ? "⚠️ " : "🟡 "}
+                    {new Date(batch.expiryDate).toLocaleDateString("en-GB")}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Dashboard columns */}
         {loading ? (
