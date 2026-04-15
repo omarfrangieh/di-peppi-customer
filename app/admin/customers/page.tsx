@@ -18,6 +18,7 @@ export default function AdminCustomersPage() {
   const [filterType, setFilterType] = useState("all");
   const [priceSearch, setPriceSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [showPricesFor, setShowPricesFor] = useState<string | null>(null);
   const [newCustomer, setNewCustomer] = useState<any>({ customerType: "", country: "Lebanon" });
 
   useEffect(() => { void load(); }, []);
@@ -299,21 +300,33 @@ export default function AdminCustomersPage() {
                     onChange={e => setPriceSearch(e.target.value)}
                     className="mb-3 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 w-64" />
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-y-auto border border-gray-100 rounded-lg p-3">
-                    {filteredProducts.map(product => (
-                      <div key={product.id} className="flex items-center gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-gray-700 truncate">{product.name}</p>
-                          <p className="text-xs text-gray-400">Default: ${Number(editData.customerType === "B2B" ? product.b2bPrice : product.b2cPrice || 0).toFixed(2)}</p>
+                    {filteredProducts.map(product => {
+                      const sp = Number(editPrices[product.id] || 0);
+                      const cost = Number(product.costPrice || 0);
+                      const margin = sp > 0 ? ((sp - cost) / sp) * 100 : null;
+                      return (
+                        <div key={product.id} className="flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-gray-700 truncate">{product.name}</p>
+                            <p className="text-xs text-gray-400">Default: ${Number(editData.customerType === "B2B" ? product.b2bPrice : product.b2cPrice || 0).toFixed(2)} · Cost: ${cost.toFixed(2)}</p>
+                          </div>
+                          <div className="flex flex-col items-end gap-0.5">
+                            <input
+                              type="number"
+                              placeholder="—"
+                              value={editPrices[product.id] || ""}
+                              onChange={e => setEditPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
+                              className={`w-20 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-gray-900 ${editPrices[product.id] ? "border-blue-300 bg-blue-50" : "border-gray-200"}`}
+                            />
+                            {margin !== null && (
+                              <span className={`text-xs font-semibold ${margin < 0 ? "text-red-500" : margin < 15 ? "text-yellow-600" : "text-green-600"}`}>
+                                {margin < 0 ? "⛔" : margin < 15 ? "⚠️" : "✅"} {margin.toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <input
-                          type="number"
-                          placeholder="—"
-                          value={editPrices[product.id] || ""}
-                          onChange={e => setEditPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
-                          className={`w-20 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-gray-900 ${editPrices[product.id] ? "border-blue-300 bg-blue-50" : "border-gray-200"}`}
-                        />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   <p className="text-xs text-gray-400 mt-1">{Object.values(editPrices).filter(v => v !== "").length} special prices set</p>
 
@@ -360,17 +373,30 @@ export default function AdminCustomersPage() {
                   {/* Special Prices Summary */}
                   {specialCount > 0 && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
-                      <p className="text-xs font-medium text-gray-500 mb-2">🏷️ {specialCount} Special {specialCount === 1 ? "Price" : "Prices"}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {Object.entries(customer.specialPrices || {}).map(([pid, price]) => {
-                          const product = products.find(p => p.id === pid);
-                          return (
-                            <span key={pid} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-lg">
-                              {product?.name || pid}: ${Number(price).toFixed(2)}
-                            </span>
-                          );
-                        })}
-                      </div>
+                      <button
+                        onClick={() => setShowPricesFor(showPricesFor === customer.id ? null : customer.id)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900 transition-colors">
+                        🏷️ {specialCount} Special {specialCount === 1 ? "Price" : "Prices"}
+                        <span className={`transition-transform duration-200 ${showPricesFor === customer.id ? "rotate-180" : ""}`}>▾</span>
+                      </button>
+                      {showPricesFor === customer.id && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {Object.entries(customer.specialPrices || {}).map(([pid, price]) => {
+                            const product = products.find(p => p.id === pid);
+                            const cost = Number(product?.costPrice || 0);
+                            const sp = Number(price);
+                            const margin = sp > 0 ? ((sp - cost) / sp) * 100 : 0;
+                            return (
+                              <span key={pid} className="text-xs bg-white border border-blue-200 text-blue-700 px-2.5 py-1 rounded-lg font-medium shadow-sm flex items-center gap-1.5">
+                                {product?.name || pid}: <span className="font-bold">${sp.toFixed(2)}</span>
+                                <span className={`font-semibold ${margin < 0 ? "text-red-500" : margin < 15 ? "text-yellow-600" : "text-green-600"}`}>
+                                  {margin < 0 ? "⛔" : margin < 15 ? "⚠️" : "✅"} {margin.toFixed(1)}%
+                                </span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
