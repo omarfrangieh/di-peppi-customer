@@ -174,13 +174,7 @@ export default function Dashboard() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/Di-Peppi-White-Background.jpg" alt="Di Peppi" className="h-10 w-10 object-contain" />
-            <div>
-              <h1 className="text-lg font-bold" style={{ color: "#1B2A5E" }}>Di Peppi</h1>
-              <p className="text-xs" style={{ color: "#B5535A", fontStyle: "italic" }}>Your Gourmet Companion</p>
-            </div>
-          </div>
+          <h1 className="text-xl font-bold" style={{color: "#B5535A"}}>Dashboard</h1>
           <button onClick={() => router.push("/admin/orders/new")}
             className="px-4 py-2 text-sm text-white rounded-xl font-bold"
             style={{ backgroundColor: "#1B2A5E" }}>
@@ -190,14 +184,7 @@ export default function Dashboard() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
-        {/* Nav */}
-        <div className="grid grid-cols-5 gap-3">
-          <NavButton emoji="📋" label="Orders" path="/admin/orders" />
-          <NavButton emoji="🧾" label="Invoices" path="/invoices" />
-          <NavButton emoji="⚙️" label="Products" path="/admin/products" />
-          <NavButton emoji="👥" label="Customers" path="/admin/customers" />
-          <NavButton emoji="🏭" label="Suppliers" path="/admin/suppliers" />
-        </div>
+
 
         {/* Expiry Alerts */}
         {expiringBatches.length > 0 && (

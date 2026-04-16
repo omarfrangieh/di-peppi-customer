@@ -92,14 +92,7 @@ export default function InvoicesListPage() {
       {/* Top bar */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push("/")}
-            className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            ← Back
-          </button>
-          <div className="h-4 w-px bg-gray-200" />
-          <h1 className="text-sm font-semibold text-gray-900">Invoices</h1>
+          <h1 className="text-xl font-bold" style={{color: "#B5535A"}}>Invoices</h1>
           <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
             {invoices.length}
           </span>
