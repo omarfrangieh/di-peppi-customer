@@ -11,6 +11,19 @@ function stockStatus(p: any) {
   return "ok";
 }
 
+function daysUntil(dateStr: string) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const exp = new Date(dateStr); exp.setHours(0, 0, 0, 0);
+  return Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function expiryColor(days: number) {
+  if (days < 0)   return { badge: "bg-red-100 text-red-700",      dot: "🔴", label: "Expired" };
+  if (days <= 30) return { badge: "bg-red-100 text-red-700",      dot: "🔴", label: `${days}d` };
+  if (days <= 60) return { badge: "bg-orange-100 text-orange-600", dot: "🟡", label: `${days}d` };
+  return           { badge: "bg-yellow-50 text-yellow-700",       dot: "🟡", label: `${days}d` };
+}
+
 export default function StockPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [movements, setMovements] = useState<any[]>([]);
@@ -24,6 +37,7 @@ export default function StockPage() {
   const [stockInExpiry, setStockInExpiry] = useState("");
   const [stockInSaving, setStockInSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expiryAlertOpen, setExpiryAlertOpen] = useState(true);
 
   useEffect(() => { void load(); }, []);
 
@@ -59,18 +73,28 @@ export default function StockPage() {
   }), [products]);
 
   const expiryMap = useMemo(() => {
-    const map: Record<string, { date: string; qty: number; critical: boolean }[]> = {};
-    const in90 = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-    const in30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    movements.filter(m => m.movementType === "In" && m.expiryDate).forEach(m => {
-      const exp = new Date(m.expiryDate);
-      if (exp <= in90) {
-        if (!map[m.productId]) map[m.productId] = [];
-        map[m.productId].push({ date: m.expiryDate, qty: Number(m.quantity || 0), critical: exp < in30 });
-      }
-    });
+    const map: Record<string, { date: string; qty: number; days: number }[]> = {};
+    movements
+      .filter(m => m.movementType === "In" && m.expiryDate)
+      .forEach(m => {
+        const days = daysUntil(m.expiryDate);
+        if (days <= 90) {
+          if (!map[m.productId]) map[m.productId] = [];
+          map[m.productId].push({ date: m.expiryDate, qty: Number(m.quantity || 0), days });
+        }
+      });
+    Object.keys(map).forEach(k => map[k].sort((a, b) => a.days - b.days));
     return map;
   }, [movements]);
+
+  const expiryAlerts = useMemo(() => {
+    const alerts: { productId: string; productName: string; date: string; qty: number; days: number }[] = [];
+    Object.entries(expiryMap).forEach(([productId, batches]) => {
+      const product = products.find(p => p.id === productId);
+      batches.forEach(b => alerts.push({ productId, productName: product?.name || productId, ...b }));
+    });
+    return alerts.sort((a, b) => a.days - b.days);
+  }, [expiryMap, products]);
 
   const handleStockIn = async () => {
     if (!stockInProduct || !stockInQty || Number(stockInQty) <= 0) return;
@@ -91,7 +115,11 @@ export default function StockPage() {
     } finally { setStockInSaving(false); }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "#1B2A5E", borderTopColor: "transparent" }} /></div>;
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "#1B2A5E", borderTopColor: "transparent" }} />
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -113,10 +141,10 @@ export default function StockPage() {
         </div>
         <div className="flex items-center gap-2">
           {[
-            { key: "all", label: "All (" + products.filter(p => p.active !== false).length + ")" },
-            { key: "ok", label: "✅ In Stock (" + stats.ok + ")" },
-            { key: "low", label: "⚠️ Low Stock (" + stats.low + ")" },
-            { key: "out", label: "❌ Out of Stock (" + stats.out + ")" },
+            { key: "all",  label: "All (" + products.filter(p => p.active !== false).length + ")" },
+            { key: "ok",   label: "✅ In Stock (" + stats.ok + ")" },
+            { key: "low",  label: "⚠️ Low Stock (" + stats.low + ")" },
+            { key: "out",  label: "❌ Out of Stock (" + stats.out + ")" },
           ].map(f => (
             <button key={f.key} onClick={() => setFilterStatus(f.key)}
               className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (filterStatus === f.key ? "text-white" : "text-gray-500 bg-gray-100 hover:bg-gray-200")}
@@ -130,22 +158,57 @@ export default function StockPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 pt-4 grid grid-cols-4 gap-4 mb-4">
-        {[
-          { label: "In Stock", value: stats.ok, color: "text-green-600", bg: "bg-green-50 border-green-200" },
-          { label: "Low Stock", value: stats.low, color: "text-yellow-600", bg: "bg-yellow-50 border-yellow-200" },
-          { label: "Out of Stock", value: stats.out, color: "text-red-500", bg: "bg-red-50 border-red-200" },
-          { label: "Total Stock Value", value: "$" + stats.totalValue.toFixed(2), color: "text-gray-900", bg: "bg-white border-gray-200" },
-        ].map(c => (
-          <div key={c.label} className={"rounded-xl border p-4 " + c.bg}>
-            <p className="text-xs text-gray-500 mb-1">{c.label}</p>
-            <p className={"text-2xl font-bold " + c.color}>{c.value}</p>
-          </div>
-        ))}
-      </div>
+      <div className="max-w-7xl mx-auto px-6 pt-4 space-y-4">
+        <div className="grid grid-cols-4 gap-4">
+          {[
+            { label: "In Stock",          value: stats.ok,                            color: "text-green-600",  bg: "bg-green-50 border-green-200" },
+            { label: "Low Stock",         value: stats.low,                           color: "text-yellow-600", bg: "bg-yellow-50 border-yellow-200" },
+            { label: "Out of Stock",      value: stats.out,                           color: "text-red-500",    bg: "bg-red-50 border-red-200" },
+            { label: "Total Stock Value", value: "$" + stats.totalValue.toFixed(2),   color: "text-gray-900",   bg: "bg-white border-gray-200" },
+          ].map(c => (
+            <div key={c.label} className={"rounded-xl border p-4 " + c.bg}>
+              <p className="text-xs text-gray-500 mb-1">{c.label}</p>
+              <p className={"text-2xl font-bold " + c.color}>{c.value}</p>
+            </div>
+          ))}
+        </div>
 
-      <div className="max-w-7xl mx-auto px-6 pb-6">
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {expiryAlerts.length > 0 && (
+          <div className="rounded-xl border border-orange-200 bg-orange-50/60 overflow-hidden">
+            <button className="w-full flex items-center justify-between px-4 py-3 text-left" onClick={() => setExpiryAlertOpen(o => !o)}>
+              <div className="flex items-center gap-2">
+                <span className="text-base">📅</span>
+                <span className="text-sm font-semibold text-orange-800">Expiry Alerts</span>
+                <span className="text-xs bg-red-500 text-white rounded-full px-2 py-0.5 font-bold">
+                  {expiryAlerts.length} {expiryAlerts.length === 1 ? "batch" : "batches"}
+                </span>
+              </div>
+              <span className={"text-orange-400 transition-transform text-xs " + (expiryAlertOpen ? "rotate-180" : "")}>▼</span>
+            </button>
+            {expiryAlertOpen && (
+              <div className="px-4 pb-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {expiryAlerts.map((a, i) => {
+                  const { badge, dot } = expiryColor(a.days);
+                  return (
+                    <div key={i} className="bg-white rounded-lg border border-orange-100 px-3 py-2.5 flex flex-col gap-1">
+                      <p className="text-xs font-semibold text-gray-800">{a.productName}</p>
+                      <p className="text-xs text-gray-400">Qty: {a.qty}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span>{dot}</span>
+                        <span className={"text-xs font-semibold px-1.5 py-0.5 rounded " + badge}>
+                          {a.days < 0 ? "Expired" : a.date.split("-").reverse().join("/")}
+                        </span>
+                        {a.days >= 0 && <span className="text-xs text-gray-400">{a.days}d left</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -159,7 +222,7 @@ export default function StockPage() {
                 const status = stockStatus(p);
                 const value = Number(p.currentStock || 0) * Number(p.costPrice || 0);
                 const expiries = expiryMap[p.id] || [];
-                const hasCritical = expiries.some((e: any) => e.critical);
+                const soonest = expiries[0];
                 const isExpanded = expandedId === p.id;
                 const pMovements = movements.filter(m => m.productId === p.id).sort((a, b) => String(b.movementDate || "").localeCompare(String(a.movementDate || "")));
                 return (
@@ -183,16 +246,22 @@ export default function StockPage() {
                       <td className="px-4 py-3 text-right text-gray-500">${Number(p.costPrice || 0).toFixed(2)}</td>
                       <td className="px-4 py-3 text-right font-medium text-gray-700">${value.toFixed(2)}</td>
                       <td className="px-4 py-3 text-center">
-                        {status === "ok" && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">✓ OK</span>}
+                        {status === "ok"  && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">✓ OK</span>}
                         {status === "low" && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">⚠️ Low</span>}
                         {status === "out" && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">❌ Out</span>}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {expiries.length > 0 ? (
-                          <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (hasCritical ? "bg-red-100 text-red-600" : "bg-orange-100 text-orange-600")}>
-                            {hasCritical ? "🔴" : "🟡"} {expiries[0].date.split("-").reverse().join("-")}
-                          </span>
-                        ) : <span className="text-gray-300">—</span>}
+                        {soonest ? (() => {
+                          const { badge, dot } = expiryColor(soonest.days);
+                          return (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + badge}>
+                                {dot} {soonest.date.split("-").reverse().join("/")}
+                              </span>
+                              <span className="text-xs text-gray-400">{soonest.days < 0 ? "Expired" : `${soonest.days}d left`}</span>
+                            </div>
+                          );
+                        })() : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-4 py-3">
                         <button onClick={() => setStockInProduct(p)} className="text-xs px-2.5 py-1 text-white rounded-lg font-medium" style={{ backgroundColor: "#1B2A5E" }}>
@@ -213,7 +282,12 @@ export default function StockPage() {
                                     {m.movementType === "In" ? "+" : "-"}{Number(m.quantity || 0).toFixed(2).replace(/\.?0+$/, "")}
                                   </span>
                                   <span className={"px-1.5 py-0.5 rounded text-xs font-medium " + (m.movementType === "In" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600")}>{m.movementType}</span>
-                                  {m.expiryDate && <span className="text-orange-500">Exp: {m.expiryDate.split("-").reverse().join("-")}</span>}
+                                  {m.expiryDate && (
+                                    <span className="text-orange-500">
+                                      Exp: {m.expiryDate.split("-").reverse().join("/")}
+                                      <span className="text-gray-400 ml-1">({daysUntil(m.expiryDate)}d left)</span>
+                                    </span>
+                                  )}
                                   {m.notes && <span className="text-gray-400">{m.notes}</span>}
                                 </div>
                               ))}
