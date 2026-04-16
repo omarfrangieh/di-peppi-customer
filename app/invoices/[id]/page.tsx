@@ -512,7 +512,7 @@ Please call/message the supplier(s): ${suppliers}`);
 
   const recalculateTotalsFromLines = async (currentLines: typeof lines) => {
     try {
-      const gross = currentLines.reduce((sum, l) => sum + Number(l.lineGross || 0), 0);
+      const gross = currentLines.reduce((sum, l) => (l.sample || l.gift) ? sum : sum + Number(l.lineGross || 0), 0);
       const deliveryFee = Number(invoice?.deliveryFee || 0);
       const finalTotal = gross + deliveryFee;
       await updateDoc(doc(db, "invoices", invoiceId), {
@@ -813,11 +813,15 @@ Please call/message the supplier(s): ${suppliers}`);
                     ) : (
                       <>
                         <td className="px-4 py-4 text-right text-sm text-gray-700">{line.quantity}</td>
-                        <td className="px-4 py-4 text-right text-sm text-gray-700">{money(line.unitPrice)}</td>
-                        <td className="px-4 py-4 text-right text-sm text-gray-500">
-                          {line.itemDiscountPercent > 0 ? `-${line.itemDiscountPercent}%` : "—"}
+                        <td className="px-4 py-4 text-right text-sm text-gray-700">
+                          {(line.sample || line.gift) ? <span className="text-xs text-gray-400 italic">{line.sample ? "Sample" : "Gift"}</span> : money(line.unitPrice)}
                         </td>
-                        <td className="px-6 py-4 text-right text-sm font-medium text-gray-900">{money(line.lineGross)}</td>
+                        <td className="px-4 py-4 text-right text-sm text-gray-500">
+                          {(line.sample || line.gift) ? "—" : line.itemDiscountPercent > 0 ? `-${line.itemDiscountPercent}%` : "—"}
+                        </td>
+                        <td className="px-6 py-4 text-right text-sm font-medium text-gray-900">
+                          {(line.sample || line.gift) ? <span className="text-green-600 font-semibold">$0.00</span> : money(line.lineGross)}
+                        </td>
                         <td className="px-4 py-4">
                           <div className="flex gap-1 justify-end">
                             <button onClick={() => { setEditingLineId(line.id); setEditLineQty(String(line.quantity)); setEditLinePrice(String(line.unitPrice)); setEditLineDiscount(String(line.itemDiscountPercent || 0)); }}

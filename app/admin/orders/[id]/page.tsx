@@ -181,6 +181,7 @@ export default function Page() {
   const [weighingItemId, setWeighingItemId] = useState("");
   const [weighedQuantity, setWeighedQuantity] = useState("");
   const [preparation, setPreparation] = useState("");
+  const [itemType, setItemType] = useState<"regular" | "sample" | "gift">("regular");
   const [editingPreparation, setEditingPreparation] = useState("");
   const [prepOptions, setPrepOptions] = useState<string[]>(["Portioned", "Whole", "Cleaned", "Skinless", "Sliced", "Headless & Gutted", "Gutted"]);
   const [editingQuantity, setEditingQuantity] = useState("");
@@ -672,6 +673,7 @@ export default function Page() {
     if (!result) return;
 
     const timer = setTimeout(() => {
+      setItemType("regular");
       setResult("");
     }, 3000);
 
@@ -766,8 +768,8 @@ export default function Page() {
               notes: `UI create | ${manualPrice ? "Manual Price" : pricing.label}`,
               customerType: selectedCustomer?.customerType || "",
               preparation: preparation,
-              sample: false,
-              gift: false,
+              sample: itemType === "sample",
+              gift: itemType === "gift",
             },
           }),
         }
@@ -949,8 +951,8 @@ export default function Page() {
               notes: item.notes || "",
               customerType: selectedCustomer?.customerType || "",
               preparation: editingPreparation,
-              sample: false,
-              gift: false,
+              sample: itemType === "sample",
+              gift: itemType === "gift",
             },
           }),
         }
@@ -1098,6 +1100,8 @@ export default function Page() {
                           <span className="text-xs text-gray-500">Qty: <span className="font-medium">{item.quantity}</span> × ${Number(item.unitPrice).toFixed(2)}</span>
                           {discount > 0 && <span className="text-xs text-red-500">-${discount.toFixed(2)}</span>}
                           {item.preparation && <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">🔪 {item.preparation}</span>}
+                          {(item as any).sample && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-medium">🧪 Sample</span>}
+                          {(item as any).gift && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">🎁 Gift</span>}
                         </div>
                       </div>
                       <p className="font-semibold text-gray-900">${Number(displayNet).toFixed(2)}</p>
@@ -1325,6 +1329,19 @@ export default function Page() {
                     <option value="">— None —</option>
                     {prepOptions.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
+                </div>
+              </div>
+
+              <div className="mb-1">
+                <label className="text-xs text-gray-500 mb-1 block">Item Type</label>
+                <div className="flex gap-1">
+                  {([["regular","Regular","⚪"],["sample","Sample","🧪"],["gift","Gift","🎁"]] as const).map(([val,label,icon]) => (
+                    <button key={val} type="button" onClick={() => setItemType(val)}
+                      className={"flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors " + (itemType === val ? "text-white border-transparent" : "text-gray-500 border-gray-200 hover:bg-gray-50")}
+                      style={itemType === val ? {backgroundColor: val === "regular" ? "#1B2A5E" : val === "sample" ? "#7C3AED" : "#D97706"} : {}}>
+                      {icon} {label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
