@@ -95,10 +95,13 @@ export default function ReportsPage() {
   }, [filteredOrders, filteredItems]);
 
   const byProduct = useMemo(() => {
+    const productMap: Record<string, string> = {};
+    products.forEach(p => { productMap[p.id] = p.name || p.id; });
     const map: Record<string, any> = {};
     filteredItems.forEach(i => {
       const k = i.productId || i.productName || "Unknown";
-      if (!map[k]) map[k] = { name: i.productName || k, qty: 0, revenue: 0, profit: 0, customers: new Set() };
+      const resolvedName = i.productName || productMap[i.productId] || k;
+      if (!map[k]) map[k] = { name: resolvedName, qty: 0, revenue: 0, profit: 0, customers: new Set() };
       map[k].qty += Number(i.quantity || 0);
       map[k].revenue += Number(i.netLineTotal || i.lineNet || i.totalPrice || 0);
       map[k].profit += Number(i.profit || 0);
