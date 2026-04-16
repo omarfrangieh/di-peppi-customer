@@ -186,23 +186,26 @@ export default function StockPage() {
               <span className={"text-orange-400 transition-transform text-xs " + (expiryAlertOpen ? "rotate-180" : "")}>▼</span>
             </button>
             {expiryAlertOpen && (
-              <div className="px-4 pb-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {expiryAlerts.map((a, i) => {
-                  const { badge, dot } = expiryColor(a.days);
-                  return (
-                    <div key={i} className="bg-white rounded-lg border border-orange-100 px-3 py-2.5 flex flex-col gap-1">
-                      <p className="text-xs font-semibold text-gray-800">{a.productName}</p>
-                      <p className="text-xs text-gray-400">Qty: {a.qty}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span>{dot}</span>
-                        <span className={"text-xs font-semibold px-1.5 py-0.5 rounded " + badge}>
-                          {a.days < 0 ? "Expired" : a.date.split("-").reverse().join("/")}
-                        </span>
-                        {a.days >= 0 && <span className="text-xs text-gray-400">{a.days}d left</span>}
+              <div>
+                {filterStatus !== "all" && <p className="px-4 pt-1 pb-2 text-xs text-orange-400 italic">⚠ Expiry alerts are shown regardless of active filter</p>}
+                <div className="px-4 pb-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {expiryAlerts.map((a, i) => {
+                    const { badge, dot } = expiryColor(a.days);
+                    return (
+                      <div key={i} className="bg-white rounded-lg border border-orange-100 px-3 py-2.5 flex flex-col gap-1">
+                        <p className="text-xs font-semibold text-gray-800">{a.productName}</p>
+                        <p className="text-xs text-gray-400">Qty: {a.qty}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span>{dot}</span>
+                          <span className={"text-xs font-semibold px-1.5 py-0.5 rounded " + badge}>
+                            {a.days < 0 ? "Expired" : a.date.split("-").reverse().join("/")}
+                          </span>
+                          {a.days >= 0 && <span className="text-xs text-gray-400">{a.days}d left</span>}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
