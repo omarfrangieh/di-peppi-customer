@@ -20,6 +20,7 @@ export default function ReportsPage() {
   const [fromDate, setFromDate] = useState(new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10));
   const [toDate, setToDate] = useState(now.toISOString().slice(0, 10));
   const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("monthly");
+  const [customerTypeFilter, setCustomerTypeFilter] = useState<"All" | "B2B" | "B2C">("All");
 
   useEffect(() => { void load(); }, []);
 
@@ -43,8 +44,10 @@ export default function ReportsPage() {
 
   const filteredOrders = useMemo(() => orders.filter(o => {
     const d = o.deliveryDate || o.orderDate || "";
-    return d >= fromDate && d <= toDate && o.status !== "Cancelled";
-  }), [orders, fromDate, toDate]);
+    const matchDate = d >= fromDate && d <= toDate && o.status !== "Cancelled";
+    const matchType = customerTypeFilter === "All" || o.customerType === customerTypeFilter;
+    return matchDate && matchType;
+  }), [orders, fromDate, toDate, customerTypeFilter]);
 
   const filteredItems = useMemo(() => {
     const ids = new Set(filteredOrders.map((o: any) => o.id));
@@ -132,6 +135,14 @@ export default function ReportsPage() {
 
   const DateFilter = () => (
     <div className="flex items-center gap-3">
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+        {(["All", "B2B", "B2C"] as const).map(t => (
+          <button key={t} onClick={() => setCustomerTypeFilter(t)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${customerTypeFilter === t ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+            {t}
+          </button>
+        ))}
+      </div>
       <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg" />
       <span className="text-gray-400 text-sm">to</span>
       <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg" />
