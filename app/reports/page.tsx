@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
 import { collection, getDocs } from "firebase/firestore";
+import { exportToExcel, exportToPDF } from "@/lib/exportReports";
 import { db } from "@/lib/firebase";
 
 function money(v: number) { return "$" + Number(v || 0).toFixed(2); }
@@ -21,6 +22,9 @@ export default function ReportsPage() {
   const [toDate, setToDate] = useState(now.toISOString().slice(0, 10));
   const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("monthly");
   const [customerTypeFilter, setCustomerTypeFilter] = useState<"All" | "B2B" | "B2C">("All");
+  const [showExport, setShowExport] = useState(false);
+  const [exportTabs, setExportTabs] = useState<string[]>(["Sales", "Customers", "Products", "Stock", "Collections"]);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => { void load(); }, []);
 
@@ -147,6 +151,11 @@ export default function ReportsPage() {
       <span className="text-gray-400 text-sm">to</span>
       <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg" />
       <button onClick={load} className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700">Refresh</button>
+      <button onClick={() => setShowExport(true)}
+        className="px-3 py-1.5 text-sm text-white rounded-lg font-medium hover:opacity-90"
+        style={{backgroundColor: "#B5535A"}}>
+        ↗ Export
+      </button>
     </div>
   );
 
@@ -432,6 +441,104 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
+
+      {/* Export Modal */}
+      {showExport && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-base font-bold text-gray-900 mb-1">Export Report</h3>
+            <p className="text-xs text-gray-400 mb-4">Select tabs to include · {customerTypeFilter !== "All" ? customerTypeFilter + " · " : ""}{fromDate} to {toDate}</p>
+
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Include Tabs</p>
+            <div className="grid grid-cols-2 gap-2 mb-5">
+              {["Sales", "Customers", "Products", "Profitability", "Stock", "Collections"].map(t => (
+                <label key={t} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={exportTabs.includes(t)}
+                    onChange={e => setExportTabs(prev => e.target.checked ? [...prev, t] : prev.filter(x => x !== t))}
+                    className="w-4 h-4 rounded" />
+                  <span className="text-sm text-gray-700">{t}</span>
+                </label>
+              ))}
+            </div>
+
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Download</p>
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <button disabled={exporting || exportTabs.length === 0}
+                onClick={async () => {
+                  setExporting(true);
+                  try { exportToExcel({ salesByPeriod, byCustomer, byProduct, stockData, unpaidInvoices, totalRevenue, totalProfit, period, fromDate, toDate, customerTypeFilter }, exportTabs); }
+                  finally { setExporting(false); }
+                }}
+                className="px-3 py-2.5 text-sm font-medium rounded-lg border-2 border-gray-200 hover:border-gray-400 hover:bg-gray-50 disabled:opacity-40 flex items-center justify-center gap-2">
+                📊 Download Excel
+              </button>
+              <button disabled={exporting || exportTabs.length === 0}
+                onClick={async () => {
+                  setExporting(true);
+                  try { await exportToPDF({ salesByPeriod, byCustomer, byProduct, stockData, unpaidInvoices, totalRevenue, totalProfit, period, fromDate, toDate, customerTypeFilter }, exportTabs); }
+                  finally { setExporting(false); }
+                }}
+                className="px-3 py-2.5 text-sm font-medium rounded-lg border-2 border-gray-200 hover:border-gray-400 hover:bg-gray-50 disabled:opacity-40 flex items-center justify-center gap-2">
+                📄 Download PDF
+              </button>
+            </div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Share</p>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button disabled={exporting || exportTabs.length === 0}
+                onClick={async () => {
+                  setExporting(true);
+                  try {
+                    await exportToPDF({ salesByPeriod, byCustomer, byProduct, stockData, unpaidInvoices, totalRevenue, totalProfit, period, fromDate, toDate, customerTypeFilter }, exportTabs);
+                    const msg = `📊 *Di Peppi Report*
+${customerTypeFilter !== "All" ? "_" + customerTypeFilter + "_  · " : ""}${fromDate} → ${toDate}
+
+💰 Revenue: *$${totalRevenue.toFixed(2)}*
+📈 Profit: *$${totalProfit.toFixed(2)}*
+📊 Margin: *${totalRevenue > 0 ? (totalProfit/totalRevenue*100).toFixed(1) : 0}%*
+
+_PDF attached separately_`;
+                    window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
+                  } finally { setExporting(false); }
+                }}
+                className="px-3 py-2.5 text-sm font-medium rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 flex items-center justify-center gap-2">
+                💬 WhatsApp + PDF
+              </button>
+              <button disabled={exporting || exportTabs.length === 0}
+                onClick={async () => {
+                  setExporting(true);
+                  try {
+                    exportToExcel({ salesByPeriod, byCustomer, byProduct, stockData, unpaidInvoices, totalRevenue, totalProfit, period, fromDate, toDate, customerTypeFilter }, exportTabs);
+                    const body = `Hi,
+
+Please find attached the Di Peppi report.
+
+Period: ${fromDate} to ${toDate}
+Type: ${customerTypeFilter}
+Revenue: $${totalRevenue.toFixed(2)}
+Profit: $${totalProfit.toFixed(2)}
+Margin: ${totalRevenue > 0 ? (totalProfit/totalRevenue*100).toFixed(1) : 0}%
+
+Best regards,
+Di Peppi`;
+                    await navigator.clipboard.writeText(body);
+                    const subject = encodeURIComponent(`Di Peppi Report · ${customerTypeFilter} · ${fromDate} to ${toDate}`);
+                    const bodyEnc = encodeURIComponent(body);
+                    window.open(`mailto:?subject=${subject}&body=${bodyEnc}`, "_blank");
+                    alert("✅ Excel downloaded + email body copied to clipboard. Attach the Excel file manually.");
+                  } finally { setExporting(false); }
+                }}
+                className="px-3 py-2.5 text-sm font-medium rounded-lg border-2 border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-40 flex items-center justify-center gap-2">
+                ✉️ Email + Excel
+              </button>
+            </div>
+
+            <button onClick={() => setShowExport(false)}
+              className="w-full mt-3 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
