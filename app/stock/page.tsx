@@ -91,10 +91,12 @@ export default function StockPage() {
     const alerts: { productId: string; productName: string; date: string; qty: number; days: number }[] = [];
     Object.entries(expiryMap).forEach(([productId, batches]) => {
       const product = products.find(p => p.id === productId);
+      if (!product) return;
+      if (filterStatus !== "all" && stockStatus(product) !== filterStatus) return;
       batches.forEach(b => alerts.push({ productId, productName: product?.name || productId, ...b }));
     });
     return alerts.sort((a, b) => a.days - b.days);
-  }, [expiryMap, products]);
+  }, [expiryMap, products, filterStatus]);
 
   const handleStockIn = async () => {
     if (!stockInProduct || !stockInQty || Number(stockInQty) <= 0) return;
@@ -187,7 +189,7 @@ export default function StockPage() {
             </button>
             {expiryAlertOpen && (
               <div>
-                {filterStatus !== "all" && <p className="px-4 pt-1 pb-2 text-xs text-orange-400 italic">⚠ Expiry alerts are shown regardless of active filter</p>}
+
                 <div className="px-4 pb-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                   {expiryAlerts.map((a, i) => {
                     const { badge, dot } = expiryColor(a.days);
