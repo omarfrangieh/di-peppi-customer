@@ -20,7 +20,7 @@ export default function ReportsPage() {
   const now = new Date();
   const [fromDate, setFromDate] = useState(new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10));
   const [toDate, setToDate] = useState(now.toISOString().slice(0, 10));
-  const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("monthly");
+  const [period, setPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("monthly");
   const [customerTypeFilter, setCustomerTypeFilter] = useState<"All" | "B2B" | "B2C">("All");
   const [showExport, setShowExport] = useState(false);
   const [exportTabs, setExportTabs] = useState<string[]>(["Sales", "Customers", "Products", "Stock", "Collections"]);
@@ -69,7 +69,7 @@ export default function ReportsPage() {
     const map: Record<string, { revenue: number; profit: number; orders: number }> = {};
     filteredOrders.forEach(o => {
       const d = o.deliveryDate || o.orderDate || ""; if (!d) return;
-      let key = period === "daily" ? d : period === "monthly" ? d.slice(0, 7) : (() => {
+      let key = period === "daily" ? d : period === "yearly" ? d.slice(0, 4) : period === "monthly" ? d.slice(0, 7) : (() => {
         const dt = new Date(d); const s = new Date(dt); s.setDate(dt.getDate() - dt.getDay()); return s.toISOString().slice(0, 10);
       })();
       if (!map[key]) map[key] = { revenue: 0, profit: 0, orders: 0 };
@@ -78,7 +78,7 @@ export default function ReportsPage() {
     filteredItems.forEach(i => {
       const o = filteredOrders.find((x: any) => x.id === i.orderId); if (!o) return;
       const d = o.deliveryDate || o.orderDate || "";
-      let key = period === "daily" ? d : period === "monthly" ? d.slice(0, 7) : (() => {
+      let key = period === "daily" ? d : period === "yearly" ? d.slice(0, 4) : period === "monthly" ? d.slice(0, 7) : (() => {
         const dt = new Date(d); const s = new Date(dt); s.setDate(dt.getDate() - dt.getDay()); return s.toISOString().slice(0, 10);
       })();
       if (map[key]) map[key].profit += Number(i.profit || 0);
@@ -195,7 +195,7 @@ export default function ReportsPage() {
             ))}
           </div>
           <div className="flex gap-2">
-            {(["daily","weekly","monthly"] as const).map(p => (
+            {(["daily","weekly","monthly","yearly"] as const).map(p => (
               <button key={p} onClick={() => setPeriod(p)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${period===p ? "text-white border-transparent" : "text-gray-600 border-gray-200 hover:bg-gray-50"}`}
                 style={period===p ? {backgroundColor:"#1B2A5E"} : {}}>
