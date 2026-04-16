@@ -141,13 +141,16 @@ export async function generatePOPDF(po: any, mode: "download" | "share" = "downl
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
     pdf.setTextColor(...(dark as [number, number, number]));
-    pdf.text((item.productName || "-").substring(0, 55), colItem + 3, y + 5.5);
+    const isFree = item.sample || item.gift;
+    const itemLabel = (item.productName || "-").substring(0, 45) + (isFree ? (item.sample ? "  [SAMPLE]" : "  [GIFT]") : "");
+    pdf.text(itemLabel, colItem + 3, y + 5.5);
     pdf.setTextColor(...(gray as [number, number, number]));
     pdf.text(String(item.quantity || 0), colQty, y + 5.5, { align: "center" });
-    pdf.text(money(item.unitCostPrice), colUnit, y + 5.5, { align: "center" });
+    pdf.text(isFree ? "-" : money(item.unitCostPrice), colUnit, y + 5.5, { align: "center" });
     pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(isFree ? 34 : dark[0], isFree ? 197 : dark[1], isFree ? 94 : dark[2]);
+    pdf.text(isFree ? "$0.00" : money(item.lineTotal), colTotal, y + 5.5, { align: "right" });
     pdf.setTextColor(...(dark as [number, number, number]));
-    pdf.text(money(item.lineTotal), colTotal, y + 5.5, { align: "right" });
     y += rowH;
   });
 

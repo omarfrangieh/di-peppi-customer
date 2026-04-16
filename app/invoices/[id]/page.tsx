@@ -465,22 +465,24 @@ Please call/message the supplier(s): ${suppliers}`);
       const qty = Number(editLineQty || line.quantity);
       const price = Number(editLinePrice || line.unitPrice);
       const discount = Number(editLineDiscount || line.itemDiscountPercent || 0);
-      const gross = qty * price;
-      const discountAmt = gross * (discount / 100);
-      const net = Math.max(gross - discountAmt, 0);
+      const isFree = line.sample || line.gift;
+      const gross = isFree ? 0 : qty * price;
+      const discountAmt = isFree ? 0 : gross * (discount / 100);
+      const net = isFree ? 0 : Math.max(gross - discountAmt, 0);
       await updateDoc(doc(db, "invoiceLines", line.id), {
         quantity: qty,
-        unitPrice: price,
-        itemDiscountPercent: discount,
+        unitPrice: isFree ? 0 : price,
+        itemDiscountPercent: isFree ? 0 : discount,
         lineGross: gross,
         lineNet: net,
         profit: net - (qty * Number(line.unitCostPrice || 0)),
       });
       setLines(prev => prev.map(l => l.id === line.id ? {
-        ...l, quantity: qty, unitPrice: price,
-        itemDiscountPercent: discount, lineGross: gross, lineNet: net,
+        ...l, quantity: qty, unitPrice: isFree ? 0 : price,
+        itemDiscountPercent: isFree ? 0 : discount, lineGross: gross, lineNet: net,
       } : l));
       setEditingLineId(null);
+      await recalculateTotalsFromLines(lines.map(l => l.id === line.id ? {...l, lineGross: gross, lineNet: net} : l));
     } finally {
       setSavingLine(false);
     }
@@ -598,6 +600,13 @@ Please call/message the supplier(s): ${suppliers}`);
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
+          {invoice.orderId && (
+            <button onClick={() => router.push(`/admin/orders/${invoice.orderId}`)}
+              className="text-xs px-3 py-1.5 text-white rounded-lg flex items-center gap-1 font-medium hover:opacity-90"
+              style={{backgroundColor: "#1B2A5E"}}>
+              ← Order
+            </button>
+          )}
           <h1 className="text-sm font-semibold text-gray-900">
             {invoice.invoiceNumber || "Draft Invoice"}
           </h1>
@@ -788,16 +797,19 @@ Please call/message the supplier(s): ${suppliers}`);
                             className="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
                         </td>
                         <td className="px-4 py-3 text-right">
+                          {(line.sample || line.gift) ? <span className="text-xs text-gray-400 italic">{line.sample ? "Sample" : "Gift"}</span> :
                           <input type="number" value={editLinePrice} onChange={e => setEditLinePrice(e.target.value)}
-                            className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                            className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />}
                         </td>
                         <td className="px-4 py-3 text-right">
+                          {(line.sample || line.gift) ? <span className="text-gray-300">—</span> :
                           <input type="number" value={editLineDiscount} onChange={e => setEditLineDiscount(e.target.value)}
                             placeholder="0"
-                            className="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                            className="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />}
                         </td>
-                        <td className="px-6 py-3 text-right text-sm font-medium text-gray-900">
-                          ${(Number(editLineQty || line.quantity) * Number(editLinePrice || line.unitPrice)).toFixed(2)}
+                        <td className="px-6 py-3 text-right text-sm font-medium">
+                          {(line.sample || line.gift) ? <span className="text-green-600 font-semibold">$0.00</span> :
+                          <span className="text-gray-900">${(Number(editLineQty || line.quantity) * Number(editLinePrice || line.unitPrice)).toFixed(2)}</span>}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1 justify-end">
