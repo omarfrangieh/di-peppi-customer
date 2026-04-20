@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { formatPrice } from "@/lib/formatters";
 
 const CUSTOMER_TYPES = ["B2B", "B2C", "Owner"];
 
@@ -147,7 +148,9 @@ export default function AdminCustomersPage() {
             {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
           </select>
           <button onClick={() => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(p => !p); }}
-            className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed">
+            disabled={editing !== null}
+            className="px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{backgroundColor: "#1B2A5E"}}>
             + Add Customer
           </button>
           <input type="text" placeholder="Search customers..." value={search}
@@ -237,7 +240,8 @@ export default function AdminCustomersPage() {
             </div>
             <div className="flex gap-2">
               <button onClick={addCustomer}
-                className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700">
+                className="px-4 py-2 text-white text-sm font-medium rounded-lg"
+                style={{backgroundColor: "#1B2A5E"}}>
                 Add Customer
               </button>
               <button onClick={() => { setShowAdd(false); setNewCustomer({ customerType: "", country: "Lebanon" }); }}
@@ -250,7 +254,8 @@ export default function AdminCustomersPage() {
         {filtered.map(customer => {
           const specialCount = Object.keys(customer.specialPrices || {}).length;
           return (
-            <div key={customer.id} className={`bg-white rounded-xl border border-gray-200 overflow-hidden ${customer.active === false ? "opacity-50" : ""}`}>
+            <div key={customer.id}>
+              <div className={`bg-white rounded-xl border border-gray-200 overflow-hidden ${customer.active === false ? "opacity-50" : ""}`}>
               {editing === customer.id ? (
                 <div className="p-5">
                   {/* Basic Info */}
@@ -312,7 +317,7 @@ export default function AdminCustomersPage() {
                         <div key={product.id} className="flex items-center gap-2">
                           <div className="flex-1 min-w-0">
                             <p className="text-xs text-gray-700 truncate">{product.name}</p>
-                            <p className="text-xs text-gray-400">Selling: ${Number(editData.customerType === "B2B" ? product.b2bPrice : product.b2cPrice || 0).toFixed(2)} · Cost: ${cost.toFixed(2)}</p>
+                            <p className="text-xs text-gray-400">Selling: ${formatPrice(editData.customerType === "B2B" ? product.b2bPrice : product.b2cPrice || 0)} · Cost: ${formatPrice(cost)}</p>
                           </div>
                           <div className="flex items-center gap-3 justify-end">
                             {margin !== null && (
@@ -337,7 +342,8 @@ export default function AdminCustomersPage() {
                   {/* Actions */}
                   <div className="flex gap-2 pt-4 border-t border-gray-100 mt-4">
                     <button onClick={() => saveCustomer(customer.id)} disabled={saving === customer.id}
-                      className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 disabled:opacity-50">
+                      className="px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+                      style={{backgroundColor: "#1B2A5E"}}>
                       {saving === customer.id ? "Saving..." : "Save Changes"}
                     </button>
                     <button onClick={cancelEdit} className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50">Cancel</button>
@@ -366,6 +372,7 @@ export default function AdminCustomersPage() {
                       <div className="hidden md:flex items-center gap-4 text-sm text-gray-600 flex-wrap">
                         {customer.phone && <a href={"https://wa.me/" + String(customer.phone).replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">📞 {customer.phone}</a>}
                         {customer.deliveryFee > 0 && <span>🚚 ${customer.deliveryFee}</span>}
+                        {customer.walletBalance > 0 && <span className="text-blue-600 font-medium">💰 Wallet: ${formatPrice(customer.walletBalance)}</span>}
                         {customer.clientMargin > 0 && <span>📊 {customer.clientMargin}% margin</span>}
                         {customer.clientDiscount > 0 && <span>🏷️ {customer.clientDiscount}% disc</span>}
                         {customer.mapsLink && <a href={customer.mapsLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs">📍 Maps</a>}
@@ -374,35 +381,53 @@ export default function AdminCustomersPage() {
                     <button onClick={() => { setShowAdd(false); startEdit(customer); }} className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-100 ml-4">Edit</button>
                   </div>
 
-                  {/* Special Prices Summary */}
-                  {specialCount > 0 && (
+                  {/* Special Prices Toggle Button */}
+                  {specialCount > 0 && showPricesFor !== customer.id && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
                       <button
-                        onClick={() => setShowPricesFor(showPricesFor === customer.id ? null : customer.id)}
+                        onClick={() => setShowPricesFor(customer.id)}
                         className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900 transition-colors">
                         🏷️ {specialCount} Special {specialCount === 1 ? "Price" : "Prices"}
-                        <span className={`transition-transform duration-200 ${showPricesFor === customer.id ? "rotate-180" : ""}`}>▾</span>
+                        <span className="transition-transform duration-200">▾</span>
                       </button>
-                      {showPricesFor === customer.id && (
-                        <div className="mt-2 flex flex-col gap-1.5">
-                          {Object.entries(customer.specialPrices || {}).map(([pid, price]) => {
-                            const product = products.find(p => p.id === pid);
-                            const cost = Number(product?.costPrice || 0);
-                            const sp = Number(price);
-                            const margin = sp > 0 ? ((sp - cost) / sp) * 100 : 0;
-                            return (
-                              <span key={pid} className="text-xs bg-white border border-blue-200 text-blue-700 px-2.5 py-1 rounded-lg font-medium shadow-sm flex items-center gap-1.5">
-                                {product?.name || pid}: <span className="font-bold">${sp.toFixed(2)}</span>
-                                <span className={`font-semibold ${margin < 0 ? "text-red-500" : margin < 15 ? "text-yellow-600" : "text-green-600"}`}>
-                                  {margin < 0 ? "⛔" : margin < 15 ? "⚠️" : "✅"} {margin.toFixed(1)}%
-                                </span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
                     </div>
                   )}
+                </div>
+              )}
+              </div>
+
+              {/* Special Prices Panel - Outside Card */}
+              {specialCount > 0 && showPricesFor === customer.id && (
+                <div className="border border-t-0 border-gray-200 rounded-b-xl bg-blue-50 px-5 py-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Special Prices</p>
+                    <button
+                      onClick={() => setShowPricesFor(null)}
+                      className="text-gray-400 hover:text-gray-600">
+                      ✕
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {Object.entries(customer.specialPrices || {}).map(([pid, price]) => {
+                      const product = products.find(p => p.id === pid);
+                      const cost = Number(product?.costPrice || 0);
+                      const sp = Number(price);
+                      const margin = sp > 0 ? ((sp - cost) / sp) * 100 : 0;
+                      return (
+                        <div key={pid} className="flex items-center justify-between rounded-lg px-3 py-2 border border-blue-200 bg-white">
+                          <div className="flex items-center gap-3">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{product?.name || pid}</p>
+                              <p className="text-xs text-gray-500">Price: ${formatPrice(sp)} · Cost: ${formatPrice(cost)}</p>
+                            </div>
+                          </div>
+                          <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${margin < 0 ? "bg-red-100 text-red-700" : margin < 15 ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700"}`}>
+                            {margin < 0 ? "⛔" : margin < 15 ? "⚠️" : "✅"} {margin.toFixed(1)}%
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

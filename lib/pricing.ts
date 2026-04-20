@@ -22,6 +22,7 @@ export interface PricingInput {
   customer: CustomerForPricing | null;
   quantity?: number;
   isSample?: boolean;
+  isGift?: boolean;
   ownerAtCost?: boolean;
 }
 
@@ -33,6 +34,7 @@ export interface PricingResult {
   source:
     | "empty"
     | "sample-free"
+    | "gift-free"
     | "owner-cost"
     | "special-price"
     | "margin-price"
@@ -122,6 +124,11 @@ export function getPricing(input: PricingInput): PricingResult {
     source = "sample-free";
     label = "Sample";
     debug = "Sample order = free";
+  } else if (input.isGift) {
+    unitPrice = 0;
+    source = "gift-free";
+    label = "Gift";
+    debug = "Gift order = free";
   } else if (customerType === "OWNER" && input.ownerAtCost !== false) {
     unitPrice = cost;
     source = "owner-cost";

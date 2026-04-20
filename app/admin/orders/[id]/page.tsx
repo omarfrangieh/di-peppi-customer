@@ -18,6 +18,8 @@ import {
 import { db } from "@/lib/firebase";
 import { getPricing } from "@/lib/pricing";
 import { createDraftInvoice } from "@/lib/createDraftInvoice";
+import { syncOrderToInvoice } from "@/lib/syncOrderToInvoice";
+import { formatQty, formatPrice } from "@/lib/formatters";
 import { useRouter, useParams } from "next/navigation";
 
 type Product = {
@@ -124,7 +126,7 @@ type PricingResult = {
 
 function money(value: unknown) {
   const num = Number(value || 0);
-  return `$${num.toFixed(2)}`;
+  return `$${formatPrice(num)}`;
 }
 
 function cleanNumberInput(value: string) {
@@ -176,6 +178,8 @@ export default function Page() {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState("");
   const [deletingItemId, setDeletingItemId] = useState("");
   const [editingItemId, setEditingItemId] = useState("");
   const [weighingItemId, setWeighingItemId] = useState("");
@@ -226,7 +230,8 @@ export default function Page() {
       product: selectedProduct,
       customer: selectedCustomer,
       quantity: quantityNumber,
-      isSample: false,
+      isSample: itemType === "sample",
+      isGift: itemType === "gift",
       ownerAtCost: false,
     }) as Partial<PricingResult> | undefined;
 
@@ -236,7 +241,7 @@ export default function Page() {
       label: String(value?.label || "Auto Price"),
       debug: String(value?.debug || ""),
     };
-  }, [selectedProduct, selectedCustomer, quantityNumber]);
+  }, [selectedProduct, selectedCustomer, quantityNumber, itemType]);
 
   const finalUnitPrice = useMemo(() => {
     return manualPrice
@@ -265,13 +270,17 @@ export default function Page() {
 
   const grossSubtotal = useMemo(() => {
     return orderItems.reduce((sum, item) => {
-      return sum + Number(item.grossLineTotal || item.totalPrice || 0);
+      const grossLine = Number(item.grossLineTotal || 0) || Number(item.quantity || 0) * Number(item.unitPrice || 0);
+      return sum + grossLine;
     }, 0);
   }, [orderItems]);
 
   const netSubtotal = useMemo(() => {
     return orderItems.reduce((sum, item) => {
-      return sum + Number(item.netLineTotal || item.totalPrice || 0);
+      const grossLine = Number(item.grossLineTotal || 0) || Number(item.quantity || 0) * Number(item.unitPrice || 0);
+      const itemDiscountCalc = (grossLine * Number(item.itemDiscountPercent || 0) / 100) + Number(item.itemDiscountAmount || 0);
+      const netLine = Math.max(grossLine - itemDiscountCalc, 0);
+      return sum + netLine;
     }, 0);
   }, [orderItems]);
 
@@ -280,19 +289,23 @@ export default function Page() {
       const grossLine =
         Number(item.grossLineTotal || 0) ||
         Number(item.quantity || 0) * Number(item.unitPrice || 0);
-      const netLine =
-        Number(item.netLineTotal || 0) || Number(item.totalPrice || 0);
-      return sum + Math.max(grossLine - netLine, 0);
+      const itemDiscountCalc = (grossLine * Number(item.itemDiscountPercent || 0) / 100) + Number(item.itemDiscountAmount || 0);
+      return sum + itemDiscountCalc;
     }, 0);
   }, [orderItems]);
 
-  const totalProfit = useMemo(() => {
-    return orderItems.reduce((sum, item) => sum + Number(item.profit || 0), 0);
+  const totalCostPrice = useMemo(() => {
+    return orderItems.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitCostPrice || 0)), 0);
   }, [orderItems]);
+
+  const totalProfit = useMemo(() => {
+    return Math.max(netSubtotal - totalCostPrice, 0);
+  }, [netSubtotal, totalCostPrice]);
 
   const discountPercentNumber = Number(discountPercent || 0);
   const discountAmountNumber = Number(discountAmount || 0);
-  const deliveryFeeNumber = Number(deliveryFee || 0);
+  const allItemsFree = orderItems.length > 0 && orderItems.every((item) => (item as any).sample || (item as any).gift);
+  const deliveryFeeNumber = allItemsFree ? 0 : Number(deliveryFee || 0);
 
   const orderPercentDiscountValue = useMemo(() => {
     if (!discountPercentNumber || discountPercentNumber <= 0) return 0;
@@ -741,7 +754,7 @@ export default function Page() {
       return;
     }
 
-    if (finalUnitPrice <= 0) {
+    if (finalUnitPrice <= 0 && itemType === "regular") {
       setResult("Calculated unit price is 0. Check pricing setup.");
       return;
     }
@@ -1007,8 +1020,8 @@ export default function Page() {
         100
       : 0;
 
-  // ── READ-ONLY VIEW when invoice exists ──────────────────────
-  if (existingInvoiceId && selectedOrderId) {
+  // ── READ-ONLY VIEW when invoice is locked (not draft) ──────────────────────
+  if (existingInvoiceId && selectedOrderId && existingInvoiceStatus !== "draft") {
     const order = orders.find(o => o.id === selectedOrderId);
     const customer = customers.find(c => c.id === customerId);
     return (
@@ -1028,6 +1041,11 @@ export default function Page() {
             }`}>{order?.status}</span>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => router.push("/admin/orders")}
+              className="px-4 py-2 text-sm text-white rounded-lg font-medium"
+              style={{backgroundColor: "#1B2A5E"}}>
+              + New Order
+            </button>
             {existingInvoiceStatus === "draft" && (
               <button
                 onClick={async () => {
@@ -1047,8 +1065,8 @@ export default function Page() {
               </button>
             )}
             <button onClick={() => router.push(`/invoices/${existingInvoiceId}`)}
-              className="px-3 py-1.5 text-xs text-white rounded-lg font-medium"
-              style={{backgroundColor: existingInvoiceStatus === "draft" ? "#1B2A5E" : "#6b7280"}}>
+              className="px-4 py-2 text-sm text-white rounded-lg font-medium"
+              style={{backgroundColor: "#1B2A5E"}}>
               {existingInvoiceStatus === "draft" ? "Edit Invoice →" : "View Invoice →"}
             </button>
           </div>
@@ -1097,23 +1115,23 @@ export default function Page() {
                       <div>
                         <p className="font-medium text-gray-900 text-sm">{item.productName}</p>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs text-gray-500">Qty: <span className="font-medium">{item.quantity}</span> × ${Number(item.unitPrice).toFixed(2)}</span>
-                          {discount > 0 && <span className="text-xs text-red-500">-${discount.toFixed(2)}</span>}
+                          <span className="text-xs text-gray-500">Qty: <span className="font-medium">{formatQty(item.quantity)}</span> × ${formatPrice(item.unitPrice)}</span>
+                          {discount > 0 && <span className="text-xs text-red-500">-${formatPrice(discount)}</span>}
                           {item.preparation && <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">🔪 {item.preparation}</span>}
                           {(item as any).sample && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-medium">🧪 Sample</span>}
                           {(item as any).gift && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">🎁 Gift</span>}
                         </div>
                       </div>
-                      <p className="font-semibold text-gray-900">${Number(displayNet).toFixed(2)}</p>
+                      <p className="font-semibold text-gray-900">${formatPrice(displayNet)}</p>
                     </div>
                   );
                 })}
               </div>
             )}
             <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 space-y-1 text-sm">
-              {deliveryFeeNumber > 0 && <div className="flex justify-between text-gray-500"><span>Delivery</span><span>${Number(deliveryFeeNumber).toFixed(2)}</span></div>}
+              {deliveryFeeNumber > 0 && <div className="flex justify-between text-gray-500"><span>Delivery</span><span>${formatPrice(deliveryFeeNumber)}</span></div>}
               <div className="flex justify-between font-bold text-base pt-1 border-t border-gray-200">
-                <span>Total</span><span style={{color: "#1B2A5E"}}>${Number(finalTotal).toFixed(2)}</span>
+                <span>Total</span><span style={{color: "#1B2A5E"}}>${formatPrice(finalTotal)}</span>
               </div>
             </div>
           </div>
@@ -1199,7 +1217,7 @@ export default function Page() {
               <div className="mt-2 flex gap-4 text-xs text-gray-500">
                 <span><span className="font-bold text-gray-700">Type:</span> {selectedCustomer.customerType || "B2C"}</span>
                 <span><span className="font-bold text-gray-700">Margin:</span> {selectedCustomer.clientMargin || 0}</span>
-                <span><span className="font-bold text-gray-700">Delivery:</span> ${Number(selectedCustomer.deliveryFee || 0).toFixed(2)}</span>
+                <span><span className="font-bold text-gray-700">Delivery:</span> ${formatPrice(selectedCustomer.deliveryFee || 0)}</span>
               </div>
             )}
           </div>
@@ -1220,6 +1238,45 @@ export default function Page() {
         {/* Step 2: Order details — only after order created */}
         {selectedOrderId && (
           <>
+            {existingInvoiceId && existingInvoiceStatus === "draft" && (
+              <div className="rounded-xl px-4 py-3 border bg-yellow-50 border-yellow-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-800">🟡 Draft Invoice exists</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        if (!confirm("Sync all order items to invoice? This will replace all invoice lines and regenerate POs.")) return;
+                        setSyncing(true); setSyncResult("");
+                        try {
+                          const order = orders.find(o => o.id === selectedOrderId);
+                          await syncOrderToInvoice({
+                            orderId: selectedOrderId,
+                            invoiceId: existingInvoiceId,
+                            order: { ...order, deliveryFee: deliveryFeeNumber, discountPercent: discountPercentNumber, discountAmount: discountAmountNumber },
+                            customer: selectedCustomer,
+                          });
+                          setSyncResult("✅ Synced successfully!");
+                        } catch (e: any) {
+                          setSyncResult("❌ Sync failed: " + e.message);
+                        } finally { setSyncing(false); }
+                      }}
+                      disabled={syncing}
+                      className="px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-50"
+                      style={{backgroundColor: "#B5535A"}}>
+                      {syncing ? "Syncing..." : "🔄 Sync to Invoice"}
+                    </button>
+                    <button onClick={() => router.push(`/invoices/${existingInvoiceId}`)}
+                      className="px-4 py-2 text-sm text-white rounded-lg font-medium"
+                      style={{backgroundColor: "#1B2A5E"}}>
+                      View Invoice →
+                    </button>
+                  </div>
+                </div>
+                {syncResult && <p className="text-xs font-medium text-gray-700">{syncResult}</p>}
+                <p className="text-xs text-gray-500">Add/edit items here, then click "Sync to Invoice" to push changes.</p>
+              </div>
+            )}
+
             {/* Dates & Status */}
             <div className="bg-white rounded-xl border border-gray-200 px-6 py-5">
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">📅 Dates & Status</h3>
@@ -1259,7 +1316,7 @@ export default function Page() {
                 <option value="">Select Product</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id} disabled={p.currentStock <= 0}>
-                    {p.name} ({Number(p.currentStock).toFixed(3).replace(/\.?0+$/, "")})
+                    {p.name} ({formatQty(p.currentStock)})
                   </option>
                 ))}
               </select>
@@ -1268,7 +1325,7 @@ export default function Page() {
                 <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-xs space-y-1">
                   <div className="flex justify-between">
                     <span className="text-gray-500">Stock</span>
-                    <span className="font-medium">{Number(selectedProduct.currentStock).toFixed(3).replace(/\.?0+$/, "")}</span>
+                    <span className="font-medium">{formatQty(selectedProduct.currentStock)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Cost</span>
@@ -1384,8 +1441,9 @@ export default function Page() {
                   {orderItems.map((item) => {
                     const isEditing = editingItemId === item.id;
                     const displayGrossLine = Number(item.grossLineTotal || 0) || Number(item.quantity || 0) * Number(item.unitPrice || 0);
-                    const displayNetLine = Number(item.netLineTotal || 0) || Number(item.totalPrice || 0);
-                    const displayItemDiscount = Math.max(displayGrossLine - displayNetLine, 0);
+                    const itemDiscountCalc = (displayGrossLine * Number(item.itemDiscountPercent || 0) / 100) + Number(item.itemDiscountAmount || 0);
+                    const displayNetLine = Math.max(displayGrossLine - itemDiscountCalc, 0);
+                    const displayItemDiscount = itemDiscountCalc;
                     const currentEditMargin = isEditing && Number(editingUnitPrice || 0) > 0
                       ? ((Number(editingUnitPrice || 0) - Number(item.unitCostPrice || 0)) / Number(editingUnitPrice || 0)) * 100 : 0;
 
@@ -1456,9 +1514,11 @@ export default function Page() {
                                 <span>× {money(item.unitPrice)}</span>
                                 {displayItemDiscount > 0 && <span className="text-red-500">-{money(displayItemDiscount)}</span>}
                                 {item.preparation && <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">🔪 {item.preparation}</span>}
+                                {(item as any).sample && <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-medium">🧪 Sample</span>}
+                                {(item as any).gift && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">🎁 Gift</span>}
                               </div>
                               <div className="mt-0.5 text-xs text-gray-400">
-                                Cost: {money(item.unitCostPrice)} · Profit: {money(item.profit)} · Margin: {Number(item.unitPrice) > 0 ? (((Number(item.unitPrice) - Number(item.unitCostPrice)) / Number(item.unitPrice)) * 100).toFixed(1) : "0.0"}%
+                                Cost: {money(item.unitCostPrice)} · Profit: {money(Math.max(displayNetLine - Number(item.quantity || 0) * Number(item.unitCostPrice || 0), 0))} · Margin: {displayNetLine > 0 ? (((displayNetLine - Number(item.quantity || 0) * Number(item.unitCostPrice || 0)) / displayNetLine) * 100).toFixed(1) : "0.0"}%
                               </div>
                             </div>
                             <div className="text-right space-y-1 shrink-0">
@@ -1475,7 +1535,14 @@ export default function Page() {
                                       method: "POST", headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({ data: { orderItemId: item.id, productId: item.productId, quantity: qty, unitPrice: Number(item.unitPrice || 0), unitCostPrice: Number(item.unitCostPrice || 0), itemDiscountPercent: Number(item.itemDiscountPercent || 0), itemDiscountAmount: Number(item.itemDiscountAmount || 0), grossLineTotal: qty * Number(item.unitPrice || 0), netLineTotal: qty * Number(item.unitPrice || 0), notes: item.notes || "", customerType: selectedCustomer?.customerType || "", sample: false, gift: false } })
                                     });
-                                    if (res.ok) { setOrderItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: qty, totalPrice: qty * Number(item.unitPrice || 0), profit: (qty * Number(item.unitPrice || 0)) - (qty * Number(item.unitCostPrice || 0)) } : i)); setWeighingItemId(""); setWeighedQuantity(""); }
+                                    if (res.ok) {
+                                      const newGross = qty * Number(item.unitPrice || 0);
+                                      const newDiscount = (newGross * Number(item.itemDiscountPercent || 0) / 100) + Number(item.itemDiscountAmount || 0);
+                                      const newNet = Math.max(newGross - newDiscount, 0);
+                                      const newProfit = newNet - (qty * Number(item.unitCostPrice || 0));
+                                      setOrderItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: qty, totalPrice: newNet, profit: newProfit } : i));
+                                      setWeighingItemId(""); setWeighedQuantity("");
+                                    }
                                     else alert("Failed to update quantity");
                                   }} className="text-xs px-2 py-1 bg-green-600 text-white rounded">✓</button>
                                   <button onClick={() => { setWeighingItemId(""); setWeighedQuantity(""); }} className="text-xs px-2 py-1 border rounded">✕</button>

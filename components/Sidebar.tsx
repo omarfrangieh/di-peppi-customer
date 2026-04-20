@@ -2,7 +2,8 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-import { LayoutDashboard, ShoppingCart, FileText, Package, Fish, Users, Building2, Menu, BarChart2, Boxes } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, FileText, Package, Fish, Users, Building2, Menu, BarChart2, Boxes, LogOut, Settings, UserCog, Lock, History } from "lucide-react";
+import { useAuth } from "./AuthWrapper";
 
 const NAV = [
   { label: "Dashboard",       href: "/",                      icon: LayoutDashboard },
@@ -14,6 +15,9 @@ const NAV = [
   { label: "Suppliers",       href: "/admin/suppliers",       icon: Building2 },
   { label: "Stock",           href: "/stock",                 icon: Boxes },
   { label: "Reports",         href: "/reports",               icon: BarChart2 },
+  { label: "Users",           href: "/admin/users",           icon: UserCog },
+  { label: "Audit Log",       href: "/admin/audit-log",       icon: History },
+  { label: "Permissions",     href: "/admin/permissions",     icon: Lock },
 ];
 
 const W_OPEN = 192;
@@ -22,7 +26,12 @@ const W_CLOSED = 56;
 export default function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { session, logout } = useAuth();
   const w = open ? W_OPEN : W_CLOSED;
+
+  if (pathname === "/login") {
+    return null;
+  }
 
   return (
     <div className="flex-shrink-0" style={{ width: w, transition: "width 200ms" }}>
@@ -67,12 +76,21 @@ export default function Sidebar() {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-white/10" style={{ height: 44 }}>
-          {open && (
-            <div className="flex items-center h-full" style={{ paddingLeft: W_CLOSED }}>
-              <span className="text-white/30 text-xs">Di Peppi v1.0</span>
+        <div className="border-t border-white/10 flex flex-col gap-1 p-2">
+          {open && session && (
+            <div className="text-white/80 text-xs px-2 py-1 rounded bg-white/10">
+              <p className="font-medium truncate">{session.name}</p>
+              <p className="text-white/60 text-xs truncate">{session.role}</p>
             </div>
           )}
+          <button
+            onClick={logout}
+            title={!open ? "Logout" : ""}
+            className="flex items-center gap-2 text-white/80 hover:text-white hover:bg-white/10 rounded transition-colors text-sm py-2 px-2"
+          >
+            <LogOut size={18} strokeWidth={1.75} />
+            {open && <span>Logout</span>}
+          </button>
         </div>
       </aside>
     </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { formatQty } from "@/lib/formatters";
 
 const PAYMENT_TERMS = ["COD", "Net 7", "Net 15", "Net 30", "Net 60", "Prepaid", "Consignment"];
 const CURRENCIES = ["USD", "EUR", "LBP", "GBP"];
@@ -212,7 +213,8 @@ export default function AdminSuppliersPage() {
             onChange={e => setSearch(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 w-48" />
           <button onClick={() => setShowAdd(true)}
-            className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700">
+            className="px-4 py-2 text-sm text-white rounded-lg font-medium"
+            style={{backgroundColor: "#1B2A5E"}}>
             + Add Supplier
           </button>
         </div>
@@ -388,7 +390,7 @@ export default function AdminSuppliersPage() {
                   <div className="flex flex-wrap gap-2">
                     {products.filter(p => p.supplierId === supplier.id || p.supplier === supplier.name).map(p => (
                       <span key={p.id} className="text-xs bg-white border border-gray-200 px-2 py-1 rounded-lg text-gray-700">
-                        {p.name} <span className="text-gray-400">· {Number(p.currentStock).toFixed(3)}</span>
+                        {p.name} <span className="text-gray-400">· {formatQty(p.currentStock)}</span>
                       </span>
                     ))}
                   </div>

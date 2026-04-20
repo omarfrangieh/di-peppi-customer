@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { generatePOPDF } from "@/lib/generatePOPDF";
+import { formatPrice, formatQty } from "@/lib/formatters";
 
 const STATUSES = ["Generated", "Sent", "Delivered", "Paid", "Cancelled"];
 
@@ -70,7 +71,7 @@ export default function PurchaseOrdersPage() {
 Please find our Purchase Order ${po.poNumber}.
 Delivery Date: ${po.deliveryDate || "TBD"}
 
-PO Total: $${Number(po.poTotal).toFixed(2)}
+PO Total: ${formatPrice(po.poTotal)}
 
 📄 View PO: ${url}
 
@@ -91,7 +92,7 @@ Di Peppi`
     if (!po.poContactPhone) { alert("No PO contact phone found."); return; }
     const phone = po.poContactPhone.replace(/[^0-9]/g, "");
     const msg = encodeURIComponent(
-      `Hi ${po.poContactName || po.supplierName},\n\nPlease find below our Purchase Order ${po.poNumber}.\n\nDelivery Date: ${po.deliveryDate || "TBD"}\n\nItems:\n${(po.items || []).map((i: any) => `- ${i.productName}: ${i.quantity} x $${Number(i.unitCostPrice).toFixed(2)} = $${Number(i.lineTotal).toFixed(2)}`).join("\n")}\n\nTotal: $${Number(po.poTotal).toFixed(2)}\n\nThank you,\nDi Peppi`
+      `Hi ${po.poContactName || po.supplierName},\n\nPlease find below our Purchase Order ${po.poNumber}.\n\nDelivery Date: ${po.deliveryDate || "TBD"}\n\nItems:\n${(po.items || []).map((i: any) => `- ${i.productName}: ${i.quantity} x ${formatPrice(i.unitCostPrice)} = ${formatPrice(i.lineTotal)}`).join("\n")}\n\nTotal: ${formatPrice(po.poTotal)}\n\nThank you,\nDi Peppi`
     );
     window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
     updateStatus(po.id, "Sent");
@@ -101,7 +102,7 @@ Di Peppi`
     if (!po.poContactEmail) { alert("No PO contact email found."); return; }
     const subject = encodeURIComponent(`Purchase Order ${po.poNumber} - Di Peppi`);
     const body = encodeURIComponent(
-      `Hi ${po.poContactName || po.supplierName},\n\nPlease find below our Purchase Order ${po.poNumber}.\n\nDelivery Date: ${po.deliveryDate || "TBD"}\n\nItems:\n${(po.items || []).map((i: any) => `- ${i.productName}: ${i.quantity} x $${Number(i.unitCostPrice).toFixed(2)} = $${Number(i.lineTotal).toFixed(2)}`).join("\n")}\n\nTotal: $${Number(po.poTotal).toFixed(2)}\n\nThank you,\nDi Peppi`
+      `Hi ${po.poContactName || po.supplierName},\n\nPlease find below our Purchase Order ${po.poNumber}.\n\nDelivery Date: ${po.deliveryDate || "TBD"}\n\nItems:\n${(po.items || []).map((i: any) => `- ${i.productName}: ${i.quantity} x ${formatPrice(i.unitCostPrice)} = ${formatPrice(i.lineTotal)}`).join("\n")}\n\nTotal: ${formatPrice(po.poTotal)}\n\nThank you,\nDi Peppi`
     );
     window.open(`mailto:${po.poContactEmail}?subject=${subject}&body=${body}`, "_blank");
     updateStatus(po.id, "Sent");
@@ -160,7 +161,7 @@ Di Peppi`
                   <span className="text-xs text-gray-500">🏭 {po.supplierName}</span>
                   {po.poDate && <span className="text-xs text-gray-400">PO Date: {formatDate(po.poDate)}</span>}
                   {po.deliveryDate && <span className="text-xs text-gray-400">Delivery: {formatDate(po.deliveryDate)}</span>}
-                  <span className="text-xs font-medium text-gray-700">${Number(po.poTotal).toFixed(2)}</span>
+                  <span className="text-xs font-medium text-gray-700">${formatPrice(po.poTotal)}</span>
                 </div>
                 <div className="flex items-center gap-2 ml-4 shrink-0">
                   <button onClick={() => generatePOPDF(po, "download")}
@@ -227,8 +228,8 @@ Di Peppi`
                           {item.weightNote && <div className="text-xs text-amber-600">⚖️ {item.weightNote}</div>}
                         </td>
                         <td className="py-1.5 text-right">{item.quantity}</td>
-                        <td className="py-1.5 text-right">${Number(item.unitCostPrice).toFixed(2)}</td>
-                        <td className="py-1.5 text-right font-medium">${Number(item.lineTotal).toFixed(2)}</td>
+                        <td className="py-1.5 text-right">${formatPrice(item.unitCostPrice)}</td>
+                        <td className="py-1.5 text-right font-medium">${formatPrice(item.lineTotal)}</td>
 
                       </tr>
                     ))}
@@ -236,7 +237,7 @@ Di Peppi`
                   <tfoot>
                     <tr className="border-t border-gray-200 font-semibold">
                       <td colSpan={3} className="pt-2 text-right text-gray-600">PO Total:</td>
-                      <td className="pt-2 text-right">${Number(po.poTotal).toFixed(2)}</td>
+                      <td className="pt-2 text-right">${formatPrice(po.poTotal)}</td>
                       <td />
                     </tr>
                   </tfoot>
@@ -314,15 +315,15 @@ Di Peppi`
                       {item.weightNote && <div className="text-xs text-amber-600">⚖️ {item.weightNote}</div>}
                     </td>
                     <td className="px-3 py-2 text-center text-gray-600">{item.quantity}</td>
-                    <td className="px-3 py-2 text-center text-gray-600">${Number(item.unitCostPrice).toFixed(2)}</td>
-                    <td className="px-3 py-2 text-right font-semibold text-gray-900">${Number(item.lineTotal).toFixed(2)}</td>
+                    <td className="px-3 py-2 text-center text-gray-600">${formatPrice(item.unitCostPrice)}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-gray-900">${formatPrice(item.lineTotal)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-gray-200">
                   <td colSpan={3} className="px-3 pt-3 text-right font-bold text-gray-700">PO Total:</td>
-                  <td className="px-3 pt-3 text-right font-bold text-lg" style={{color: "#1B2A5E"}}>${Number(previewPO.poTotal).toFixed(2)}</td>
+                  <td className="px-3 pt-3 text-right font-bold text-lg" style={{color: "#1B2A5E"}}>${formatPrice(previewPO.poTotal)}</td>
                 </tr>
               </tfoot>
             </table>

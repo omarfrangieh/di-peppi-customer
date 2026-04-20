@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
+import { formatPrice } from "@/lib/formatters";
 
 const DELIVERY_STATUSES = ["All", "Draft", "Confirmed", "Preparing", "To Deliver", "Delivered", "Cancelled"];
 
@@ -25,9 +26,34 @@ const STATUS_ICONS: Record<string, string> = {
   Canceled: "❌",
 };
 
-function formatDate(iso: string) {
+function formatDate(iso: any) {
   if (!iso) return "—";
-  const [y, m, d] = iso.split("-");
+
+  let dateStr = iso;
+
+  // Handle Firestore timestamps
+  if (iso.toDate && typeof iso.toDate === "function") {
+    dateStr = iso.toDate().toISOString().split("T")[0];
+  }
+  // Handle Date objects
+  else if (iso instanceof Date) {
+    dateStr = iso.toISOString().split("T")[0];
+  }
+  // Handle ISO strings
+  else if (typeof iso === "string") {
+    dateStr = iso.split("T")[0];
+  }
+  // Handle numeric timestamps
+  else if (typeof iso === "number") {
+    dateStr = new Date(iso).toISOString().split("T")[0];
+  }
+
+  if (!dateStr || typeof dateStr !== "string") return "—";
+
+  const parts = dateStr.split("-");
+  if (parts.length !== 3) return "—";
+
+  const [y, m, d] = parts;
   return `${d}-${m}-${y}`;
 }
 
@@ -226,7 +252,7 @@ export default function OrdersPage() {
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <p className="font-semibold text-gray-900">${Number(order.finalTotal || 0).toFixed(2)}</p>
+                <p className="font-semibold text-gray-900">${formatPrice(order.finalTotal || 0)}</p>
                 {order.notes && <p className="text-xs text-gray-400 mt-1 max-w-[200px] truncate">{order.notes}</p>}
               </div>
             </div>

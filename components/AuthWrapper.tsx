@@ -1,0 +1,114 @@
+"use client";
+
+import { useEffect, useState, createContext, useContext, ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+
+interface Session {
+  userId: string;
+  email: string;
+  role: "Admin" | "Manager" | "Operator" | "Driver" | "Warehouse Lead";
+  accountType: "Employee" | "Customer" | "Supplier";
+  name: string;
+}
+
+interface AuthContextType {
+  session: Session | null;
+  loading: boolean;
+  logout: () => void;
+}
+
+const AuthContext = createContext<AuthContextType | null>(null);
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within AuthWrapper");
+  }
+  return context;
+}
+
+export default function AuthWrapper({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const isLoginPage = pathname === "/login" || pathname === "/admin/login" || pathname === "/customer/login";
+  const publicPages = ["/login", "/admin/login", "/customer/login"];
+
+  useEffect(() => {
+    let unsubscribe: any = null;
+
+    const initializeAuth = async () => {
+      try {
+        const sessionStr = localStorage.getItem("session");
+        const customTokenStr = localStorage.getItem("customToken");
+
+        if (sessionStr) {
+          const parsed = JSON.parse(sessionStr);
+          setSession(parsed);
+
+          // Sign in with Firebase Auth if we have a custom token
+          if (customTokenStr) {
+            try {
+              await signInWithCustomToken(auth, customTokenStr);
+            } catch (err) {
+              console.error("Custom token sign-in failed:", err);
+            }
+          }
+        } else if (!isLoginPage) {
+          router.push("/admin/login");
+          setLoading(false);
+          return;
+        }
+
+        // Wait for Firebase Auth state to be ready
+        unsubscribe = onAuthStateChanged(auth, () => {
+          setLoading(false);
+        });
+      } catch (err) {
+        console.error("Session parse error:", err);
+        localStorage.removeItem("session");
+        localStorage.removeItem("customToken");
+        if (!isLoginPage) {
+          router.push("/admin/login");
+        }
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [isLoginPage, router]);
+
+  const logout = () => {
+    localStorage.removeItem("session");
+    setSession(null);
+    router.push("/admin/login");
+  };
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session && !publicPages.includes(pathname)) {
+    return null;
+  }
+
+  return (
+    <AuthContext.Provider value={{session, loading: false, logout}}>
+      {children}
+    </AuthContext.Provider>
+  );
+}

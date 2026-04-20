@@ -4,6 +4,7 @@ import React from "react";
 import { useEffect, useState } from "react";
 import { collection, getDocs, doc, updateDoc, getDoc, setDoc, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { formatQty, formatPrice } from "@/lib/formatters";
 
 const DEFAULT_OPTIONS = {
   unit: ["KG", "Piece", "Tin", "Jar", "Tube"],
@@ -386,7 +387,7 @@ export default function AdminProductsPage() {
                     <td className="px-3 py-2"><input type="number" value={editData.costPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, costPrice: e.target.value }))} className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
                     <td className="px-3 py-2"><input type="number" value={editData.b2bPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, b2bPrice: e.target.value }))} className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
                     <td className="px-3 py-2"><input type="number" value={editData.b2cPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, b2cPrice: e.target.value }))} className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
-                    <td className="px-3 py-2 text-right text-sm text-gray-500">{Number(product.currentStock).toFixed(3).replace(/\.?0+$/, "")}</td>
+                    <td className="px-3 py-2 text-right text-sm text-gray-500">{formatQty(product.currentStock)}</td>
                     <td className="px-3 py-2"><input type="number" value={editData.minStock || ""} onChange={e => setEditData((p: any) => ({ ...p, minStock: e.target.value }))} className="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
                     <td className="px-3 py-2 text-center">
                       <input type="checkbox" checked={editData.active !== false} onChange={e => setEditData((p: any) => ({ ...p, active: e.target.checked }))} className="w-4 h-4" />
@@ -421,7 +422,7 @@ export default function AdminProductsPage() {
                             }`}>
                               <span>{batch.expired ? "❌ Expired" : batch.critical ? "⚠️ Expiring" : "🟡 Soon"}</span>
                               <span className="font-bold">{new Date(batch.expiryDate).toLocaleDateString("en-GB")}</span>
-                              <span>qty: {Number(batch.quantity).toFixed(3).replace(/\.?0+$/, "")}</span>
+                              <span>qty: {formatQty(batch.quantity)}</span>
                             </div>
                           ))}
                         </div>
@@ -441,9 +442,9 @@ export default function AdminProductsPage() {
                         ? <Badge label={product.storageType} color={storageColor[product.storageType] || "bg-gray-100 text-gray-600"} />
                         : "—"}
                     </td>
-                    <td className="px-3 py-3 text-right text-gray-700">${Number(product.costPrice || 0).toFixed(2)}</td>
+                    <td className="px-3 py-3 text-right text-gray-700">${formatPrice(product.costPrice || 0)}</td>
                     <td className="px-3 py-3 text-right text-gray-700">
-                      <div>${Number(product.b2bPrice || 0).toFixed(2)}</div>
+                      <div>${formatPrice(product.b2bPrice || 0)}</div>
                       {product.costPrice > 0 && product.b2bPrice > 0 && (
                         <div className={`text-xs ${((product.b2bPrice - product.costPrice) / product.b2bPrice * 100) < 10 ? "text-red-500" : "text-blue-600"}`}>
                           {((product.b2bPrice - product.costPrice) / product.b2bPrice * 100).toFixed(0)}% margin
@@ -451,7 +452,7 @@ export default function AdminProductsPage() {
                       )}
                     </td>
                     <td className="px-3 py-3 text-right text-gray-700">
-                      <div>${Number(product.b2cPrice || 0).toFixed(2)}</div>
+                      <div>${formatPrice(product.b2cPrice || 0)}</div>
                       {product.costPrice > 0 && product.b2cPrice > 0 && (
                         <div className={`text-xs ${((product.b2cPrice - product.costPrice) / product.b2cPrice * 100) < 15 ? "text-red-500" : "text-green-600"}`}>
                           {((product.b2cPrice - product.costPrice) / product.b2cPrice * 100).toFixed(0)}% margin
@@ -566,7 +567,7 @@ export default function AdminProductsPage() {
                             {m.movementType === "In" ? "↑ In" : "↓ Out"}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-right font-medium">{Number(m.quantity).toFixed(3)}</td>
+                        <td className="px-3 py-2 text-right font-medium">{formatQty(m.quantity)}</td>
                         <td className="px-3 py-2 text-gray-500">{m.source || "—"}</td>
                         <td className="px-3 py-2 text-gray-400">{m.notes || "—"}</td>
                         <td className="px-3 py-2 text-gray-400 text-xs">
@@ -579,7 +580,7 @@ export default function AdminProductsPage() {
               </div>
             )}
             <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
-              <span className="text-xs text-gray-500">Current stock: <span className="font-semibold text-gray-900">{Number(historyProduct.currentStock).toFixed(3)}</span></span>
+              <span className="text-xs text-gray-500">Current stock: <span className="font-semibold text-gray-900">{formatQty(historyProduct.currentStock)}</span></span>
               <button onClick={() => setHistoryProduct(null)} className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50">Close</button>
             </div>
           </div>
@@ -771,7 +772,7 @@ export default function AdminProductsPage() {
                   )}
                 </div>
               )}
-              <div className="text-xs text-gray-400">Current stock: <span className="font-semibold text-gray-700">{Number(stockInProduct.currentStock).toFixed(3)}</span> → After: <span className="font-semibold text-green-600">{(Number(stockInProduct.currentStock) + Number(stockInQty || 0)).toFixed(3)}</span></div>
+              <div className="text-xs text-gray-400">Current stock: <span className="font-semibold text-gray-700">{formatQty(stockInProduct.currentStock)}</span> → After: <span className="font-semibold text-green-600">{formatQty(Number(stockInProduct.currentStock) + Number(stockInQty || 0))}</span></div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setStockInProduct(null)}
                   className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50">Cancel</button>

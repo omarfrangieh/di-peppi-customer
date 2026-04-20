@@ -98,7 +98,7 @@ export async function createPurchaseOrdersForInvoice({
     });
 
     const poTotal = items.reduce(
-      (sum, item) => (item.sample || item.gift) ? sum : sum + Number(item.unitCostPrice || 0) * Number(item.quantity || 0),
+      (sum, item) => sum + Number(item.unitCostPrice || 0) * Number(item.quantity || 0),
       0
     );
 
@@ -131,13 +131,13 @@ export async function createPurchaseOrdersForInvoice({
             weightNote = `Approx. ${minW}–${maxW} kg each (est. total: ${estMin}–${estMax} kg)`;
           }
         }
-        const isFree = item.sample || item.gift;
+        const cost = Number(item.unitCostPrice || 0);
         return {
           productId: item.productId || "",
           productName: item.productName || "",
           quantity: qty,
-          unitCostPrice: isFree ? 0 : Number(item.unitCostPrice || 0),
-          lineTotal: isFree ? 0 : Number(item.unitCostPrice || 0) * qty,
+          unitCostPrice: cost,
+          lineTotal: cost * qty,
           weightNote,
           preparation: item.preparation || "",
           sample: item.sample || false,

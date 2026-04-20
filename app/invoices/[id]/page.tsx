@@ -14,9 +14,11 @@ import {
   addDoc,
   serverTimestamp,
   orderBy,
+  increment,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { generateInvoicePDF } from "@/lib/generateInvoicePDF";
+import { formatQty, formatPrice } from "@/lib/formatters";
 
 interface Invoice {
   id: string;
@@ -139,6 +141,8 @@ export default function InvoiceDetailPage() {
   const [savingEditPayment, setSavingEditPayment] = useState(false);
   const [payReference, setPayReference] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [applyingWallet, setApplyingWallet] = useState(false);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [editLineQty, setEditLineQty] = useState("");
   const [editLinePrice, setEditLinePrice] = useState("");
@@ -206,6 +210,14 @@ export default function InvoiceDetailPage() {
         where("invoiceId", "==", invoiceId)
       ));
       setInvoicePOs(poSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Load customer wallet balance
+      if (data.customerId) {
+        const custSnap = await getDoc(doc(db, "customers", data.customerId));
+        if (custSnap.exists()) {
+          setWalletBalance(Number(custSnap.data().walletBalance || 0));
+        }
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -283,6 +295,26 @@ export default function InvoiceDetailPage() {
         status: newStatus,
         updatedAt: new Date().toISOString(),
       });
+
+      // Credit overpaid amount to customer wallet
+      const overpaid = Math.round(Math.max(-newBalance, 0) * 100) / 100;
+      if (overpaid > 0 && invoice?.customerId) {
+        await updateDoc(doc(db, "customers", invoice.customerId), {
+          walletBalance: increment(overpaid),
+        });
+        await addDoc(collection(db, "walletTransactions"), {
+          customerId: invoice.customerId,
+          customerName: invoice.customerName,
+          invoiceId,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: overpaid,
+          type: "credit",
+          description: `Overpayment on ${invoice.invoiceNumber}`,
+          createdAt: serverTimestamp(),
+        });
+        setWalletBalance((prev) => Math.round((prev + overpaid) * 100) / 100);
+      }
+
       setStatus(newStatus);
       setInvoice((prev) => prev ? { ...prev, paidAmount: newTotalPaid, status: newStatus } : prev);
       setShowAddPayment(false);
@@ -293,6 +325,59 @@ export default function InvoiceDetailPage() {
       alert("Error saving payment");
     } finally {
       setSavingPayment(false);
+    }
+  };
+
+  const handlePayFromWallet = async () => {
+    if (!invoice?.customerId || walletBalance <= 0 || balanceDue <= 0) return;
+    setApplyingWallet(true);
+    try {
+      const applyAmount = Math.round(Math.min(walletBalance, balanceDue) * 100) / 100;
+      const today = new Date().toISOString().slice(0, 10);
+      const ref = await addDoc(collection(db, "payments"), {
+        invoiceId,
+        paymentDate: today,
+        amount: applyAmount,
+        method: "Wallet",
+        notes: "Applied from customer wallet",
+        currency: "USD",
+        createdAt: serverTimestamp(),
+      });
+      const updatedPayments = [...payments, { id: ref.id, invoiceId, paymentDate: today, amount: applyAmount, method: "Wallet", notes: "Applied from customer wallet", currency: "USD", createdAt: new Date() } as any];
+      setPayments(updatedPayments);
+
+      const newTotalPaid = updatedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      const newBalance = (invoice.finalTotal || 0) - newTotalPaid;
+      const newStatus = newBalance <= 0 ? "paid" : "partly paid";
+
+      await updateDoc(doc(db, "invoices", invoiceId), {
+        paidAmount: newTotalPaid,
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+      });
+
+      await updateDoc(doc(db, "customers", invoice.customerId), {
+        walletBalance: increment(-applyAmount),
+      });
+      await addDoc(collection(db, "walletTransactions"), {
+        customerId: invoice.customerId,
+        customerName: invoice.customerName,
+        invoiceId,
+        invoiceNumber: invoice.invoiceNumber,
+        amount: applyAmount,
+        type: "debit",
+        description: `Applied to ${invoice.invoiceNumber}`,
+        createdAt: serverTimestamp(),
+      });
+
+      setWalletBalance((prev) => Math.round((prev - applyAmount) * 100) / 100);
+      setStatus(newStatus);
+      setInvoice((prev) => prev ? { ...prev, paidAmount: newTotalPaid, status: newStatus } : prev);
+    } catch (err) {
+      console.error(err);
+      alert("Error applying wallet credit");
+    } finally {
+      setApplyingWallet(false);
     }
   };
 
@@ -602,7 +687,7 @@ Please call/message the supplier(s): ${suppliers}`);
         <div className="flex items-center gap-4">
           {invoice.orderId && (
             <button onClick={() => router.push(`/admin/orders/${invoice.orderId}`)}
-              className="text-xs px-3 py-1.5 text-white rounded-lg flex items-center gap-1 font-medium hover:opacity-90"
+              className="px-4 py-2 text-sm text-white rounded-lg flex items-center gap-1 font-medium hover:opacity-90"
               style={{backgroundColor: "#1B2A5E"}}>
               ← Order
             </button>
@@ -617,10 +702,10 @@ Please call/message the supplier(s): ${suppliers}`);
         </div>
         <button
           onClick={() => setShowAddPayment(true)}
-          disabled={balanceDue <= 0}
+          disabled={balanceDue <= 0 || status === "cancelled"}
           className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          {balanceDue <= 0 ? "✓ Fully Paid" : "Add Payment"}
+          {status === "cancelled" ? "Invoice Cancelled" : balanceDue <= 0 ? "✓ Fully Paid" : "Add Payment"}
         </button>
         <button
           onClick={handleWhatsApp}
@@ -647,8 +732,12 @@ Please call/message the supplier(s): ${suppliers}`);
         </button>
         <button
           onClick={handleSave}
-          disabled={saving}
-          className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
+          disabled={saving || status === "cancelled"}
+          className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors"
+          style={{
+            backgroundColor: status === "cancelled" ? "#9CA3AF" : "#1B2A5E",
+          }}
+          title={status === "cancelled" ? "Cannot edit cancelled invoice" : ""}
         >
           {saving ? "Saving..." : saved ? "✓ Saved" : "Save Changes"}
         </button>
@@ -736,7 +825,7 @@ Please call/message the supplier(s): ${suppliers}`);
                       <span className="text-xs text-gray-500">
                         Delivery: {po.deliveryDate ? po.deliveryDate.split("-").reverse().join("-") : "TBD"}
                       </span>
-                      <span className="text-sm font-semibold text-gray-900">${Number(po.poTotal).toFixed(2)}</span>
+                      <span className="text-sm font-semibold text-gray-900">${formatPrice(po.poTotal)}</span>
                       <button onClick={() => setPreviewPO(po)}
                         className="text-xs px-2 py-1 rounded-lg text-white font-medium" style={{backgroundColor: "#1B2A5E"}}>
                         Preview
@@ -809,7 +898,7 @@ Please call/message the supplier(s): ${suppliers}`);
                         </td>
                         <td className="px-6 py-3 text-right text-sm font-medium">
                           {(line.sample || line.gift) ? <span className="text-green-600 font-semibold">$0.00</span> :
-                          <span className="text-gray-900">${(Number(editLineQty || line.quantity) * Number(editLinePrice || line.unitPrice)).toFixed(2)}</span>}
+                          <span className="text-gray-900">${formatPrice(Number(editLineQty || line.quantity) * Number(editLinePrice || line.unitPrice))}</span>}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1 justify-end">
@@ -863,7 +952,7 @@ Please call/message the supplier(s): ${suppliers}`);
                   }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
                     <option value="">Select Product</option>
                     {products.map((p:any) => (
-                      <option key={p.id} value={p.id}>{p.name} (stock: {Number(p.currentStock).toFixed(3).replace(/\.?0+$/, "")})</option>
+                      <option key={p.id} value={p.id}>{p.name} (stock: {formatQty(p.currentStock)})</option>
                     ))}
                   </select>
                 </div>
@@ -885,7 +974,7 @@ Please call/message the supplier(s): ${suppliers}`);
                 {newLineQty && newLinePrice && (
                   <div className="flex items-end">
                     <p className="text-sm font-semibold text-gray-900">
-                      Total: ${(Number(newLineQty) * Number(newLinePrice) * (1 - Number(newLineDiscount || 0) / 100)).toFixed(2)}
+                      Total: ${formatPrice(Number(newLineQty) * Number(newLinePrice) * (1 - Number(newLineDiscount || 0) / 100))}
                     </p>
                   </div>
                 )}
@@ -906,10 +995,23 @@ Please call/message the supplier(s): ${suppliers}`);
         {/* Payments Section */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">Payments</h3>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500">Balance Due: <span className={balanceDue <= 0 ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>${balanceDue.toFixed(2)}</span></span>
-              <button onClick={() => setShowAddPayment(true)} disabled={balanceDue <= 0} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 transition-colors font-medium">+ Add Payment</button>
+              <h3 className="text-sm font-semibold text-gray-900">Payments</h3>
+              {walletBalance > 0 && (
+                <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                  💰 Wallet: ${formatPrice(walletBalance)}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">Balance Due: <span className={balanceDue <= 0 ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>${formatPrice(balanceDue)}</span></span>
+              {walletBalance > 0 && balanceDue > 0 && (
+                <button onClick={handlePayFromWallet} disabled={applyingWallet || status === "cancelled"}
+                  className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors font-medium">
+                  {applyingWallet ? "Applying..." : `Use Wallet (${formatPrice(Math.min(walletBalance, balanceDue))})`}
+                </button>
+              )}
+              <button onClick={() => setShowAddPayment(true)} disabled={balanceDue <= 0 || status === "cancelled"} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 transition-colors font-medium">+ Add Payment</button>
             </div>
           </div>
           {payments.length === 0 ? (
@@ -934,7 +1036,7 @@ Please call/message the supplier(s): ${suppliers}`);
                       {p.reference && <span className="text-xs font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded mr-1">#{p.reference}</span>}
                       {p.notes || "—"}
                     </td>
-                    <td className="px-6 py-3 text-right text-sm font-semibold text-green-600">${Number(p.amount).toFixed(2)}</td>
+                    <td className="px-6 py-3 text-right text-sm font-semibold text-green-600">${formatPrice(p.amount)}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1 justify-end">
                         <button onClick={() => { setEditingPayment(p); setEditPayAmount(String(p.amount)); setEditPayMethod(p.method); setEditPayDate(p.paymentDate); setEditPayNotes(p.notes || ""); setEditPayReference(p.reference || ""); }}
@@ -947,12 +1049,12 @@ Please call/message the supplier(s): ${suppliers}`);
                 ))}
                 <tr className="bg-gray-50">
                   <td colSpan={4} className="px-6 py-3 text-sm font-semibold text-gray-900">Total Paid</td>
-                  <td className="px-6 py-3 text-right text-sm font-bold text-green-600">${totalPaid.toFixed(2)}</td>
+                  <td className="px-6 py-3 text-right text-sm font-bold text-green-600">${formatPrice(totalPaid)}</td>
                 </tr>
                 {balanceDue < 0 && (
-                  <tr className="bg-orange-50">
-                    <td colSpan={4} className="px-6 py-3 text-sm font-semibold text-orange-700">⚠️ Overpaid by</td>
-                    <td className="px-6 py-3 text-right text-sm font-bold text-orange-600">${Math.abs(balanceDue).toFixed(2)}</td>
+                  <tr className="bg-blue-50">
+                    <td colSpan={4} className="px-6 py-3 text-sm font-semibold text-blue-700">💰 Overpaid — credited to wallet</td>
+                    <td className="px-6 py-3 text-right text-sm font-bold text-blue-600">+${formatPrice(Math.abs(balanceDue))}</td>
                   </tr>
                 )}
               </tbody>
@@ -1124,7 +1226,7 @@ Please call/message the supplier(s): ${suppliers}`);
               <div>
                 <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Amount (USD)</label>
                 <input type="number" value={payAmount} onChange={(e) => setPayAmount(e.target.value)}
-                  placeholder={`Max: ${balanceDue.toFixed(2)}`}
+                  placeholder={`Max: ${formatPrice(balanceDue)}`}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
               </div>
               <div>
@@ -1276,15 +1378,15 @@ Please call/message the supplier(s): ${suppliers}`);
                       {item.weightNote && <div className="text-xs text-amber-600">⚖️ {item.weightNote}</div>}
                     </td>
                     <td className="px-3 py-2 text-center text-gray-600">{item.quantity}</td>
-                    <td className="px-3 py-2 text-center text-gray-600">${Number(item.unitCostPrice).toFixed(2)}</td>
-                    <td className="px-3 py-2 text-right font-semibold text-gray-900">${Number(item.lineTotal).toFixed(2)}</td>
+                    <td className="px-3 py-2 text-center text-gray-600">${formatPrice(item.unitCostPrice)}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-gray-900">${formatPrice(item.lineTotal)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-gray-200">
                   <td colSpan={3} className="px-3 pt-3 text-right font-bold text-gray-700">PO Total:</td>
-                  <td className="px-3 pt-3 text-right font-bold text-lg" style={{color: "#1B2A5E"}}>${Number(previewPO.poTotal).toFixed(2)}</td>
+                  <td className="px-3 pt-3 text-right font-bold text-lg" style={{color: "#1B2A5E"}}>${formatPrice(previewPO.poTotal)}</td>
                 </tr>
               </tfoot>
             </table>

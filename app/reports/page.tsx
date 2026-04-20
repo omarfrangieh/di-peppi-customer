@@ -3,8 +3,9 @@ import { useEffect, useState, useMemo } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { exportToExcel, exportToPDF } from "@/lib/exportReports";
 import { db } from "@/lib/firebase";
+import { formatQty, formatPrice } from "@/lib/formatters";
 
-function money(v: number) { return "$" + Number(v || 0).toFixed(2); }
+function money(v: number) { return "$" + formatPrice(v); }
 function pct(v: number) { return Number(v || 0).toFixed(1) + "%"; }
 
 const TABS = ["Sales", "Customers", "Products", "Profitability", "Stock", "Collections"];
@@ -139,10 +140,11 @@ export default function ReportsPage() {
 
   const DateFilter = () => (
     <div className="flex items-center gap-3">
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+      <div className="flex gap-2">
         {(["All", "B2B", "B2C"] as const).map(t => (
           <button key={t} onClick={() => setCustomerTypeFilter(t)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${customerTypeFilter === t ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${customerTypeFilter === t ? "text-white" : "text-gray-600 border border-gray-200 hover:bg-gray-50"}`}
+            style={customerTypeFilter === t ? {backgroundColor: "#1B2A5E"} : {}}>
             {t}
           </button>
         ))}
@@ -150,9 +152,9 @@ export default function ReportsPage() {
       <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg" />
       <span className="text-gray-400 text-sm">to</span>
       <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg" />
-      <button onClick={load} className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700">Refresh</button>
+      <button onClick={load} className="px-4 py-2 text-sm text-white rounded-lg font-medium" style={{backgroundColor: "#1B2A5E"}}>Refresh</button>
       <button onClick={() => setShowExport(true)}
-        className="px-3 py-1.5 text-sm text-white rounded-lg font-medium hover:opacity-90"
+        className="px-4 py-2 text-sm text-white rounded-lg font-medium"
         style={{backgroundColor: "#B5535A"}}>
         ↗ Export
       </button>
@@ -169,7 +171,7 @@ export default function ReportsPage() {
         <div className="flex gap-1">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${tab === t ? "text-white" : "text-gray-500 hover:bg-gray-100"}`}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${tab === t ? "text-white" : "text-gray-500 hover:bg-gray-100"}`}
               style={tab === t ? {backgroundColor: "#1B2A5E"} : {}}>
               {t}
             </button>
@@ -197,7 +199,7 @@ export default function ReportsPage() {
           <div className="flex gap-2">
             {(["daily","weekly","monthly","yearly"] as const).map(p => (
               <button key={p} onClick={() => setPeriod(p)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${period===p ? "text-white border-transparent" : "text-gray-600 border-gray-200 hover:bg-gray-50"}`}
+                className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${period===p ? "text-white border-transparent" : "text-gray-600 border-gray-200 hover:bg-gray-50"}`}
                 style={period===p ? {backgroundColor:"#1B2A5E"} : {}}>
                 {p.charAt(0).toUpperCase()+p.slice(1)}
               </button>
@@ -288,7 +290,7 @@ export default function ReportsPage() {
                         <span className="font-medium text-gray-900">{p.name}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-600">{Number(p.qty).toFixed(2).replace(/\.?0+$/,"")}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{formatQty(p.qty)}</td>
                     <td className="px-4 py-3 text-right font-semibold">{money(p.revenue)}</td>
                     <td className="px-4 py-3 text-right text-green-600">{money(p.profit)}</td>
                     <td className="px-4 py-3 text-right">
@@ -381,10 +383,10 @@ export default function ReportsPage() {
                   {stockData.map(p => (
                     <tr key={p.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-gray-900">{p.name}</td>
-                      <td className="px-4 py-3 text-right font-semibold">{Number(p.currentStock).toFixed(3).replace(/\.?0+$/,"")}</td>
+                      <td className="px-4 py-3 text-right font-semibold">{formatQty(p.currentStock)}</td>
                       <td className="px-4 py-3 text-right text-gray-500">{p.minStock||"—"}</td>
-                      <td className="px-4 py-3 text-right text-green-600">{Number(p.inTotal).toFixed(2).replace(/\.?0+$/,"")}</td>
-                      <td className="px-4 py-3 text-right text-red-500">{Number(p.outTotal).toFixed(2).replace(/\.?0+$/,"")}</td>
+                      <td className="px-4 py-3 text-right text-green-600">{formatQty(p.inTotal)}</td>
+                      <td className="px-4 py-3 text-right text-red-500">{formatQty(p.outTotal)}</td>
                       <td className="px-4 py-3 text-center">
                         {p.outOfStock ? <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Out of Stock</span>
                           : p.lowStock ? <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">⚠️ Low</span>
@@ -492,8 +494,8 @@ export default function ReportsPage() {
                     const msg = `📊 *Di Peppi Report*
 ${customerTypeFilter !== "All" ? "_" + customerTypeFilter + "_  · " : ""}${fromDate} → ${toDate}
 
-💰 Revenue: *$${totalRevenue.toFixed(2)}*
-📈 Profit: *$${totalProfit.toFixed(2)}*
+💰 Revenue: *${money(totalRevenue)}*
+📈 Profit: *${money(totalProfit)}*
 📊 Margin: *${totalRevenue > 0 ? (totalProfit/totalRevenue*100).toFixed(1) : 0}%*
 
 _PDF attached separately_`;
@@ -514,8 +516,8 @@ Please find attached the Di Peppi report.
 
 Period: ${fromDate} to ${toDate}
 Type: ${customerTypeFilter}
-Revenue: $${totalRevenue.toFixed(2)}
-Profit: $${totalProfit.toFixed(2)}
+Revenue: ${money(totalRevenue)}
+Profit: ${money(totalProfit)}
 Margin: ${totalRevenue > 0 ? (totalProfit/totalRevenue*100).toFixed(1) : 0}%
 
 Best regards,
