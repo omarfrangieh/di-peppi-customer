@@ -1,10 +1,12 @@
 "use client";
 import React from "react";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { collection, getDocs, doc, updateDoc, getDoc, setDoc, addDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, storage } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { formatQty, formatPrice } from "@/lib/formatters";
+import Image from "next/image";
 
 const DEFAULT_OPTIONS = {
   unit: ["KG", "Piece", "Tin", "Jar", "Tube"],
@@ -51,6 +53,28 @@ export default function AdminProductsPage() {
   });
   const [addingSaving, setAddingSaving] = useState(false);
   const [showMarginsFor, setShowMarginsFor] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (productId: string, file: File) => {
+    if (!file) return;
+    setUploadingImage(productId);
+    try {
+      const storageRef = ref(storage, `products/${productId}/${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      await updateDoc(doc(db, "products", productId), { productImage: url });
+      setProducts(prev => prev.map(p => p.id === productId ? { ...p, productImage: url } : p));
+      if (editing === productId) {
+        setEditData((p: any) => ({ ...p, productImage: url }));
+      }
+    } catch (err) {
+      console.error("Error uploading image:", err);
+      alert("Failed to upload image");
+    } finally {
+      setUploadingImage(null);
+    }
+  };
 
   useEffect(() => { void load(); }, []);
 
@@ -329,9 +353,24 @@ export default function AdminProductsPage() {
 
               {editing === product.id ? (
                 /* EDIT MODE */
-                <div className="p-4 space-y-3">
-                  <input value={editData.name || ""} onChange={e => setEditData((p: any) => ({ ...p, name: e.target.value }))}
-                    className="w-full border border-gray-200 rounded px-2 py-1 text-sm font-semibold" />
+                <div className="space-y-3">
+                  <div className="relative h-32 bg-gray-100 rounded-t-lg overflow-hidden group">
+                    {editData.productImage ? (
+                      <img src={editData.productImage} alt={editData.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400">📷 No image</div>
+                    )}
+                    <input type="file" accept="image/*" ref={fileInputRef} className="hidden"
+                      onChange={e => e.target.files && handleImageUpload(product.id, e.target.files[0])} />
+                    <button onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingImage === product.id}
+                      className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-medium transition-opacity disabled:opacity-50">
+                      {uploadingImage === product.id ? "⏳ Uploading..." : "📸 Change Image"}
+                    </button>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <input value={editData.name || ""} onChange={e => setEditData((p: any) => ({ ...p, name: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-sm font-semibold" />
                   <input value={editData.productSubName || ""} onChange={e => setEditData((p: any) => ({ ...p, productSubName: e.target.value }))}
                     placeholder="Sub name..." className="w-full border border-gray-200 rounded px-2 py-1 text-xs" />
 
@@ -429,11 +468,22 @@ export default function AdminProductsPage() {
                 </div>
               ) : (
                 /* VIEW MODE */
-                <div className="p-4 space-y-3">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{product.name}</h3>
-                    {product.productSubName && <p className="text-xs text-gray-500">{product.productSubName}</p>}
+                <div className="space-y-3">
+                  <div className="h-32 bg-gray-100 rounded-t-lg overflow-hidden flex items-center justify-center">
+                    {product.productImage ? (
+                      <img src={product.productImage} alt={product.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="text-gray-400 text-center">
+                        <div className="text-3xl mb-1">📦</div>
+                        <div className="text-xs">No image</div>
+                      </div>
+                    )}
                   </div>
+                  <div className="p-4 space-y-3">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">{product.name}</h3>
+                      {product.productSubName && <p className="text-xs text-gray-500">{product.productSubName}</p>}
+                    </div>
 
                   <div className="flex flex-wrap gap-2">
                     {product.supplier && <span className="text-xs bg-gray-100 px-2 py-1 rounded">🏭 {product.supplier}</span>}
@@ -526,6 +576,7 @@ export default function AdminProductsPage() {
                     </button>
                   </div>
                 </div>
+                  </div>
               )}
             </div>
           ))}
