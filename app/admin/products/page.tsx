@@ -7,6 +7,9 @@ import { db, storage } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { formatQty, formatPrice } from "@/lib/formatters";
 import Image from "next/image";
+import BarcodeDisplay from "./components/BarcodeDisplay";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 const DEFAULT_OPTIONS = {
   unit: ["KG", "Piece", "Tin", "Jar", "Tube"],
@@ -49,12 +52,265 @@ export default function AdminProductsPage() {
     category: "", origin: "", unit: "KG", storageType: "",
     costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "",
     active: true, requiresWeighing: false, trackExpiry: false,
-    minWeightPerUnit: "", maxWeightPerUnit: "",
+    minWeightPerUnit: "", maxWeightPerUnit: "", barcodeNumber: "",
   });
   const [addingSaving, setAddingSaving] = useState(false);
   const [showMarginsFor, setShowMarginsFor] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
+  const [selectedForPrint, setSelectedForPrint] = useState<Set<string>>(new Set());
+  const [isPrinting, setIsPrinting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const generateBarcode = () => {
+    const timestamp = Date.now().toString();
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, "0");
+    return `${timestamp}${random}`.slice(-12);
+  };
+
+  const printSingleBarcode = async (product: any) => {
+    if (!product.barcodeNumber) {
+      alert("No barcode to print");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          * { margin: 0; padding: 0; }
+          html, body { width: 100%; height: 100%; }
+          body { font-family: Arial, sans-serif; background: #f5f5f5; display: flex; align-items: center; justify-content: center; padding: 20mm; }
+          .page { width: 210mm; height: 297mm; background: white; display: flex; align-items: center; justify-content: center; }
+          .label {
+            width: 100mm;
+            height: 150mm;
+            padding: 10mm;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #999;
+            background: white;
+          }
+          .product-name {
+            font-size: 13pt;
+            font-weight: bold;
+            text-align: center;
+            word-wrap: break-word;
+            width: 100%;
+            line-height: 1.3;
+            flex: 0 0 auto;
+          }
+          .barcode-container {
+            text-align: center;
+            margin: 5mm 0;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+          }
+          .barcode-container svg {
+            width: 90mm;
+            height: auto;
+            max-height: 60mm;
+          }
+          .barcode-number {
+            font-size: 10pt;
+            font-family: monospace;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-align: center;
+            width: 100%;
+            flex: 0 0 auto;
+          }
+          .supplier {
+            font-size: 8pt;
+            color: #666;
+            text-align: center;
+            width: 100%;
+            flex: 0 0 auto;
+          }
+          @page { size: A4; margin: 0; }
+          @media print {
+            body { padding: 0; background: white; }
+            .page { width: 210mm; height: 297mm; }
+          }
+        </style>
+        <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+      </head>
+      <body>
+        <div class="page">
+          <div class="label">
+            <div class="product-name">${product.name}</div>
+            <div class="barcode-container">
+              <svg id="barcode"></svg>
+            </div>
+            <div class="barcode-number">${product.barcodeNumber}</div>
+            <div class="supplier">${product.supplier || ""}</div>
+          </div>
+        </div>
+        <script>
+          JsBarcode("#barcode", "${product.barcodeNumber}", {
+            format: "CODE128",
+            width: 2.5,
+            height: 50,
+            displayValue: false
+          });
+          setTimeout(() => window.print(), 500);
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  const togglePrintSelection = (productId: string) => {
+    const newSelected = new Set(selectedForPrint);
+    if (newSelected.has(productId)) {
+      newSelected.delete(productId);
+    } else {
+      newSelected.add(productId);
+    }
+    setSelectedForPrint(newSelected);
+  };
+
+  const exportBarcodesPDF = async () => {
+    if (selectedForPrint.size === 0) {
+      alert("Please select products to print");
+      return;
+    }
+
+    setIsPrinting(true);
+    try {
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const selected = Array.from(selectedForPrint);
+      const productsToExport = products.filter(p => selected.includes(p.id) && p.barcodeNumber);
+
+      const labelWidth = 100; // mm
+      const labelHeight = 150; // mm
+      const pageHeight = 297; // A4 height in mm
+      const pageWidth = 210; // A4 width in mm
+      const labelOffsetX = (pageWidth - labelWidth) / 2; // Center horizontally
+      const labelOffsetY = (pageHeight - labelHeight) / 2; // Center vertically
+
+      for (let idx = 0; idx < productsToExport.length; idx++) {
+        const product = productsToExport[idx];
+
+        // Create label element
+        const labelElement = document.createElement("div");
+        labelElement.style.width = `${labelWidth}mm`;
+        labelElement.style.height = `${labelHeight}mm`;
+        labelElement.style.padding = "10mm";
+        labelElement.style.boxSizing = "border-box";
+        labelElement.style.display = "flex";
+        labelElement.style.flexDirection = "column";
+        labelElement.style.justifyContent = "space-between";
+        labelElement.style.alignItems = "center";
+        labelElement.style.fontFamily = "Arial";
+        labelElement.style.backgroundColor = "white";
+        labelElement.style.border = "1px solid #999";
+        labelElement.style.position = "absolute";
+        labelElement.style.left = "-9999px";
+
+        const nameDiv = document.createElement("div");
+        nameDiv.style.fontSize = "13pt";
+        nameDiv.style.fontWeight = "bold";
+        nameDiv.style.textAlign = "center";
+        nameDiv.style.wordWrap = "break-word";
+        nameDiv.style.width = "100%";
+        nameDiv.style.lineHeight = "1.3";
+        nameDiv.textContent = product.name;
+
+        const barcodeContainer = document.createElement("div");
+        barcodeContainer.style.textAlign = "center";
+        barcodeContainer.style.margin = "5mm 0";
+        barcodeContainer.style.flex = "1";
+        barcodeContainer.style.display = "flex";
+        barcodeContainer.style.alignItems = "center";
+        barcodeContainer.style.justifyContent = "center";
+        barcodeContainer.style.width = "100%";
+
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.style.width = "90mm";
+        svg.style.height = "auto";
+        svg.style.maxHeight = "60mm";
+
+        const barcodeNumberDiv = document.createElement("div");
+        barcodeNumberDiv.style.fontSize = "10pt";
+        barcodeNumberDiv.style.fontFamily = "monospace";
+        barcodeNumberDiv.style.fontWeight = "bold";
+        barcodeNumberDiv.style.letterSpacing = "2px";
+        barcodeNumberDiv.style.textAlign = "center";
+        barcodeNumberDiv.style.width = "100%";
+        barcodeNumberDiv.textContent = product.barcodeNumber;
+
+        const supplierDiv = document.createElement("div");
+        supplierDiv.style.fontSize = "8pt";
+        supplierDiv.style.color = "#666";
+        supplierDiv.style.textAlign = "center";
+        supplierDiv.style.width = "100%";
+        supplierDiv.textContent = product.supplier || "";
+
+        barcodeContainer.appendChild(svg);
+        labelElement.appendChild(nameDiv);
+        labelElement.appendChild(barcodeContainer);
+        labelElement.appendChild(barcodeNumberDiv);
+        labelElement.appendChild(supplierDiv);
+
+        document.body.appendChild(labelElement);
+
+        // Generate barcode with jsbarcode
+        const JsBarcode = (window as any).JsBarcode;
+        JsBarcode(svg, product.barcodeNumber, {
+          format: "CODE128",
+          width: 2.5,
+          height: 50,
+          displayValue: false,
+        });
+
+        // Convert to canvas
+        const canvas = await html2canvas(labelElement, {
+          scale: 2,
+          backgroundColor: "white",
+          logging: false,
+        });
+
+        const imgData = canvas.toDataURL("image/png");
+
+        // Add new page for each label (except first one which is already added)
+        if (idx > 0) {
+          pdf.addPage();
+        }
+
+        // Add centered label image to PDF
+        pdf.addImage(imgData, "PNG", labelOffsetX, labelOffsetY, labelWidth, labelHeight);
+
+        document.body.removeChild(labelElement);
+      }
+
+      pdf.save("barcodes.pdf");
+      setSelectedForPrint(new Set());
+      alert(`Exported ${productsToExport.length} barcode(s) successfully`);
+    } catch (err) {
+      console.error("Error exporting PDF:", err);
+      alert("Failed to export PDF");
+    } finally {
+      setIsPrinting(false);
+    }
+  };
 
   const handleImageUpload = async (productId: string, file: File) => {
     if (!file) return;
@@ -81,36 +337,50 @@ export default function AdminProductsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [snap, optSnap, suppSnap] = await Promise.all([
-        getDocs(collection(db, "products")),
-        getDoc(doc(db, "settings", "productOptions")),
-        getDocs(collection(db, "suppliers")),
-      ]);
-      setSuppliers(suppSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a:any, b:any) => (a.name||'').localeCompare(b.name||'')));
+      // Load products first — show them even if other collections fail
+      const snap = await getDocs(collection(db, "products"));
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setProducts(data);
-      if (optSnap.exists()) {
-        setOptions({ ...DEFAULT_OPTIONS, ...optSnap.data() });
+
+      // Load options and suppliers independently — don't block products on failure
+      try {
+        const [optSnap, suppSnap] = await Promise.all([
+          getDoc(doc(db, "settings", "productOptions")),
+          getDocs(collection(db, "suppliers")),
+        ]);
+        setSuppliers(suppSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a:any, b:any) => (a.name||'').localeCompare(b.name||'')));
+        if (optSnap.exists()) {
+          setOptions({ ...DEFAULT_OPTIONS, ...optSnap.data() });
+        }
+      } catch (e) {
+        console.warn("Could not load options/suppliers:", e);
       }
-      // Load expiring batches per product
-      const movSnap = await getDocs(collection(db, "stockMovements"));
-      const now = new Date();
-      const in90Days = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-      const batchMap: Record<string, any[]> = {};
-      movSnap.forEach(d => {
-        const m = d.data();
-        if (!m.expiryDate || m.movementType !== "In") return;
-        const expiry = new Date(m.expiryDate);
-        if (expiry > in90Days) return;
-        if (!batchMap[m.productId]) batchMap[m.productId] = [];
-        batchMap[m.productId].push({
-          expiryDate: m.expiryDate,
-          quantity: m.quantity,
-          expired: expiry < now,
-          critical: expiry < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+
+      // Load expiring batches — optional, don't block products on failure
+      try {
+        const movSnap = await getDocs(collection(db, "stockMovements"));
+        const now = new Date();
+        const in90Days = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+        const batchMap: Record<string, any[]> = {};
+        movSnap.forEach(d => {
+          const m = d.data();
+          if (!m.expiryDate || m.movementType !== "In") return;
+          const expiry = new Date(m.expiryDate);
+          if (expiry > in90Days) return;
+          if (!batchMap[m.productId]) batchMap[m.productId] = [];
+          batchMap[m.productId].push({
+            expiryDate: m.expiryDate,
+            quantity: m.quantity,
+            expired: expiry < now,
+            critical: expiry < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          });
         });
-      });
-      setProductBatches(batchMap);
+        setProductBatches(batchMap);
+      } catch (e) {
+        console.warn("Could not load stock movements:", e);
+      }
+    } catch (err) {
+      console.error("Failed to load products:", err);
     } finally {
       setLoading(false);
     }
@@ -139,11 +409,12 @@ export default function AdminProductsPage() {
         trackExpiry: Boolean(newProduct.trackExpiry),
         minWeightPerUnit: newProduct.minWeightPerUnit ? Number(newProduct.minWeightPerUnit) : null,
         maxWeightPerUnit: newProduct.maxWeightPerUnit ? Number(newProduct.maxWeightPerUnit) : null,
+        barcodeNumber: newProduct.barcodeNumber || "",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
       setShowAddProduct(false);
-      setNewProduct({ name: "", productSubName: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "" });
+      setNewProduct({ name: "", productSubName: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "", barcodeNumber: "" });
       await load();
     } finally {
       setAddingSaving(false);
@@ -281,9 +552,71 @@ export default function AdminProductsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Bulk Print Controls */}
+      {selectedForPrint.size > 0 && (
+        <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 flex items-center justify-between sticky top-0 z-20">
+          <div className="text-sm font-medium text-blue-900">
+            {selectedForPrint.size} product{selectedForPrint.size !== 1 ? "s" : ""} selected for printing
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setSelectedForPrint(new Set())}
+              className="px-3 py-1.5 text-sm border border-blue-300 text-blue-700 rounded hover:bg-blue-100">
+              Clear
+            </button>
+            <button onClick={exportBarcodesPDF} disabled={isPrinting}
+              className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-medium">
+              {isPrinting ? "Exporting..." : "📥 Export PDF"}
+            </button>
+            <button onClick={() => {
+              const selected = Array.from(selectedForPrint);
+              const productsToExport = products.filter(p => selected.includes(p.id) && p.barcodeNumber);
+              const printWindow = window.open("", "_blank");
+              if (!printWindow) return;
+              let html = `<!DOCTYPE html><html><head><style>
+                * { margin: 0; padding: 0; }
+                html, body { width: 100%; height: 100%; }
+                body { font-family: Arial, sans-serif; background: #f5f5f5; }
+                .page { width: 210mm; height: 297mm; background: white; display: flex; align-items: center; justify-content: center; page-break-after: always; }
+                .label { width: 100mm; height: 150mm; padding: 10mm; box-sizing: border-box; display: flex;
+                  flex-direction: column; justify-content: space-between; align-items: center;
+                  border: 1px solid #999; background: white; }
+                .product-name { font-size: 13pt; font-weight: bold; text-align: center; word-wrap: break-word; width: 100%; line-height: 1.3; flex: 0 0 auto; }
+                .barcode-container { text-align: center; margin: 5mm 0; flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
+                .barcode-container svg { width: 90mm; height: auto; max-height: 60mm; }
+                .barcode-number { font-size: 10pt; font-family: monospace; font-weight: bold; letter-spacing: 2px; text-align: center; width: 100%; flex: 0 0 auto; }
+                .supplier { font-size: 8pt; color: #666; text-align: center; width: 100%; flex: 0 0 auto; }
+                @page { size: A4; margin: 0; }
+                @media print { body { background: white; } .page { width: 210mm; height: 297mm; page-break-after: always; } }
+              </style>
+              <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+              </head><body>`;
+              productsToExport.forEach((p: any, idx: number) => {
+                html += `<div class="page"><div class="label">
+                  <div class="product-name">${p.name}</div>
+                  <div class="barcode-container"><svg id="barcode${idx}"></svg></div>
+                  <div class="barcode-number">${p.barcodeNumber}</div>
+                  <div class="supplier">${p.supplier || ""}</div>
+                </div></div>`;
+              });
+              html += `<script>
+                ${productsToExport.map((p: any, idx: number) =>
+                  `JsBarcode("#barcode${idx}", "${p.barcodeNumber}", {format: "CODE128", width: 2.5, height: 50, displayValue: false});`
+                ).join("\n")}
+                setTimeout(() => window.print(), 500);
+              <\/script></body></html>`;
+              printWindow.document.write(html);
+              printWindow.document.close();
+            }}
+              className="px-4 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 font-medium">
+              🖨️ Print All
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          
+
           <div className="h-4 w-px bg-gray-200" />
           <h1 className="text-xl font-bold" style={{color: "#B5535A"}}>Products</h1>
           <span className="text-xs text-gray-400">{products.length} products</span>
@@ -414,6 +747,20 @@ export default function AdminProductsPage() {
                     </select>
                   </div>
 
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <label className="text-xs text-gray-500 block mb-1">Barcode</label>
+                      <input value={editData.barcodeNumber || ""} onChange={e => setEditData((p: any) => ({ ...p, barcodeNumber: e.target.value }))}
+                        placeholder="Enter or generate..." className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                    </div>
+                    <button onClick={() => setEditData((p: any) => ({ ...p, barcodeNumber: generateBarcode() }))}
+                      className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300 font-medium">
+                      Generate
+                    </button>
+                  </div>
+
+                  {editData.barcodeNumber && <BarcodeDisplay barcodeNumber={editData.barcodeNumber} size="md" showNumber={true} />}
+
                   <div className="border-t pt-3">
                     <div className="grid grid-cols-3 gap-2">
                       <div>
@@ -493,6 +840,12 @@ export default function AdminProductsPage() {
                     {product.category && <span className="text-xs bg-gray-100 px-2 py-1 rounded">{product.category}</span>}
                     {product.origin && <span className="text-xs bg-gray-100 px-2 py-1 rounded">{product.origin}</span>}
                   </div>
+
+                  {product.barcodeNumber && (
+                    <div className="border-t pt-3 flex justify-center">
+                      <BarcodeDisplay barcodeNumber={product.barcodeNumber} size="sm" showNumber={true} />
+                    </div>
+                  )}
 
                   {product.requiresWeighing && <span className="text-xs text-purple-600 block">⚖️ Requires weighing</span>}
                   {product.trackExpiry && <span className="text-xs text-blue-600 block">📅 Track expiry</span>}
@@ -578,6 +931,23 @@ export default function AdminProductsPage() {
                       History
                     </button>
                   </div>
+
+                  {product.barcodeNumber && (
+                    <div className="flex gap-2 pt-2">
+                      <button onClick={() => printSingleBarcode(product)}
+                        className="flex-1 px-2 py-2 text-xs border border-purple-300 text-purple-700 rounded hover:bg-purple-50 font-medium">
+                        🖨️ Print Label
+                      </button>
+                      <button onClick={() => togglePrintSelection(product.id)}
+                        className={`flex-1 px-2 py-2 text-xs rounded font-medium ${
+                          selectedForPrint.has(product.id)
+                            ? "bg-blue-600 text-white border border-blue-600"
+                            : "border border-gray-300 text-gray-600 hover:bg-gray-50"
+                        }`}>
+                        {selectedForPrint.has(product.id) ? "✓ Selected" : "Select"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
               )}
@@ -702,6 +1072,20 @@ export default function AdminProductsPage() {
                     <option value="">—</option>
                     {options.storageType.map(o => <option key={o}>{o}</option>)}
                   </select>
+                </div>
+                <div className="col-span-2">
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <label className="text-xs text-gray-500 mb-1 block">Barcode</label>
+                      <input value={newProduct.barcodeNumber} onChange={e => setNewProduct((p:any) => ({...p, barcodeNumber: e.target.value}))}
+                        placeholder="Enter supplier barcode or leave empty to generate"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                    </div>
+                    <button onClick={() => setNewProduct((p:any) => ({...p, barcodeNumber: generateBarcode()}))}
+                      className="px-3 py-2 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 font-medium whitespace-nowrap">
+                      Generate
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Cost Price ($)</label>

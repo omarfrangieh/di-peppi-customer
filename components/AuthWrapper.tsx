@@ -42,41 +42,35 @@ export default function AuthWrapper({ children }: { children: ReactNode }) {
     let unsubscribe: any = null;
 
     const initializeAuth = async () => {
-      try {
-        const sessionStr = localStorage.getItem("session");
-        const customTokenStr = localStorage.getItem("customToken");
-
-        if (sessionStr) {
-          const parsed = JSON.parse(sessionStr);
-          setSession(parsed);
-
-          // Sign in with Firebase Auth if we have a custom token
-          if (customTokenStr) {
-            try {
-              await signInWithCustomToken(auth, customTokenStr);
-            } catch (err) {
-              console.error("Custom token sign-in failed:", err);
-            }
-          }
-        } else if (!isLoginPage) {
-          router.push("/admin/login");
-          setLoading(false);
-          return;
-        }
-
-        // Wait for Firebase Auth state to be ready
-        unsubscribe = onAuthStateChanged(auth, () => {
-          setLoading(false);
+      // Wait for Firebase Auth to finish restoring its session
+      const firebaseUser = await new Promise<any>((resolve) => {
+        const unsub = onAuthStateChanged(auth, (user) => {
+          unsub();
+          resolve(user);
         });
-      } catch (err) {
-        console.error("Session parse error:", err);
+      });
+
+      const sessionStr = localStorage.getItem("session");
+
+      if (firebaseUser && sessionStr) {
+        // Firebase Auth active + local session = fully authenticated
+        try {
+          setSession(JSON.parse(sessionStr));
+        } catch {
+          localStorage.removeItem("session");
+        }
+      } else if (!isLoginPage) {
+        // No Firebase Auth session — clear stale local session and redirect to login
         localStorage.removeItem("session");
         localStorage.removeItem("customToken");
-        if (!isLoginPage) {
-          router.push("/admin/login");
-        }
+        router.push("/admin/login");
         setLoading(false);
+        return;
       }
+
+      unsubscribe = onAuthStateChanged(auth, () => {
+        setLoading(false);
+      });
     };
 
     initializeAuth();

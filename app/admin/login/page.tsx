@@ -121,10 +121,8 @@ export default function AdminLoginPage() {
       };
       localStorage.setItem("session", JSON.stringify(session));
 
-      // Store custom token for Firebase Auth
-      if (adminData.customToken) {
-        localStorage.setItem("customToken", adminData.customToken);
-      }
+      // Do NOT store customToken — it's one-time use only.
+      // Firebase Auth manages the session via its own refresh tokens.
 
       router.push("/admin");
     } catch (err: any) {
