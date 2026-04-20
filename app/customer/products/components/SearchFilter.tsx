@@ -25,19 +25,19 @@ export default function SearchFilter({
   const [selectedStorageType, setSelectedStorageType] = useState("");
   const [selectedOrigin, setSelectedOrigin] = useState("");
 
-  // Extract unique values for dropdowns
+  // Extract unique values for dropdowns (sorted A to Z)
   const categories = useMemo(
-    () => [...new Set(products.map((p) => p.category).filter(Boolean))],
+    () => [...new Set(products.map((p) => p.category).filter(Boolean))].sort(),
     [products]
   );
 
   const storageTypes = useMemo(
-    () => [...new Set(products.map((p) => p.storageType).filter(Boolean))],
+    () => [...new Set(products.map((p) => p.storageType).filter(Boolean))].sort(),
     [products]
   );
 
   const origins = useMemo(
-    () => [...new Set(products.map((p) => p.origin).filter(Boolean))],
+    () => [...new Set(products.map((p) => p.origin).filter(Boolean))].sort(),
     [products]
   );
 
