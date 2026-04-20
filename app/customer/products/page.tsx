@@ -44,10 +44,11 @@ export default function ProductsPage() {
 
         const session = JSON.parse(sessionStr);
         const customerId = session.userId;
+        const customerType = session.customerType || "B2C";
 
         // Call getProductCatalog Cloud Function
         const getProductCatalog = httpsCallable(functions, "getProductCatalog");
-        const result: any = await getProductCatalog({ customerId });
+        const result: any = await getProductCatalog({ customerId, customerType });
 
         if (result.data && Array.isArray(result.data)) {
           setAllProducts(result.data);

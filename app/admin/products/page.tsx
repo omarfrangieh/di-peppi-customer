@@ -50,6 +50,7 @@ export default function AdminProductsPage() {
     minWeightPerUnit: "", maxWeightPerUnit: "",
   });
   const [addingSaving, setAddingSaving] = useState(false);
+  const [showMarginsFor, setShowMarginsFor] = useState<string | null>(null);
 
   useEffect(() => { void load(); }, []);
 
@@ -320,216 +321,214 @@ export default function AdminProductsPage() {
       )}
 
       <div className="max-w-7xl mx-auto px-6 py-6">
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Product</th>
-                <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Category</th>
-                <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Origin</th>
-                <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Unit</th>
-                <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Storage Type</th>
-                <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">Cost</th>
-                <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">B2B</th>
-                <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">B2C</th>
-                <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">Stock</th>
-                <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">Min</th>
-                <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Active</th>
-                <th className="px-3 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filtered.map(product => (
-                <React.Fragment key={product.id}>
-                {editing === product.id ? (
-                  <tr key={product.id} className="bg-blue-50">
-                    <td className="px-4 py-2">
-                      <input value={editData.name || ""} onChange={e => setEditData((p: any) => ({ ...p, name: e.target.value }))}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
-                      <input value={editData.productSubName || ""} onChange={e => setEditData((p: any) => ({ ...p, productSubName: e.target.value }))}
-                        placeholder="Sub name..." className="w-full border border-gray-200 rounded px-2 py-1 text-xs mt-1 text-gray-500" />
-                      <select value={editData.supplierId || ""} onChange={e => {
-                          const s = suppliers.find((s:any) => s.id === e.target.value);
-                          setEditData((p: any) => ({ ...p, supplierId: e.target.value, supplier: s?.name || "" }));
-                        }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs mt-1 bg-white text-gray-500">
-                        <option value="">— Supplier —</option>
-                        {suppliers.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <select value={editData.category || ""} onChange={e => setEditData((p: any) => ({ ...p, category: e.target.value }))}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm">
-                        <option value="">—</option>
-                        {options.category.map(o => <option key={o}>{o}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <select value={editData.origin || ""} onChange={e => setEditData((p: any) => ({ ...p, origin: e.target.value }))}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm">
-                        <option value="">—</option>
-                        {options.origin.map(o => <option key={o}>{o}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <select value={editData.unit || ""} onChange={e => setEditData((p: any) => ({ ...p, unit: e.target.value }))}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm">
-                        <option value="">—</option>
-                        {options.unit.map(o => <option key={o}>{o}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <select value={editData.storageType || ""} onChange={e => setEditData((p: any) => ({ ...p, storageType: e.target.value }))}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm">
-                        <option value="">—</option>
-                        {options.storageType.map(o => <option key={o}>{o}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2"><input type="number" value={editData.costPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, costPrice: e.target.value }))} className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
-                    <td className="px-3 py-2"><input type="number" value={editData.b2bPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, b2bPrice: e.target.value }))} className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
-                    <td className="px-3 py-2"><input type="number" value={editData.b2cPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, b2cPrice: e.target.value }))} className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
-                    <td className="px-3 py-2 text-right text-sm text-gray-500">{formatQty(product.currentStock)}</td>
-                    <td className="px-3 py-2"><input type="number" value={editData.minStock || ""} onChange={e => setEditData((p: any) => ({ ...p, minStock: e.target.value }))} className="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-right" /></td>
-                    <td className="px-3 py-2 text-center">
-                      <input type="checkbox" checked={editData.active !== false} onChange={e => setEditData((p: any) => ({ ...p, active: e.target.checked }))} className="w-4 h-4" />
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex gap-1">
-                        <button onClick={() => saveProduct(product.id)} disabled={saving === product.id}
-                          className="px-2 py-1 bg-gray-900 text-white text-xs rounded hover:bg-gray-700 disabled:opacity-50">
-                          {saving === product.id ? "..." : "Save"}
-                        </button>
-                        <button onClick={cancelEdit} className="px-2 py-1 border border-gray-200 text-gray-600 text-xs rounded hover:bg-gray-50">Cancel</button>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={product.id} className={`hover:bg-gray-50 transition-colors ${product.active === false ? "opacity-40" : ""}`}>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-gray-900">{product.name}</p>
-                      {product.productSubName && <p className="text-xs text-gray-400">{product.productSubName}</p>}
-                      <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                        {product.supplier && <span className="text-xs font-medium text-gray-600">🏭 {product.supplier}</span>}
-                        {product.requiresWeighing && <span className="text-xs text-purple-600">⚖️ Weighing req.</span>}
-                        {product.trackExpiry && <span className="text-xs text-blue-500">📅 Expiry/FIFO</span>}
-                      </div>
-                      {productBatches[product.id]?.length > 0 && (
-                        <div className="mt-2 flex flex-col gap-1">
-                          {productBatches[product.id].map((batch, i) => (
-                            <div key={i} className={`flex items-center justify-between text-xs px-2 py-1 rounded-lg font-medium w-full ${
-                              batch.expired ? "bg-red-100 text-red-700 border border-red-300" :
-                              batch.critical ? "bg-red-50 text-red-500 border border-red-200" :
-                              "bg-orange-50 text-orange-600 border border-orange-200"
-                            }`}>
-                              <span>{batch.expired ? "❌ Expired" : batch.critical ? "⚠️ Expiring" : "🟡 Soon"}</span>
-                              <span className="font-bold">{new Date(batch.expiryDate).toLocaleDateString("en-GB")}</span>
-                              <span>qty: {formatQty(batch.quantity)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-gray-600">{product.category || "—"}</td>
-                    <td className="px-3 py-3 text-gray-600">{product.origin || "—"}</td>
-                    <td className="px-3 py-3 text-gray-600">
-                      <div>{product.unit || "—"}</div>
-                      {(product.minWeightPerUnit || product.maxWeightPerUnit) && (
-                        <div className="text-xs text-amber-600">⚖️ {product.minWeightPerUnit}–{product.maxWeightPerUnit} kg</div>
-                      )}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map(product => (
+            <div key={product.id} className={`bg-white rounded-lg border transition-colors ${
+              editing === product.id ? "border-blue-300 bg-blue-50" : "border-gray-200 hover:border-gray-300"
+            } ${product.active === false ? "opacity-50" : ""}`}>
 
-                    </td>
-                    <td className="px-3 py-3">
-                      {product.storageType
-                        ? <Badge label={product.storageType} color={storageColor[product.storageType] || "bg-gray-100 text-gray-600"} />
-                        : "—"}
-                    </td>
-                    <td className="px-3 py-3 text-right text-gray-700">${formatPrice(product.costPrice || 0)}</td>
-                    <td className="px-3 py-3 text-right text-gray-700">
-                      <div>${formatPrice(product.b2bPrice || 0)}</div>
-                      {product.costPrice > 0 && product.b2bPrice > 0 && (
-                        <div className={`text-xs ${((product.b2bPrice - product.costPrice) / product.b2bPrice * 100) < 10 ? "text-red-500" : "text-blue-600"}`}>
-                          {((product.b2bPrice - product.costPrice) / product.b2bPrice * 100).toFixed(0)}% margin
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-right text-gray-700">
-                      <div>${formatPrice(product.b2cPrice || 0)}</div>
-                      {product.costPrice > 0 && product.b2cPrice > 0 && (
-                        <div className={`text-xs ${((product.b2cPrice - product.costPrice) / product.b2cPrice * 100) < 15 ? "text-red-500" : "text-green-600"}`}>
-                          {((product.b2cPrice - product.costPrice) / product.b2cPrice * 100).toFixed(0)}% margin
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <span className={Number(product.currentStock) <= Number(product.minStock || 0) && Number(product.minStock) > 0 ? "text-red-600 font-semibold" : "text-gray-700"}>
-                        {product.currentStock != null ? Number(product.currentStock).toFixed(3).replace(/\.?0+$/, "") : "—"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-right text-gray-500">{product.minStock || "—"}</td>
-                    <td className="px-3 py-3 text-center">
-                      <span className={`w-2 h-2 rounded-full inline-block ${product.active !== false ? "bg-green-500" : "bg-gray-300"}`} />
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex gap-1">
-                      <button onClick={() => startEdit(product)} className="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100">Edit</button>
-                      <button onClick={() => { setStockInProduct(product); setStockInQty(""); setStockInNotes(""); setStockInExpiry(""); }}
-                        className="px-2 py-1 text-xs border border-green-300 text-green-700 rounded hover:bg-green-50">+Stock</button>
-                      <button onClick={() => loadHistory(product)}
-                        className="px-2 py-1 text-xs border border-blue-300 text-blue-700 rounded hover:bg-blue-50">History</button>
-                    </div>
-                    </td>
-                  </tr>
-                )}
-                {editing === product.id && (editData.unit === "KG" || editData.unit === "Piece") && (
-                  <tr className="bg-amber-50">
-                    <td colSpan={12} className="px-4 py-2 border-t border-amber-100">
-                      <div className="flex items-center gap-4 flex-wrap">
-                        <span className="text-xs font-medium text-amber-700">{editData.unit === "KG" ? "⚖️ Weight variance range (kg):" : "⚖️ Weight per piece (kg):"}</span>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-gray-500">Min kg</label>
-                          <input type="number" step="0.01"
-                            value={editData.minWeightPerUnit || ""}
-                            onChange={e => setEditData((p: any) => ({ ...p, minWeightPerUnit: e.target.value }))}
-                            placeholder="e.g. 0.9"
-                            className="w-20 border border-amber-200 rounded px-2 py-1 text-sm text-right" />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-gray-500">Max kg</label>
-                          <input type="number" step="0.01"
-                            value={editData.maxWeightPerUnit || ""}
-                            onChange={e => setEditData((p: any) => ({ ...p, maxWeightPerUnit: e.target.value }))}
-                            placeholder="e.g. 1.4"
-                            className="w-20 border border-amber-200 rounded px-2 py-1 text-sm text-right" />
-                        </div>
-                        <span className="text-xs text-gray-400">Leave empty if fixed weight</span>
-                        {editData.minWeightPerUnit && editData.maxWeightPerUnit && (
-                          <span className="text-xs font-medium text-amber-700">
-                            PO note: Approx. {editData.minWeightPerUnit}–{editData.maxWeightPerUnit} kg each
-                          </span>
+              {editing === product.id ? (
+                /* EDIT MODE */
+                <div className="p-4 space-y-3">
+                  <input value={editData.name || ""} onChange={e => setEditData((p: any) => ({ ...p, name: e.target.value }))}
+                    className="w-full border border-gray-200 rounded px-2 py-1 text-sm font-semibold" />
+                  <input value={editData.productSubName || ""} onChange={e => setEditData((p: any) => ({ ...p, productSubName: e.target.value }))}
+                    placeholder="Sub name..." className="w-full border border-gray-200 rounded px-2 py-1 text-xs" />
+
+                  <select value={editData.supplierId || ""} onChange={e => {
+                      const s = suppliers.find((s:any) => s.id === e.target.value);
+                      setEditData((p: any) => ({ ...p, supplierId: e.target.value, supplier: s?.name || "" }));
+                    }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white">
+                    <option value="">— Supplier —</option>
+                    {suppliers.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={editData.category || ""} onChange={e => setEditData((p: any) => ({ ...p, category: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white">
+                      <option value="">Category</option>
+                      {editData.category && !options.category.includes(editData.category) && <option value={editData.category}>{editData.category}</option>}
+                      {options.category.map(o => <option key={o}>{o}</option>)}
+                    </select>
+                    <select value={editData.origin || ""} onChange={e => setEditData((p: any) => ({ ...p, origin: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white">
+                      <option value="">Origin</option>
+                      {editData.origin && !options.origin.includes(editData.origin) && <option value={editData.origin}>{editData.origin}</option>}
+                      {options.origin.map(o => <option key={o}>{o}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={editData.unit || ""} onChange={e => setEditData((p: any) => ({ ...p, unit: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white">
+                      <option value="">Unit</option>
+                      {editData.unit && !options.unit.includes(editData.unit) && <option value={editData.unit}>{editData.unit}</option>}
+                      {options.unit.map(o => <option key={o}>{o}</option>)}
+                    </select>
+                    <select value={editData.storageType || ""} onChange={e => setEditData((p: any) => ({ ...p, storageType: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white">
+                      <option value="">Storage</option>
+                      {editData.storageType && !options.storageType.includes(editData.storageType) && <option value={editData.storageType}>{editData.storageType}</option>}
+                      {options.storageType.map(o => <option key={o}>{o}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="border-t pt-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Cost</label>
+                        <input type="number" value={editData.costPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, costPrice: e.target.value }))}
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">B2B</label>
+                        <input type="number" value={editData.b2bPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, b2bPrice: e.target.value }))}
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                        {editData.costPrice > 0 && editData.b2bPrice > 0 && (
+                          <div className={`text-xs mt-1 font-medium ${((editData.b2bPrice - editData.costPrice) / editData.b2bPrice * 100) < 10 ? "text-red-500" : "text-blue-600"}`}>
+                            {((editData.b2bPrice - editData.costPrice) / editData.b2bPrice * 100).toFixed(0)}% margin
+                          </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-6 mt-2">
-                        <label className="flex items-center gap-1.5 text-xs text-purple-700 font-medium cursor-pointer">
-                          <input type="checkbox"
-                            checked={!!editData.requiresWeighing}
-                            onChange={e => setEditData((p: any) => ({ ...p, requiresWeighing: e.target.checked }))}
-                            className="w-3.5 h-3.5" />
-                          ⚖️ Requires weighing at delivery (variable weight)
-                        </label>
-                        <label className="flex items-center gap-1.5 text-xs text-blue-700 font-medium cursor-pointer">
-                          <input type="checkbox"
-                            checked={!!editData.trackExpiry}
-                            onChange={e => setEditData((p: any) => ({ ...p, trackExpiry: e.target.checked }))}
-                            className="w-3.5 h-3.5" />
-                          📅 Track expiry date — First In / First Out (FIFO)
-                        </label>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">B2C</label>
+                        <input type="number" value={editData.b2cPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, b2cPrice: e.target.value }))}
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                        {editData.costPrice > 0 && editData.b2cPrice > 0 && (
+                          <div className={`text-xs mt-1 font-medium ${((editData.b2cPrice - editData.costPrice) / editData.b2cPrice * 100) < 15 ? "text-red-500" : "text-green-600"}`}>
+                            {((editData.b2cPrice - editData.costPrice) / editData.b2cPrice * 100).toFixed(0)}% margin
+                          </div>
+                        )}
                       </div>
-                    </td>
-                  </tr>
-                )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">Min Stock</label>
+                      <input type="number" value={editData.minStock || ""} onChange={e => setEditData((p: any) => ({ ...p, minStock: e.target.value }))}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                    </div>
+                    <div className="flex items-end">
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={editData.active !== false} onChange={e => setEditData((p: any) => ({ ...p, active: e.target.checked }))} className="w-4 h-4" />
+                        <span>Active</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button onClick={() => saveProduct(product.id)} disabled={saving === product.id}
+                      className="flex-1 px-3 py-1.5 bg-gray-900 text-white text-xs rounded hover:bg-gray-700 disabled:opacity-50 font-medium">
+                      {saving === product.id ? "..." : "Save"}
+                    </button>
+                    <button onClick={cancelEdit} className="flex-1 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs rounded hover:bg-gray-50 font-medium">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* VIEW MODE */
+                <div className="p-4 space-y-3">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{product.name}</h3>
+                    {product.productSubName && <p className="text-xs text-gray-500">{product.productSubName}</p>}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {product.supplier && <span className="text-xs bg-gray-100 px-2 py-1 rounded">🏭 {product.supplier}</span>}
+                    {product.category && <span className="text-xs bg-gray-100 px-2 py-1 rounded">{product.category}</span>}
+                    {product.origin && <span className="text-xs bg-gray-100 px-2 py-1 rounded">{product.origin}</span>}
+                  </div>
+
+                  {product.requiresWeighing && <span className="text-xs text-purple-600 block">⚖️ Requires weighing</span>}
+                  {product.trackExpiry && <span className="text-xs text-blue-600 block">📅 Track expiry</span>}
+
+                  {productBatches[product.id]?.length > 0 && (
+                    <div className="space-y-1">
+                      {productBatches[product.id].map((batch, i) => (
+                        <div key={i} className={`text-xs px-2 py-1 rounded ${
+                          batch.expired ? "bg-red-100 text-red-700" :
+                          batch.critical ? "bg-orange-100 text-orange-700" :
+                          "bg-yellow-100 text-yellow-700"
+                        }`}>
+                          {batch.expired ? "❌ Expired" : batch.critical ? "⚠️ Expiring" : "🟡 Soon"} {new Date(batch.expiryDate).toLocaleDateString("en-GB")}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="border-t pt-3 grid grid-cols-3 gap-2">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Cost</p>
+                      <p className="font-semibold text-gray-900">${formatPrice(product.costPrice || 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">B2B</p>
+                      <p className="font-semibold text-gray-900">${formatPrice(product.b2bPrice || 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">B2C</p>
+                      <p className="font-semibold text-gray-900">${formatPrice(product.b2cPrice || 0)}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-xs text-gray-500">Stock</p>
+                      <p className={Number(product.currentStock) <= Number(product.minStock || 0) && Number(product.minStock) > 0 ? "text-red-600 font-semibold" : "text-gray-900"}>
+                        {formatQty(product.currentStock)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Min</p>
+                      <p className="text-gray-900">{product.minStock || "—"}</p>
+                    </div>
+                  </div>
+
+                  {showMarginsFor === product.id && product.costPrice > 0 && (
+                    <div className="border-t pt-3 space-y-2">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">B2B Margin</p>
+                        {product.b2bPrice > 0 ? (
+                          <div className={`text-sm font-semibold ${((product.b2bPrice - product.costPrice) / product.b2bPrice * 100) < 10 ? "text-red-600" : "text-blue-600"}`}>
+                            {((product.b2bPrice - product.costPrice) / product.b2bPrice * 100).toFixed(1)}%
+                          </div>
+                        ) : <p className="text-xs text-gray-400">No price set</p>}
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">B2C Margin</p>
+                        {product.b2cPrice > 0 ? (
+                          <div className={`text-sm font-semibold ${((product.b2cPrice - product.costPrice) / product.b2cPrice * 100) < 15 ? "text-red-600" : "text-green-600"}`}>
+                            {((product.b2cPrice - product.costPrice) / product.b2cPrice * 100).toFixed(1)}%
+                          </div>
+                        ) : <p className="text-xs text-gray-400">No price set</p>}
+                      </div>
+                    </div>
+                  )}
+
+                  <button onClick={() => setShowMarginsFor(showMarginsFor === product.id ? null : product.id)}
+                    className="w-full text-center text-xs text-gray-600 py-1 hover:text-gray-900 font-medium">
+                    {showMarginsFor === product.id ? '▼ Hide margins' : '▶ Show margins'}
+                  </button>
+
+                  <div className="flex gap-2">
+                    <button onClick={() => startEdit(product)} className="flex-1 px-2 py-2 text-xs border border-gray-200 rounded hover:bg-gray-50 font-medium">
+                      Edit
+                    </button>
+                    <button onClick={() => { setStockInProduct(product); setStockInQty(""); setStockInNotes(""); setStockInExpiry(""); }}
+                      className="flex-1 px-2 py-2 text-xs border border-green-300 text-green-700 rounded hover:bg-green-50 font-medium">
+                      +Stock
+                    </button>
+                    <button onClick={() => loadHistory(product)}
+                      className="flex-1 px-2 py-2 text-xs border border-blue-300 text-blue-700 rounded hover:bg-blue-50 font-medium">
+                      History
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
       {/* Stock History Modal */}
