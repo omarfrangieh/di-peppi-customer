@@ -110,6 +110,7 @@ export default function CustomerLoginPage() {
         email: userData.email || email,
         role: userData.role || "Customer",
         accountType: userData.accountType || "customer",
+        customerType: userData.customerType || "B2C", // Default to B2C for customer app
         name: userData.name || "Customer",
       };
       localStorage.setItem("session", JSON.stringify(session));
