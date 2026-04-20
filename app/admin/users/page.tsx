@@ -6,8 +6,8 @@ import { db, functions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
 import { useRouter } from "next/navigation";
 
-const ROLES = ["Admin", "Manager", "Operator", "Driver", "Warehouse Lead"];
-const ACCOUNT_TYPES = ["Employee", "Customer", "Supplier"];
+const ROLES = ["Admin", "Driver", "Manager", "Operator", "Warehouse Lead"];
+const ACCOUNT_TYPES = ["Customer", "Employee", "Supplier"];
 
 const ROLE_COLORS: Record<string, string> = {
   Admin: "bg-blue-100 text-blue-700",
@@ -45,7 +45,6 @@ export default function UsersPage() {
   const [formData, setFormData] = useState({
     email: "",
     name: "",
-    password: "",
     phone: "",
     role: "Operator",
     accountType: "Employee",
@@ -87,15 +86,14 @@ export default function UsersPage() {
     setSaving(true);
 
     try {
-      if (!formData.email || !formData.name || !formData.password) {
-        throw new Error("Email, name, and password are required");
+      if (!formData.email || !formData.name) {
+        throw new Error("Email and name are required");
       }
 
       const createUserFn = httpsCallable(functions, "createUser");
       await createUserFn({
         email: formData.email,
         name: formData.name,
-        password: formData.password,
         phone: formData.phone,
         role: formData.role,
         accountType: formData.accountType,
@@ -191,14 +189,6 @@ export default function UsersPage() {
     setError("");
   };
 
-  const generatePassword = () => {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%";
-    let pwd = "";
-    for (let i = 0; i < 12; i++) {
-      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setFormData({...formData, password: pwd});
-  };
 
   const filtered = users.filter((u) => {
     const matchSearch =
@@ -392,30 +382,6 @@ export default function UsersPage() {
                   placeholder="Full name"
                   disabled={saving}
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Password</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
-                    className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Generated or enter manually"
-                  />
-                  <button
-                    type="button"
-                    onClick={generatePassword}
-                    className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50"
-                    disabled={saving}
-                  >
-                    Generate
-                  </button>
-                </div>
-                {!formData.password && (
-                  <p className="text-xs text-gray-500 mt-1">Min 8 chars, 1 uppercase, 1 number</p>
-                )}
               </div>
 
               <div>
