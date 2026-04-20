@@ -258,10 +258,12 @@ export default function AdminProductsPage() {
     await saveOptions(field, list);
   };
 
-  const filtered = products.filter(p =>
-    (p.name || "").toLowerCase().includes(search.toLowerCase()) ||
-    (p.category || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = products
+    .filter(p =>
+      (p.name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (p.category || "").toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   const storageColor: Record<string, string> = {
     Frozen: "bg-blue-100 text-blue-700",
