@@ -2,7 +2,7 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-import { LayoutDashboard, ShoppingCart, FileText, Package, Fish, Users, Building2, Menu, BarChart2, Boxes, LogOut, Settings, UserCog, Lock, History } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, FileText, Package, Fish, Users, Building2, Menu, BarChart2, Boxes, LogOut, Settings, UserCog, Lock, History, Tags } from "lucide-react";
 import { useAuth } from "./AuthWrapper";
 
 const NAV = [
@@ -11,6 +11,7 @@ const NAV = [
   { label: "Invoices",        href: "/invoices",              icon: FileText },
   { label: "Purchase Orders", href: "/admin/purchase-orders", icon: Package },
   { label: "Products",        href: "/admin/products",        icon: Fish },
+  { label: "Categories",      href: "/admin/categories",      icon: Tags },
   { label: "Customers",       href: "/admin/customers",       icon: Users },
   { label: "Suppliers",       href: "/admin/suppliers",       icon: Building2 },
   { label: "Stock",           href: "/stock",                 icon: Boxes },
