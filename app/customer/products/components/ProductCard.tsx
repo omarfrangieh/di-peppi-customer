@@ -22,6 +22,17 @@ interface ProductCardProps {
   onAddToCart?: () => void;
 }
 
+// Helper function to validate URL
+function isValidUrl(url?: string): boolean {
+  if (!url) return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function ProductCard({ product, onAddToCart }: ProductCardProps) {
   const router = useRouter();
   const { addItem } = useCart();
@@ -75,9 +86,9 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow h-full flex flex-col">
       {/* Image Container */}
       <div className="relative w-full h-48 bg-gray-100 flex-shrink-0">
-        {product.productImage ? (
+        {isValidUrl(product.productImage) ? (
           <Image
-            src={product.productImage}
+            src={product.productImage!}
             alt={product.name}
             fill
             className="object-cover"

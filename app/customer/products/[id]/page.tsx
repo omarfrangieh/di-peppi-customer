@@ -27,6 +27,17 @@ interface Product {
   costPrice?: number;
 }
 
+// Helper function to validate URL
+function isValidUrl(url?: string): boolean {
+  if (!url) return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function ProductDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -167,9 +178,9 @@ export default function ProductDetailPage() {
           {/* Product Image */}
           <div>
             <div className="relative w-full aspect-square bg-gray-100 rounded-lg overflow-hidden">
-              {product.productImage ? (
+              {isValidUrl(product.productImage) ? (
                 <Image
-                  src={product.productImage}
+                  src={product.productImage!}
                   alt={product.name}
                   fill
                   className="object-cover"
