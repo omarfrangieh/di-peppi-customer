@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { formatPrice } from "@/lib/formatters";
+import { useRouter } from "next/navigation";
 
 const CUSTOMER_TYPES = ["B2B", "B2C", "Owner"];
 
@@ -18,6 +19,7 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
 }
 
 export default function AdminCustomersPage() {
+  const router = useRouter();
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +45,12 @@ export default function AdminCustomersPage() {
       ]);
       const cdata = custSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const pdata = prodSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setCustomers(cdata.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+      setCustomers(cdata.sort((a, b) => {
+        // Hold clients always go to the bottom
+        if (a.manualHold && !b.manualHold) return 1;
+        if (!a.manualHold && b.manualHold) return -1;
+        return (a.name || "").localeCompare(b.name || "");
+      }));
       setProducts(pdata.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
     } finally {
       setLoading(false);
@@ -81,7 +88,11 @@ export default function AdminCustomersPage() {
       updatedAt: serverTimestamp(),
     });
     const added = { id: ref.id, ...newCustomer, active: true, manualHold: false, specialPrices: {} };
-    setCustomers(prev => [...prev, added].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+    setCustomers(prev => [...prev, added].sort((a, b) => {
+      if (a.manualHold && !b.manualHold) return 1;
+      if (!a.manualHold && b.manualHold) return -1;
+      return (a.name || "").localeCompare(b.name || "");
+    }));
     setNewCustomer({ customerType: "", country: "Lebanon" });
     setShowAdd(false);
   };
@@ -120,6 +131,9 @@ export default function AdminCustomersPage() {
     return matchSearch && matchType;
   });
 
+  const activeFiltered = filtered.filter(c => !c.manualHold);
+  const holdFiltered = filtered.filter(c => c.manualHold);
+
   const filteredProducts = products.filter(p =>
     (p.name || "").toLowerCase().includes(priceSearch.toLowerCase())
   );
@@ -153,6 +167,10 @@ export default function AdminCustomersPage() {
             style={{backgroundColor: "#1B2A5E"}}>
             + Add Customer
           </button>
+          <button onClick={() => router.push("/admin/customers/import")}
+            className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 font-medium text-gray-700">
+            ↑ Import CSV
+          </button>
           <input type="text" placeholder="Search customers..." value={search}
             onChange={e => setSearch(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 w-48" />
@@ -164,10 +182,15 @@ export default function AdminCustomersPage() {
           <div className="bg-white rounded-xl border border-blue-200 p-5">
             <p className="text-sm font-semibold text-gray-900 mb-4">New Customer</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-              <div className="md:col-span-2">
+              <div>
                 <label className="text-xs text-gray-500 block mb-0.5">Name *</label>
                 <input value={newCustomer.name || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, name: e.target.value }))}
                   placeholder="Customer name" className={`w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 ${!newCustomer.name?.trim() ? "border-red-300" : "border-gray-200"}`} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-0.5">Company Name</label>
+                <input value={newCustomer.companyName || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, companyName: e.target.value }))}
+                  placeholder="e.g. ABC Trading SAL" className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-0.5">Customer Type *</label>
@@ -262,6 +285,7 @@ export default function AdminCustomersPage() {
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Basic Info</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <Field label="Name" value={editData.name} onChange={(v: string) => setEditData((p: any) => ({ ...p, name: v }))} />
+                    <Field label="Company Name" value={editData.companyName} onChange={(v: string) => setEditData((p: any) => ({ ...p, companyName: v }))} />
                     <div>
                       <label className="text-xs text-gray-500 block mb-0.5">Customer Type</label>
                       <select value={editData.customerType || ""} onChange={e => setEditData((p: any) => ({ ...p, customerType: e.target.value }))}
@@ -365,6 +389,7 @@ export default function AdminCustomersPage() {
                           {customer.manualHold && <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">⚠️ Hold</span>}
                           {customer.active === false && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Inactive</span>}
                         </div>
+                        {customer.companyName && <p className="text-sm text-gray-500 font-medium mt-0.5">{customer.companyName}</p>}
                         <p className="text-xs text-gray-400 mt-0.5">
                           {[customer.building, customer.street, customer.city, customer.country].filter(Boolean).join(", ") || "No address"}
                         </p>
