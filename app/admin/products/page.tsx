@@ -576,7 +576,7 @@ export default function AdminProductsPage() {
                     </button>
                   </div>
                 </div>
-                  </div>
+              </div>
               )}
             </div>
           ))}
