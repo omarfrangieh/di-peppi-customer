@@ -59,6 +59,10 @@ export default function AdminProductsPage() {
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const [selectedForPrint, setSelectedForPrint] = useState<Set<string>>(new Set());
   const [isPrinting, setIsPrinting] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<string, Set<string>>>({
+    pricing: new Set(),
+    barcode: new Set(),
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Validate EAN-13 barcode format and check digit
@@ -106,6 +110,18 @@ export default function AdminProductsPage() {
     const checkDigit = (10 - (sum % 10)) % 10;
 
     return code12 + checkDigit;
+  };
+
+  const toggleSection = (productId: string, section: 'pricing' | 'barcode') => {
+    setExpandedSections((prev) => {
+      const newSet = new Set(prev[section]);
+      if (newSet.has(productId)) {
+        newSet.delete(productId);
+      } else {
+        newSet.add(productId);
+      }
+      return { ...prev, [section]: newSet };
+    });
   };
 
   const printSingleBarcode = async (product: any) => {
@@ -924,9 +940,19 @@ export default function AdminProductsPage() {
                   </div>
 
                   {product.barcodeNumber && (
-                    <div className="border-t pt-3 flex justify-center">
-                      <BarcodeDisplay barcodeNumber={product.barcodeNumber} size="sm" showNumber={true} />
-                    </div>
+                    <>
+                      <button
+                        onClick={() => toggleSection(product.id, 'barcode')}
+                        className="w-full text-left py-2 text-sm font-medium text-gray-700 hover:text-gray-900 border-t flex items-center gap-2"
+                      >
+                        {expandedSections.barcode.has(product.id) ? '▼' : '▶'} Barcode (ID: {product.barcodeNumber})
+                      </button>
+                      {expandedSections.barcode.has(product.id) && (
+                        <div className="flex justify-center py-2">
+                          <BarcodeDisplay barcodeNumber={product.barcodeNumber} size="sm" showNumber={true} />
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {product.requiresWeighing && <span className="text-xs text-purple-600 block">⚖️ Requires weighing</span>}
@@ -946,22 +972,7 @@ export default function AdminProductsPage() {
                     </div>
                   )}
 
-                  <div className="border-t pt-3 grid grid-cols-3 gap-2">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Cost</p>
-                      <p className="font-semibold text-gray-900">${formatPrice(product.costPrice || 0)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">B2B</p>
-                      <p className="font-semibold text-gray-900">${formatPrice(product.b2bPrice || 0)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">B2C</p>
-                      <p className="font-semibold text-gray-900">${formatPrice(product.b2cPrice || 0)}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="grid grid-cols-2 gap-2 text-sm border-t pt-3">
                     <div>
                       <p className="text-xs text-gray-500">Stock</p>
                       <p className={Number(product.currentStock) <= Number(product.minStock || 0) && Number(product.minStock) > 0 ? "text-red-600 font-semibold" : "text-gray-900"}>
@@ -974,31 +985,52 @@ export default function AdminProductsPage() {
                     </div>
                   </div>
 
-                  {showMarginsFor === product.id && product.costPrice > 0 && (
-                    <div className="border-t pt-3 space-y-2">
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">B2B Margin</p>
-                        {product.b2bPrice > 0 ? (
-                          <div className={`text-sm font-semibold ${((product.b2bPrice - product.costPrice) / product.b2bPrice * 100) < 10 ? "text-red-600" : "text-blue-600"}`}>
-                            {((product.b2bPrice - product.costPrice) / product.b2bPrice * 100).toFixed(1)}%
-                          </div>
-                        ) : <p className="text-xs text-gray-400">No price set</p>}
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">B2C Margin</p>
-                        {product.b2cPrice > 0 ? (
-                          <div className={`text-sm font-semibold ${((product.b2cPrice - product.costPrice) / product.b2cPrice * 100) < 15 ? "text-red-600" : "text-green-600"}`}>
-                            {((product.b2cPrice - product.costPrice) / product.b2cPrice * 100).toFixed(1)}%
-                          </div>
-                        ) : <p className="text-xs text-gray-400">No price set</p>}
-                      </div>
-                    </div>
-                  )}
-
-                  <button onClick={() => setShowMarginsFor(showMarginsFor === product.id ? null : product.id)}
-                    className="w-full text-center text-xs text-gray-600 py-1 hover:text-gray-900 font-medium">
-                    {showMarginsFor === product.id ? '▼ Hide margins' : '▶ Show margins'}
+                  <button
+                    onClick={() => toggleSection(product.id, 'pricing')}
+                    className="w-full text-left py-2 text-sm font-medium text-gray-700 hover:text-gray-900 border-t flex items-center gap-2"
+                  >
+                    {expandedSections.pricing.has(product.id) ? '▼' : '▶'} Pricing & Margins
                   </button>
+
+                  {expandedSections.pricing.has(product.id) && (
+                    <>
+                      <div className="grid grid-cols-3 gap-2 py-2">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Cost</p>
+                          <p className="font-semibold text-gray-900">${formatPrice(product.costPrice || 0)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">B2B</p>
+                          <p className="font-semibold text-gray-900">${formatPrice(product.b2bPrice || 0)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">B2C</p>
+                          <p className="font-semibold text-gray-900">${formatPrice(product.b2cPrice || 0)}</p>
+                        </div>
+                      </div>
+
+                      {product.costPrice > 0 && (
+                        <div className="space-y-2 py-2 border-t">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">B2B Margin</p>
+                            {product.b2bPrice > 0 ? (
+                              <div className={`text-sm font-semibold ${((product.b2bPrice - product.costPrice) / product.b2bPrice * 100) < 10 ? "text-red-600" : "text-blue-600"}`}>
+                                {((product.b2bPrice - product.costPrice) / product.b2bPrice * 100).toFixed(1)}%
+                              </div>
+                            ) : <p className="text-xs text-gray-400">No price set</p>}
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">B2C Margin</p>
+                            {product.b2cPrice > 0 ? (
+                              <div className={`text-sm font-semibold ${((product.b2cPrice - product.costPrice) / product.b2cPrice * 100) < 15 ? "text-red-600" : "text-green-600"}`}>
+                                {((product.b2cPrice - product.costPrice) / product.b2cPrice * 100).toFixed(1)}%
+                              </div>
+                            ) : <p className="text-xs text-gray-400">No price set</p>}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
 
                   <div className="flex gap-2">
                     <button onClick={() => startEdit(product)} className="flex-1 px-2 py-2 text-xs border border-gray-200 rounded hover:bg-gray-50 font-medium">
