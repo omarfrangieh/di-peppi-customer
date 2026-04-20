@@ -24,6 +24,8 @@ export default function CategoriesPage() {
   const [error, setError] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [showInitPrompt, setShowInitPrompt] = useState(false);
 
   // Load categories from Firestore
   useEffect(() => {
@@ -126,6 +128,74 @@ export default function CategoriesPage() {
     }
   };
 
+  const handleInitializeCategories = async () => {
+    if (!window.confirm(
+      "This will extract all categories from your products and mark them as active. Continue?"
+    )) {
+      return;
+    }
+
+    setIsInitializing(true);
+    setError(null);
+
+    try {
+      // Get all unique categories from products
+      const productsSnap = await getDocs(collection(db, "products"));
+      const uniqueCategories = new Set<string>();
+
+      productsSnap.docs.forEach((doc) => {
+        const category = doc.data().category;
+        if (category && typeof category === "string") {
+          uniqueCategories.add(category);
+        }
+      });
+
+      // Add each category to productCategories collection
+      const now = new Date().toISOString();
+      let addedCount = 0;
+
+      for (const categoryName of Array.from(uniqueCategories).sort()) {
+        const categoryId = categoryName.toLowerCase().replace(/\s+/g, "-");
+
+        try {
+          await setDoc(
+            doc(db, "productCategories", categoryId),
+            {
+              name: categoryName,
+              active: true,
+              createdAt: now,
+              updatedAt: now,
+            },
+            { merge: true }
+          );
+          addedCount++;
+        } catch (err) {
+          console.warn(`Failed to add category ${categoryName}:`, err);
+        }
+      }
+
+      // Reload categories
+      const categoriesRef = collection(db, "productCategories");
+      const snapshot = await getDocs(categoriesRef);
+      const loaded = snapshot.docs
+        .map((d) => ({
+          id: d.id,
+          ...d.data(),
+        } as Category))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      setCategories(loaded);
+      setShowInitPrompt(false);
+      alert(
+        `Successfully initialized ${addedCount} categories! All are marked as active.`
+      );
+    } catch (err: any) {
+      setError(err.message || "Failed to initialize categories");
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -133,6 +203,26 @@ export default function CategoriesPage() {
         <h1 className="text-3xl font-bold text-gray-900">Category Management</h1>
         <p className="text-gray-600 mt-1">Manage product categories and visibility</p>
       </div>
+
+      {/* Initialize Prompt */}
+      {categories.length === 0 && !loading && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-blue-900 mb-2">
+            🚀 Quick Start: Initialize Categories
+          </h3>
+          <p className="text-blue-800 mb-4">
+            You have {loading ? "..." : "products"} but no categories configured yet. Click below to
+            automatically extract all categories from your products and enable them.
+          </p>
+          <button
+            onClick={handleInitializeCategories}
+            disabled={isInitializing}
+            className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-semibold rounded-lg transition-colors"
+          >
+            {isInitializing ? "Initializing..." : "Initialize Categories Now"}
+          </button>
+        </div>
+      )}
 
       {/* Add Category Form */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
