@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import CustomerHeader from "./components/CustomerHeader";
 
 export default function CustomerLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -13,5 +14,10 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
     }
   }, [router]);
 
-  return <>{children}</>;
+  return (
+    <>
+      <CustomerHeader />
+      {children}
+    </>
+  );
 }
