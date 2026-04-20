@@ -54,6 +54,18 @@ export default function PermissionsPage() {
     }
   };
 
+  const handleResetToDefaults = (role: string) => {
+    const defaultLevel = role === "Admin" ? "full" : "none";
+    setPermissions((prev) => ({
+      ...prev,
+      [role]: {
+        ...prev[role],
+        role,
+        features: FEATURES.reduce((acc, f) => ({...acc, [f]: defaultLevel}), {}),
+      },
+    }));
+  };
+
   const handlePermissionChange = (role: string, feature: string, level: string) => {
     setPermissions((prev) => ({
       ...prev,
@@ -137,9 +149,10 @@ export default function PermissionsPage() {
 
       <div className="space-y-4">
         {filteredRoles.map((role) => {
+          const defaultLevel = role === "Admin" ? "full" : "none";
           const rolePermissions = permissions[role] || {
             role,
-            features: FEATURES.reduce((acc, f) => ({...acc, [f]: "none"}), {}),
+            features: FEATURES.reduce((acc, f) => ({...acc, [f]: defaultLevel}), {}),
           };
 
           const isExpanded = expandedRoles.has(role);
@@ -198,7 +211,7 @@ export default function PermissionsPage() {
                   </table>
                 </div>
 
-                <div className="mt-4">
+                <div className="mt-4 flex gap-3">
                   <button
                     onClick={() => handleSave(role)}
                     disabled={saving}
@@ -206,6 +219,13 @@ export default function PermissionsPage() {
                     style={{backgroundColor: "#1B2A5E", opacity: saving ? 0.6 : 1}}
                   >
                     {saving ? "Saving..." : "Save Changes"}
+                  </button>
+                  <button
+                    onClick={() => handleResetToDefaults(role)}
+                    disabled={saving}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all"
+                  >
+                    Reset to Defaults
                   </button>
                 </div>
               </div>
