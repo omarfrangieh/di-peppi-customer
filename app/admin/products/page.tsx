@@ -61,15 +61,63 @@ export default function AdminProductsPage() {
   const [isPrinting, setIsPrinting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Validate EAN-13 barcode format and check digit
+  const validateEAN13 = (barcode: string): boolean => {
+    if (!barcode || barcode.length !== 13) return false;
+    if (!/^\d{13}$/.test(barcode)) return false;
+
+    // Verify check digit
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+      const digit = parseInt(barcode[i], 10);
+      sum += digit * (i % 2 === 0 ? 1 : 3);
+    }
+    const calculatedCheckDigit = (10 - (sum % 10)) % 10;
+    const providedCheckDigit = parseInt(barcode[12], 10);
+
+    return calculatedCheckDigit === providedCheckDigit;
+  };
+
+  // Generate valid EAN-13 barcode with GS1 compliance
   const generateBarcode = () => {
+    // GS1 prefix for your region (using 89x for international)
+    const gs1Prefix = "890"; // 890-899 is international allocation
+
+    // Generate 9 random digits for the product code
     const timestamp = Date.now().toString();
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, "0");
-    return `${timestamp}${random}`.slice(-12);
+    const random = Math.floor(Math.random() * 1000000).toString().padStart(6, "0");
+    const combined = (timestamp + random).slice(-9); // Get last 9 digits
+
+    // 12 digits before check digit: GS1(3) + ProductCode(9)
+    const code12 = gs1Prefix + combined;
+
+    // Verify we have exactly 12 digits
+    if (code12.length !== 12 || !/^\d{12}$/.test(code12)) {
+      console.error("Invalid code12 length:", code12);
+      return null;
+    }
+
+    // Calculate EAN-13 check digit using GS1 algorithm
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+      const digit = parseInt(code12[i], 10);
+      sum += digit * (i % 2 === 0 ? 1 : 3);
+    }
+    const checkDigit = (10 - (sum % 10)) % 10;
+
+    return code12 + checkDigit;
   };
 
   const printSingleBarcode = async (product: any) => {
     if (!product.barcodeNumber) {
       alert("No barcode to print");
+      return;
+    }
+
+    // Validate barcode is proper EAN-13 format (13 digits)
+    const barcode = String(product.barcodeNumber).trim();
+    if (!/^\d{13}$/.test(barcode)) {
+      alert(`Invalid barcode format: "${barcode}". Must be 13 digits for EAN-13.`);
       return;
     }
 
@@ -83,58 +131,63 @@ export default function AdminProductsPage() {
         <style>
           * { margin: 0; padding: 0; }
           html, body { width: 100%; height: 100%; }
-          body { font-family: Arial, sans-serif; background: #f5f5f5; display: flex; align-items: center; justify-content: center; padding: 20mm; }
+          body { font-family: Arial, sans-serif; background: white; display: flex; align-items: center; justify-content: center; padding: 0; }
           .page { width: 210mm; height: 297mm; background: white; display: flex; align-items: center; justify-content: center; }
           .label {
-            width: 100mm;
-            height: 150mm;
-            padding: 10mm;
+            width: 50.8mm;
+            height: 25.4mm;
+            padding: 1.5mm;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
             border: 1px solid #999;
             background: white;
+            gap: 0.5mm;
           }
           .product-name {
-            font-size: 13pt;
+            font-size: 4pt;
             font-weight: bold;
             text-align: center;
             word-wrap: break-word;
             width: 100%;
-            line-height: 1.3;
+            line-height: 1;
             flex: 0 0 auto;
+            display: none;
           }
           .barcode-container {
             text-align: center;
-            margin: 5mm 0;
-            flex: 1;
+            margin: 0;
+            flex: 0 0 auto;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             width: 100%;
           }
           .barcode-container svg {
-            width: 90mm;
+            width: 45mm;
             height: auto;
-            max-height: 60mm;
+            max-height: 12mm;
           }
           .barcode-number {
-            font-size: 10pt;
+            font-size: 5pt;
             font-family: monospace;
             font-weight: bold;
-            letter-spacing: 2px;
+            letter-spacing: 0px;
             text-align: center;
             width: 100%;
             flex: 0 0 auto;
+            margin-top: 0.5mm;
           }
           .supplier {
-            font-size: 8pt;
+            font-size: 4pt;
             color: #666;
             text-align: center;
             width: 100%;
             flex: 0 0 auto;
+            display: none;
           }
           @page { size: A4; margin: 0; }
           @media print {
@@ -157,10 +210,11 @@ export default function AdminProductsPage() {
         </div>
         <script>
           JsBarcode("#barcode", "${product.barcodeNumber}", {
-            format: "CODE128",
-            width: 2.5,
-            height: 50,
-            displayValue: false
+            format: "EAN13",
+            width: 2,
+            height: 80,
+            displayValue: false,
+            margin: 5
           });
           setTimeout(() => window.print(), 500);
         </script>
@@ -197,10 +251,20 @@ export default function AdminProductsPage() {
       });
 
       const selected = Array.from(selectedForPrint);
-      const productsToExport = products.filter(p => selected.includes(p.id) && p.barcodeNumber);
+      const productsToExport = products.filter(p => {
+        if (!selected.includes(p.id) || !p.barcodeNumber) return false;
+        // Validate EAN-13 format
+        const barcode = String(p.barcodeNumber).trim();
+        return /^\d{13}$/.test(barcode);
+      });
 
-      const labelWidth = 100; // mm
-      const labelHeight = 150; // mm
+      if (productsToExport.length === 0) {
+        alert("No products with valid EAN-13 barcodes to export");
+        return;
+      }
+
+      const labelWidth = 50.8; // mm (2 inches)
+      const labelHeight = 25.4; // mm (1 inch)
       const pageHeight = 297; // A4 height in mm
       const pageWidth = 210; // A4 width in mm
       const labelOffsetX = (pageWidth - labelWidth) / 2; // Center horizontally
@@ -213,52 +277,56 @@ export default function AdminProductsPage() {
         const labelElement = document.createElement("div");
         labelElement.style.width = `${labelWidth}mm`;
         labelElement.style.height = `${labelHeight}mm`;
-        labelElement.style.padding = "10mm";
+        labelElement.style.padding = "1.5mm";
         labelElement.style.boxSizing = "border-box";
+        labelElement.style.border = "1px solid #999";
         labelElement.style.display = "flex";
         labelElement.style.flexDirection = "column";
-        labelElement.style.justifyContent = "space-between";
+        labelElement.style.justifyContent = "center";
         labelElement.style.alignItems = "center";
+        labelElement.style.gap = "0.5mm";
         labelElement.style.fontFamily = "Arial";
         labelElement.style.backgroundColor = "white";
-        labelElement.style.border = "1px solid #999";
         labelElement.style.position = "absolute";
         labelElement.style.left = "-9999px";
 
         const nameDiv = document.createElement("div");
-        nameDiv.style.fontSize = "13pt";
+        nameDiv.style.fontSize = "4pt";
         nameDiv.style.fontWeight = "bold";
         nameDiv.style.textAlign = "center";
         nameDiv.style.wordWrap = "break-word";
         nameDiv.style.width = "100%";
-        nameDiv.style.lineHeight = "1.3";
+        nameDiv.style.lineHeight = "1";
+        nameDiv.style.display = "none";
         nameDiv.textContent = product.name;
 
         const barcodeContainer = document.createElement("div");
         barcodeContainer.style.textAlign = "center";
-        barcodeContainer.style.margin = "5mm 0";
-        barcodeContainer.style.flex = "1";
+        barcodeContainer.style.margin = "0";
+        barcodeContainer.style.flex = "0 0 auto";
         barcodeContainer.style.display = "flex";
+        barcodeContainer.style.flexDirection = "column";
         barcodeContainer.style.alignItems = "center";
         barcodeContainer.style.justifyContent = "center";
         barcodeContainer.style.width = "100%";
 
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        svg.style.width = "90mm";
+        svg.style.width = "45mm";
         svg.style.height = "auto";
-        svg.style.maxHeight = "60mm";
+        svg.style.maxHeight = "12mm";
 
         const barcodeNumberDiv = document.createElement("div");
-        barcodeNumberDiv.style.fontSize = "10pt";
+        barcodeNumberDiv.style.fontSize = "5pt";
         barcodeNumberDiv.style.fontFamily = "monospace";
         barcodeNumberDiv.style.fontWeight = "bold";
-        barcodeNumberDiv.style.letterSpacing = "2px";
+        barcodeNumberDiv.style.letterSpacing = "0px";
         barcodeNumberDiv.style.textAlign = "center";
         barcodeNumberDiv.style.width = "100%";
+        barcodeNumberDiv.style.marginTop = "0.5mm";
         barcodeNumberDiv.textContent = product.barcodeNumber;
 
         const supplierDiv = document.createElement("div");
-        supplierDiv.style.fontSize = "8pt";
+        supplierDiv.style.fontSize = "9pt";
         supplierDiv.style.color = "#666";
         supplierDiv.style.textAlign = "center";
         supplierDiv.style.width = "100%";
@@ -272,13 +340,14 @@ export default function AdminProductsPage() {
 
         document.body.appendChild(labelElement);
 
-        // Generate barcode with jsbarcode
+        // Generate barcode with jsbarcode (EAN-13 with GS1 compliance)
         const JsBarcode = (window as any).JsBarcode;
         JsBarcode(svg, product.barcodeNumber, {
-          format: "CODE128",
-          width: 2.5,
-          height: 50,
+          format: "EAN13",
+          width: 2,
+          height: 80,
           displayValue: false,
+          margin: 5,
         });
 
         // Convert to canvas
@@ -569,22 +638,31 @@ export default function AdminProductsPage() {
             </button>
             <button onClick={() => {
               const selected = Array.from(selectedForPrint);
-              const productsToExport = products.filter(p => selected.includes(p.id) && p.barcodeNumber);
+              const productsToExport = products.filter(p => {
+                if (!selected.includes(p.id) || !p.barcodeNumber) return false;
+                // Validate EAN-13 format
+                const barcode = String(p.barcodeNumber).trim();
+                return /^\d{13}$/.test(barcode);
+              });
+              if (productsToExport.length === 0) {
+                alert("No products with valid EAN-13 barcodes to print");
+                return;
+              }
               const printWindow = window.open("", "_blank");
               if (!printWindow) return;
               let html = `<!DOCTYPE html><html><head><style>
                 * { margin: 0; padding: 0; }
                 html, body { width: 100%; height: 100%; }
-                body { font-family: Arial, sans-serif; background: #f5f5f5; }
+                body { font-family: Arial, sans-serif; background: white; }
                 .page { width: 210mm; height: 297mm; background: white; display: flex; align-items: center; justify-content: center; page-break-after: always; }
-                .label { width: 100mm; height: 150mm; padding: 10mm; box-sizing: border-box; display: flex;
-                  flex-direction: column; justify-content: space-between; align-items: center;
+                .label { width: 50.8mm; height: 25.4mm; padding: 1.5mm; box-sizing: border-box; display: flex;
+                  flex-direction: column; justify-content: center; align-items: center; gap: 0.5mm;
                   border: 1px solid #999; background: white; }
-                .product-name { font-size: 13pt; font-weight: bold; text-align: center; word-wrap: break-word; width: 100%; line-height: 1.3; flex: 0 0 auto; }
-                .barcode-container { text-align: center; margin: 5mm 0; flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
-                .barcode-container svg { width: 90mm; height: auto; max-height: 60mm; }
-                .barcode-number { font-size: 10pt; font-family: monospace; font-weight: bold; letter-spacing: 2px; text-align: center; width: 100%; flex: 0 0 auto; }
-                .supplier { font-size: 8pt; color: #666; text-align: center; width: 100%; flex: 0 0 auto; }
+                .product-name { font-size: 4pt; font-weight: bold; text-align: center; word-wrap: break-word; width: 100%; line-height: 1; display: none; }
+                .barcode-container { text-align: center; margin: 0; flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; }
+                .barcode-container svg { width: 45mm; height: auto; max-height: 12mm; }
+                .barcode-number { font-size: 5pt; font-family: monospace; font-weight: bold; letter-spacing: 0px; text-align: center; width: 100%; margin-top: 0.5mm; }
+                .supplier { font-size: 4pt; color: #666; text-align: center; width: 100%; display: none; }
                 @page { size: A4; margin: 0; }
                 @media print { body { background: white; } .page { width: 210mm; height: 297mm; page-break-after: always; } }
               </style>
@@ -600,7 +678,7 @@ export default function AdminProductsPage() {
               });
               html += `<script>
                 ${productsToExport.map((p: any, idx: number) =>
-                  `JsBarcode("#barcode${idx}", "${p.barcodeNumber}", {format: "CODE128", width: 2.5, height: 50, displayValue: false});`
+                  `JsBarcode("#barcode${idx}", "${p.barcodeNumber}", {format: "EAN13", width: 2, height: 80, displayValue: false, margin: 5});`
                 ).join("\n")}
                 setTimeout(() => window.print(), 500);
               <\/script></body></html>`;
@@ -753,13 +831,17 @@ export default function AdminProductsPage() {
                       <input value={editData.barcodeNumber || ""} onChange={e => setEditData((p: any) => ({ ...p, barcodeNumber: e.target.value }))}
                         placeholder="Enter or generate..." className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
                     </div>
-                    <button onClick={() => setEditData((p: any) => ({ ...p, barcodeNumber: generateBarcode() }))}
+                    <button onClick={() => {
+                      const newBarcode = generateBarcode();
+                      setEditData((p: any) => ({ ...p, barcodeNumber: newBarcode }));
+                    }}
                       className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300 font-medium">
                       Generate
                     </button>
                   </div>
 
-                  {editData.barcodeNumber && <BarcodeDisplay barcodeNumber={editData.barcodeNumber} size="md" showNumber={true} />}
+                  {editData.barcodeNumber && /^\d{13}$/.test(String(editData.barcodeNumber).trim()) && <BarcodeDisplay barcodeNumber={editData.barcodeNumber} size="md" showNumber={true} />}
+                  {editData.barcodeNumber && !/^\d{13}$/.test(String(editData.barcodeNumber).trim()) && <div className="text-xs text-red-500 font-medium">⚠️ Invalid barcode (must be 13 digits). Click Generate for a valid EAN-13.</div>}
 
                   <div className="border-t pt-3">
                     <div className="grid grid-cols-3 gap-2">
@@ -1081,11 +1163,15 @@ export default function AdminProductsPage() {
                         placeholder="Enter supplier barcode or leave empty to generate"
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
                     </div>
-                    <button onClick={() => setNewProduct((p:any) => ({...p, barcodeNumber: generateBarcode()}))}
+                    <button onClick={() => {
+                      const newBarcode = generateBarcode();
+                      setNewProduct((p:any) => ({...p, barcodeNumber: newBarcode}));
+                    }}
                       className="px-3 py-2 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 font-medium whitespace-nowrap">
                       Generate
                     </button>
                   </div>
+                  {newProduct.barcodeNumber && !/^\d{13}$/.test(String(newProduct.barcodeNumber).trim()) && <div className="text-xs text-red-500 font-medium">⚠️ Invalid barcode (must be 13 digits)</div>}
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Cost Price ($)</label>
