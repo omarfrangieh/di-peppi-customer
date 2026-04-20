@@ -466,6 +466,7 @@ export default function AdminProductsPage() {
                     </button>
                   </div>
                 </div>
+                </div>
               ) : (
                 /* VIEW MODE */
                 <div className="space-y-3">
