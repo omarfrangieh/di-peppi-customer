@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 interface Product {
   id: string;
@@ -74,9 +74,8 @@ export default function SearchFilter({
     onFilterChange(filtered);
   }, [products, searchText, selectedCategory, selectedStorageType, selectedOrigin, onFilterChange]);
 
-  // Call filter whenever any filter changes
-  // (In a real app, you might debounce the search input)
-  useMemo(() => {
+  // Call filter whenever any filter changes (using useEffect to avoid render-time state updates)
+  useEffect(() => {
     filterProducts();
   }, [filterProducts]);
 

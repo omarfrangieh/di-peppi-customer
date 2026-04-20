@@ -79,6 +79,28 @@ export default function PermissionsPage() {
     }));
   };
 
+  const handleResetAllToDefaults = async () => {
+    setSaving(true);
+    setMessage("");
+    try {
+      const updatePermissionsFn = httpsCallable(functions, "updatePermissions");
+      const newPermissions: Permissions = {};
+      for (const role of ROLES) {
+        const defaultLevel = role === "Admin" ? "full" : "none";
+        const features = FEATURES.reduce((acc, f) => ({...acc, [f]: defaultLevel}), {} as Record<string, string>);
+        await updatePermissionsFn({ role, features });
+        newPermissions[role] = { role, features };
+      }
+      setPermissions(newPermissions);
+      setMessage("✓ All permissions reset to defaults");
+      setTimeout(() => setMessage(""), 3000);
+    } catch (err: any) {
+      setMessage(`Failed to reset: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSave = async (role: string) => {
     setSaving(true);
     setMessage("");
@@ -122,9 +144,18 @@ export default function PermissionsPage() {
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Permissions</h1>
-        <p className="text-sm text-gray-600">Manage role-based access control</p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Permissions</h1>
+          <p className="text-sm text-gray-600">Manage role-based access control</p>
+        </div>
+        <button
+          onClick={handleResetAllToDefaults}
+          disabled={saving}
+          className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
+        >
+          Reset All to Defaults
+        </button>
       </div>
 
       {message && (
