@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "@/lib/firebase";
 import { formatPrice } from "@/lib/formatters";
 import { useRouter } from "next/navigation";
+import SearchInput from "@/components/SearchInput";
 
-const CUSTOMER_TYPES = ["B2B", "B2C", "Owner"];
+const CUSTOMER_TYPES = ["B2B", "B2C", "Blogger", "Owner"];
 
 function Field({ label, value, onChange, type = "text" }: { label: string; value: any; onChange: (v: string) => void; type?: string }) {
   return (
@@ -33,28 +35,37 @@ export default function AdminCustomersPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [showPricesFor, setShowPricesFor] = useState<string | null>(null);
   const [newCustomer, setNewCustomer] = useState<any>({ customerType: "", country: "Lebanon" });
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [docPreview, setDocPreview] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { void load(); }, []);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [custSnap, prodSnap] = await Promise.all([
-        getDocs(collection(db, "customers")),
-        getDocs(collection(db, "products")),
-      ]);
+      const custSnap = await getDocs(collection(db, "customers"));
       const cdata = custSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const pdata = prodSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setCustomers(cdata.sort((a, b) => {
-        // Hold clients always go to the bottom
+      setCustomers(cdata.sort((a: any, b: any) => {
         if (a.manualHold && !b.manualHold) return 1;
         if (!a.manualHold && b.manualHold) return -1;
         return (a.name || "").localeCompare(b.name || "");
       }));
-      setProducts(pdata.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
-    } finally {
-      setLoading(false);
+      setLoadError(null);
+    } catch (err: any) {
+      console.error("Failed to load customers:", err);
+      setLoadError(err.message || "Failed to load");
     }
+    try {
+      const prodSnap = await getDocs(collection(db, "products"));
+      setProducts(prodSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")));
+    } catch (err) {
+      console.warn("Failed to load products:", err);
+    }
+    setLoading(false);
   };
 
   const startEdit = (c: any) => {
@@ -124,6 +135,50 @@ export default function AdminCustomersPage() {
     }
   };
 
+  const handleLogoUpload = async (file: File, customerId: string) => {
+    setUploadingLogo(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const storagePath = `customers/${customerId}/logo/logo.${ext}`;
+      const storageRef = ref(storage, storagePath);
+      await uploadBytes(storageRef, file, { contentType: file.type });
+      const url = await getDownloadURL(storageRef);
+      await updateDoc(doc(db, "customers", customerId), {
+        logoUrl: url,
+        logoPath: storagePath,
+      });
+      setEditData((p: any) => ({ ...p, logoUrl: url }));
+      setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, logoUrl: url } : c));
+    } catch (err: any) {
+      alert("Logo upload failed: " + err.message);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleDocUpload = async (file: File, customerId: string) => {
+    setUploadingDoc(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "pdf";
+      const storagePath = `customers/${customerId}/documents/official.${ext}`;
+      const storageRef = ref(storage, storagePath);
+      await uploadBytes(storageRef, file, { contentType: file.type });
+      const url = await getDownloadURL(storageRef);
+      await updateDoc(doc(db, "customers", customerId), {
+        documentUrl: url,
+        documentPath: storagePath,
+        documentType: file.type,
+        documentMigratedAt: new Date().toISOString(),
+      });
+      setEditData((p: any) => ({ ...p, documentUrl: url, documentPath: storagePath, documentType: file.type }));
+      setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, documentUrl: url } : c));
+    } catch (err: any) {
+      alert("Upload failed: " + err.message);
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
   const filtered = customers.filter(c => {
     const matchSearch = (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
       (c.city || "").toLowerCase().includes(search.toLowerCase());
@@ -143,6 +198,16 @@ export default function AdminCustomersPage() {
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  if (loadError) return (
+    <div className="min-h-screen flex items-center justify-center flex-col gap-4">
+      <p className="text-red-500 font-medium">⚠️ {loadError}</p>
+      <button onClick={() => { setLoadError(null); void load(); }}
+        className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg">Retry</button>
+      <button onClick={() => router.push("/admin/login")}
+        className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600">Re-login</button>
     </div>
   );
 
@@ -171,9 +236,20 @@ export default function AdminCustomersPage() {
             className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 font-medium text-gray-700">
             ↑ Import CSV
           </button>
-          <input type="text" placeholder="Search customers..." value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 w-48" />
+          {holdFiltered.length > 0 && (
+            <button
+              onClick={() => document.getElementById("hold-section")?.scrollIntoView({ behavior: "smooth" })}
+              className="px-4 py-2 text-sm border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg font-medium flex items-center gap-1.5">
+              ⚠️ On Hold <span className="bg-red-200 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded-full">{holdFiltered.length}</span>
+            </button>
+          )}
+
+          <SearchInput
+            placeholder="Search customers..."
+            value={search}
+            onChange={setSearch}
+            className="w-48"
+          />
         </div>
       </div>
 
@@ -274,13 +350,52 @@ export default function AdminCustomersPage() {
             </div>
           </div>
         )}
-        {filtered.map(customer => {
+        {[...activeFiltered, ...(holdFiltered.length > 0 ? [{ __divider: true } as any] : []), ...holdFiltered].map((customer, idx) => {
+          if (customer.__divider) return (
+            <div key="hold-divider" id="hold-section" className="flex items-center gap-3 pt-4">
+              <div className="flex-1 h-px bg-red-100" />
+              <span className="text-xs font-semibold text-red-400 uppercase tracking-widest">
+                ⚠️ On Hold — {holdFiltered.length} {holdFiltered.length === 1 ? "client" : "clients"}
+              </span>
+              <div className="flex-1 h-px bg-red-100" />
+            </div>
+          );
           const specialCount = Object.keys(customer.specialPrices || {}).length;
+          const isHold = customer.manualHold;
           return (
-            <div key={customer.id}>
-              <div className={`bg-white rounded-xl border border-gray-200 overflow-hidden ${customer.active === false ? "opacity-50" : ""}`}>
+            <div key={customer.id} className={isHold ? "opacity-70 hover:opacity-100 transition-opacity" : ""}>
+              <div className={`bg-white rounded-xl overflow-hidden ${isHold ? "border border-red-100" : "border border-gray-200"} ${customer.active === false ? "opacity-50" : ""}`}>
               {editing === customer.id ? (
                 <div className="p-5">
+                  {/* Logo */}
+                  <div className="flex items-center gap-5 mb-5 pb-5 border-b border-gray-100">
+                    <div className="relative flex-shrink-0">
+                      {editData.logoUrl ? (
+                        <img src={editData.logoUrl} alt={editData.name}
+                          className="w-24 h-24 rounded-xl object-contain border border-gray-200 bg-white p-1" />
+                      ) : (
+                        <div className="w-24 h-24 rounded-xl bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center">
+                          <span className="text-3xl font-bold text-gray-300">
+                            {(editData.name || "?").charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 mb-1">Customer Photo / Logo</p>
+                      <p className="text-xs text-gray-400 mb-2">JPG, PNG, HEIC accepted</p>
+                      <input ref={logoInputRef} type="file" accept="image/*,.heic"
+                        className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f, customer.id); }} />
+                      <button onClick={() => logoInputRef.current?.click()} disabled={uploadingLogo}
+                        className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5">
+                        {uploadingLogo
+                          ? <><span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin inline-block" /> Uploading...</>
+                          : <><span>⬆</span> {editData.logoUrl ? "Change Photo" : "Upload Photo"}</>}
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Basic Info */}
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Basic Info</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
@@ -293,7 +408,7 @@ export default function AdminCustomersPage() {
                         {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
                       </select>
                     </div>
-                    <Field label="Phone" value={editData.phone} onChange={(v: string) => setEditData((p: any) => ({ ...p, phone: v }))} />
+                    <Field label="Phone" value={editData.phoneNumber} onChange={(v: string) => setEditData((p: any) => ({ ...p, phoneNumber: v }))} />
                     <Field label="Delivery Fee $" value={editData.deliveryFee} onChange={(v: string) => setEditData((p: any) => ({ ...p, deliveryFee: v }))} type="number" />
                   </div>
 
@@ -317,11 +432,17 @@ export default function AdminCustomersPage() {
                     <Field label="Client Discount %" value={editData.clientDiscount} onChange={(v: string) => setEditData((p: any) => ({ ...p, clientDiscount: v }))} type="number" />
                     <div className="flex items-center gap-4 pt-4">
                       <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                        <input type="checkbox" checked={editData.active !== false} onChange={e => setEditData((p: any) => ({ ...p, active: e.target.checked }))} className="w-4 h-4" />
+                        <input type="checkbox"
+                          checked={editData.active !== false && !editData.manualHold}
+                          onChange={e => setEditData((p: any) => ({ ...p, active: e.target.checked, manualHold: e.target.checked ? false : p.manualHold }))}
+                          className="w-4 h-4" />
                         Active
                       </label>
                       <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                        <input type="checkbox" checked={Boolean(editData.manualHold)} onChange={e => setEditData((p: any) => ({ ...p, manualHold: e.target.checked }))} className="w-4 h-4" />
+                        <input type="checkbox"
+                          checked={Boolean(editData.manualHold)}
+                          onChange={e => setEditData((p: any) => ({ ...p, manualHold: e.target.checked, active: e.target.checked ? false : p.active }))}
+                          className="w-4 h-4" />
                         Manual Hold
                       </label>
                     </div>
@@ -329,9 +450,12 @@ export default function AdminCustomersPage() {
 
                   {/* Special Prices */}
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Special Prices</p>
-                  <input type="text" placeholder="Search products..." value={priceSearch}
-                    onChange={e => setPriceSearch(e.target.value)}
-                    className="mb-3 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 w-64" />
+                  <SearchInput
+                    placeholder="Search products..."
+                    value={priceSearch}
+                    onChange={setPriceSearch}
+                    className="mb-3 w-64"
+                  />
                   <div className="flex flex-col gap-2 max-h-64 overflow-y-auto border border-gray-100 rounded-lg p-3">
                     {filteredProducts.map(product => {
                       const sp = Number(editPrices[product.id] || 0);
@@ -363,6 +487,48 @@ export default function AdminCustomersPage() {
                   </div>
                   <p className="text-xs text-gray-400 mt-1">{Object.values(editPrices).filter(v => v !== "").length} special prices set</p>
 
+                  {/* Official Document — B2B only */}
+                  {editData.customerType === "B2B" && (
+                    <div className="mt-5">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Official Document</p>
+                      <div className="flex items-center gap-4 flex-wrap">
+                        {editData.documentUrl ? (
+                          <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                            {editData.documentType?.startsWith("image/") ? (
+                              <img src={editData.documentUrl} alt="Document" className="w-16 h-16 object-cover rounded cursor-pointer border border-gray-200"
+                                onClick={() => setDocPreview(editData.documentUrl)} />
+                            ) : (
+                              <div className="w-16 h-16 flex items-center justify-center bg-red-50 rounded border border-red-100 cursor-pointer"
+                                onClick={() => window.open(editData.documentUrl, "_blank")}>
+                                <span className="text-2xl">📄</span>
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-xs font-medium text-gray-700">Current document</p>
+                              <p className="text-xs text-gray-400">{editData.documentType || "PDF"}</p>
+                              <button onClick={() => window.open(editData.documentUrl, "_blank")}
+                                className="text-xs text-blue-600 hover:underline mt-0.5">Open ↗</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 italic">No document on file</p>
+                        )}
+                        <div>
+                          <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
+                            className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f) handleDocUpload(f, customer.id); }} />
+                          <button onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}
+                            className="px-3 py-2 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5">
+                            {uploadingDoc
+                              ? <><span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin inline-block" /> Uploading...</>
+                              : <><span>⬆</span> {editData.documentUrl ? "Replace Document" : "Upload Document"}</>}
+                          </button>
+                          <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG accepted</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Actions */}
                   <div className="flex gap-2 pt-4 border-t border-gray-100 mt-4">
                     <button onClick={() => saveCustomer(customer.id)} disabled={saving === customer.id}
@@ -376,7 +542,18 @@ export default function AdminCustomersPage() {
               ) : (
                 <div className="px-5 py-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-6 flex-1">
+                    <div className="flex items-center gap-4 flex-1">
+                      {/* Logo */}
+                      {customer.logoUrl ? (
+                        <img src={customer.logoUrl} alt={customer.name}
+                          className="w-20 h-20 rounded-xl object-contain border border-gray-200 flex-shrink-0 bg-white p-1" />
+                      ) : (
+                        <div className="w-20 h-20 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center flex-shrink-0">
+                          <span className="text-2xl font-bold text-gray-400">
+                            {(customer.name || "?").charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-medium text-gray-900">{customer.name || "—"}</p>
@@ -395,7 +572,7 @@ export default function AdminCustomersPage() {
                         </p>
                       </div>
                       <div className="hidden md:flex items-center gap-4 text-sm text-gray-600 flex-wrap">
-                        {customer.phone && <a href={"https://wa.me/" + String(customer.phone).replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">📞 {customer.phone}</a>}
+                        {(customer.phoneNumber || customer.phone) && <a href={"https://wa.me/" + String(customer.phoneNumber || customer.phone).replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">📞 {customer.phoneNumber || customer.phone}</a>}
                         {customer.deliveryFee > 0 && <span>🚚 ${customer.deliveryFee}</span>}
                         {customer.walletBalance > 0 && <span className="text-blue-600 font-medium">💰 Wallet: ${formatPrice(customer.walletBalance)}</span>}
                         {customer.clientMargin > 0 && <span>📊 {customer.clientMargin}% margin</span>}
@@ -403,18 +580,27 @@ export default function AdminCustomersPage() {
                         {customer.mapsLink && <a href={customer.mapsLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs">📍 Maps</a>}
                       </div>
                     </div>
-                    <button onClick={() => { setShowAdd(false); startEdit(customer); }} className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-100 ml-4">Edit</button>
+                    <button onClick={() => { setShowAdd(false); startEdit(customer); }} className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-100 ml-4 flex-shrink-0">Edit</button>
                   </div>
 
-                  {/* Special Prices Toggle Button */}
-                  {specialCount > 0 && showPricesFor !== customer.id && (
-                    <div className="mt-3 pt-3 border-t border-gray-100">
-                      <button
-                        onClick={() => setShowPricesFor(customer.id)}
-                        className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900 transition-colors">
-                        🏷️ {specialCount} Special {specialCount === 1 ? "Price" : "Prices"}
-                        <span className="transition-transform duration-200">▾</span>
-                      </button>
+                  {/* Footer row: special prices + document */}
+                  {(specialCount > 0 || customer.documentUrl) && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-4 flex-wrap">
+                      {specialCount > 0 && showPricesFor !== customer.id && (
+                        <button
+                          onClick={() => setShowPricesFor(customer.id)}
+                          className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900 transition-colors">
+                          🏷️ {specialCount} Special {specialCount === 1 ? "Price" : "Prices"}
+                          <span className="transition-transform duration-200">▾</span>
+                        </button>
+                      )}
+                      {customer.documentUrl && customer.customerType === "B2B" && (
+                        <button
+                          onClick={() => customer.documentType?.startsWith("image/") ? setDocPreview(customer.documentUrl) : window.open(customer.documentUrl, "_blank")}
+                          className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 transition-colors border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50">
+                          {customer.documentType?.startsWith("image/") ? "🖼" : "📄"} View Document
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -458,7 +644,26 @@ export default function AdminCustomersPage() {
             </div>
           );
         })}
+
       </div>
+
+      {/* Document Lightbox */}
+      {docPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setDocPreview(null)}>
+          <div className="relative max-w-3xl w-full" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setDocPreview(null)}
+              className="absolute -top-10 right-0 text-white text-2xl font-bold hover:text-gray-300">✕</button>
+            <img src={docPreview} alt="Official Document" className="w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
+            <div className="flex justify-center mt-3">
+              <a href={docPreview} target="_blank" rel="noopener noreferrer"
+                className="px-4 py-2 bg-white text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-100">
+                Open Full Size ↗
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

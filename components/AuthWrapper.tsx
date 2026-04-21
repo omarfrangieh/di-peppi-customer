@@ -68,8 +68,14 @@ export default function AuthWrapper({ children }: { children: ReactNode }) {
         return;
       }
 
-      unsubscribe = onAuthStateChanged(auth, () => {
+      unsubscribe = onAuthStateChanged(auth, (user) => {
         setLoading(false);
+        // If Firebase loses the auth session after we were logged in, redirect to login
+        if (!user && !isLoginPage) {
+          localStorage.removeItem("session");
+          localStorage.removeItem("customToken");
+          router.push("/admin/login");
+        }
       });
     };
 

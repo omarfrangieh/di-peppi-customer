@@ -3,6 +3,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { formatQty, formatPrice } from "@/lib/formatters";
+import SearchInput from "@/components/SearchInput";
 
 function stockStatus(p: any) {
   const cur = Number(p.currentStock || 0);
@@ -321,8 +322,12 @@ export default function StockPage() {
               <option value="stock">Sort: Stock Level</option>
               <option value="value">Sort: Stock Value</option>
             </select>
-            <input type="text" placeholder="Search products..." value={search} onChange={e => setSearch(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg w-48 focus:outline-none focus:ring-2 focus:ring-gray-900" />
+            <SearchInput
+              placeholder="Search products..."
+              value={search}
+              onChange={setSearch}
+              className="w-48"
+            />
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -408,7 +413,12 @@ export default function StockPage() {
             {/* Add Products Section */}
             <div>
               <p className="text-xs text-gray-600 mb-2">Add more products to count:</p>
-              <input type="text" placeholder="Search products..." value={countSearch} onChange={e => setCountSearch(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded mb-2" />
+              <SearchInput
+                placeholder="Search products..."
+                value={countSearch}
+                onChange={setCountSearch}
+                className="w-full mb-2"
+              />
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto">
                 {filtered.filter(p => !countItems.some(i => i.productId === p.id) && (!countSearch || p.name.toLowerCase().includes(countSearch.toLowerCase()))).map(p => (
                   <button key={p.id} onClick={() => handleAddCountItem(p)} className="px-2 py-1.5 text-xs border border-blue-300 bg-white text-blue-700 rounded hover:bg-blue-100 text-left">

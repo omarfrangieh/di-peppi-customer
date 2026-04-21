@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { formatPrice } from "@/lib/formatters";
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 interface OrderItem {
   productId: string;
@@ -13,6 +15,7 @@ interface OrderItem {
 
 interface Order {
   id: string;
+  name?: string;
   customerId: string;
   status: "pending" | "confirmed" | "delivered" | "cancelled";
   items: OrderItem[];
@@ -37,41 +40,70 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Mock order data for MVP - in production would fetch from Cloud Function
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    const fetchOrder = async () => {
+      setLoading(true);
+      setError(null);
 
-    try {
-      const sessionStr = localStorage.getItem("session");
-      if (!sessionStr) {
-        router.push("/customer/login");
-        return;
+      try {
+        const sessionStr = localStorage.getItem("session");
+        if (!sessionStr) {
+          router.push("/customer/login");
+          return;
+        }
+
+        // Fetch order document
+        const orderSnap = await getDoc(doc(db, "orders", orderId));
+        if (!orderSnap.exists()) {
+          setError("Order not found");
+          return;
+        }
+        const orderData = orderSnap.data();
+
+        // Items are stored directly on the order document as an array
+        const items: OrderItem[] = Array.isArray(orderData.items)
+          ? orderData.items.map((item: any) => ({
+              productId: item.productId,
+              productName: item.productName,
+              quantity: item.quantity,
+              priceAtTime: item.priceAtTime ?? item.unitPrice ?? 0,
+            }))
+          : [];
+
+        // Convert Firestore Timestamps to strings
+        const toDateStr = (val: any) => {
+          if (!val) return new Date().toISOString();
+          if (typeof val?.toDate === "function") return val.toDate().toISOString();
+          if (typeof val === "object" && val.seconds) return new Date(val.seconds * 1000).toISOString();
+          return String(val);
+        };
+
+        const subtotal = items.reduce((s, i) => s + i.priceAtTime * i.quantity, 0);
+
+        setOrder({
+          id: orderId,
+          name: orderData.name || orderData.orderNumber || undefined,
+          customerId: orderData.customerId,
+          status: (orderData.status || "confirmed").toLowerCase() as any,
+          items,
+          subtotal: orderData.subtotal ?? subtotal,
+          deliveryFee: orderData.deliveryFee ?? 0,
+          total: orderData.grandTotal ?? orderData.total ?? subtotal,
+          deliveryDate: toDateStr(orderData.deliveryDate),
+          paymentMethod: orderData.paymentMethod?.toLowerCase() ?? "wallet",
+          specialInstructions: orderData.specialInstructions || orderData.notes || "",
+          createdAt: toDateStr(orderData.createdAt),
+          updatedAt: toDateStr(orderData.updatedAt || orderData.createdAt),
+        });
+      } catch (err: any) {
+        console.error("Error loading order:", err);
+        setError("Failed to load order details");
+      } finally {
+        setLoading(false);
       }
+    };
 
-      // For MVP, create mock order from recent cart data
-      // In production, would call getOrderById Cloud Function
-      const mockOrder: Order = {
-        id: orderId,
-        customerId: JSON.parse(sessionStr).userId,
-        status: "confirmed",
-        items: [],
-        subtotal: 0,
-        deliveryFee: 0,
-        total: 0,
-        deliveryDate: new Date(Date.now() + 86400000).toISOString().split("T")[0],
-        paymentMethod: "wallet",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      setOrder(mockOrder);
-    } catch (err) {
-      console.error("Error loading order:", err);
-      setError("Failed to load order details");
-    } finally {
-      setLoading(false);
-    }
+    fetchOrder();
   }, [orderId, router]);
 
   if (loading) {
@@ -139,8 +171,9 @@ export default function OrderDetailPage() {
         <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <p className="text-sm text-gray-600">Order ID</p>
-              <p className="text-2xl font-bold text-gray-900">{order.id}</p>
+              <p className="text-sm text-gray-600">Order</p>
+              <p className="text-2xl font-bold text-gray-900">{order.name || order.id}</p>
+              {order.name && <p className="text-xs text-gray-400 mt-0.5">{order.id}</p>}
             </div>
             <div className={`px-4 py-2 rounded-lg font-semibold ${statusColors[order.status]}`}>
               {statusLabels[order.status]}

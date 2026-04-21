@@ -5,6 +5,7 @@ import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db, functions } from "@/lib/firebase";
 import { httpsCallable } from "firebase/functions";
 import { useRouter } from "next/navigation";
+import SearchInput from "@/components/SearchInput";
 
 const ROLES = ["Admin", "Driver", "Manager", "Operator", "Warehouse Lead"];
 const ACCOUNT_TYPES = ["Customer", "Employee", "Supplier"];
@@ -235,12 +236,11 @@ export default function UsersPage() {
       <div className="max-w-6xl mx-auto px-6 py-6">
         {/* Filters */}
         <div className="flex items-center gap-3 mb-6">
-          <input
-            type="text"
+          <SearchInput
             placeholder="Search by email or name..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none flex-1"
+            onChange={setSearch}
+            className="flex-1"
           />
           <select
             value={filterRole}

@@ -23,6 +23,8 @@ export default function CheckoutPage() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"wallet" | "cash">("wallet");
   const [deliveryDate, setDeliveryDate] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryPhone, setDeliveryPhone] = useState("");
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,9 +52,11 @@ export default function CheckoutPage() {
         name: session.name || session.email,
         email: session.email,
         phone: session.phone || "",
-        address: session.address || "123 Main St",
+        address: session.address || "",
         deliveryFee: 0,
       });
+      setDeliveryAddress(session.address || "");
+      setDeliveryPhone(session.phone || "");
 
       // Set default delivery date to tomorrow
       const tomorrow = new Date();
@@ -89,6 +93,8 @@ export default function CheckoutPage() {
           priceAtTime: item.priceAtTime,
         })),
         deliveryDate,
+        deliveryAddress,
+        deliveryPhone,
         paymentMethod,
         specialInstructions,
         deliveryFee,
@@ -175,13 +181,14 @@ export default function CheckoutPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Address
+                    Delivery Address
                   </label>
                   <textarea
-                    value={customer.address}
-                    disabled
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    placeholder="Enter delivery address"
                     rows={3}
-                    className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 disabled:opacity-75 resize-none"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 resize-none"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -202,9 +209,10 @@ export default function CheckoutPage() {
                     </label>
                     <input
                       type="tel"
-                      value={customer.phone}
-                      disabled
-                      className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 disabled:opacity-75"
+                      value={deliveryPhone}
+                      onChange={(e) => setDeliveryPhone(e.target.value)}
+                      placeholder="Enter phone number"
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2"
                     />
                   </div>
                 </div>

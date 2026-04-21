@@ -245,7 +245,6 @@ export default function AdminLoginPage() {
             alt="Di Peppi Logo"
             className="w-24 h-24 mx-auto mb-4 rounded-lg object-contain bg-white p-2"
           />
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Di Peppi</h1>
           <p className="text-xs text-gray-500 font-semibold tracking-widest uppercase">Admin Panel</p>
         </div>
 

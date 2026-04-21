@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "@/lib/firebase";
+import SearchInput from "@/components/SearchInput";
 
-const ROLES = ["Admin", "Manager", "Operator", "Driver", "Warehouse Lead"];
+const ROLES = ["Admin", "Driver", "Manager", "Operator", "Warehouse Lead"];
 const FEATURES = [
   "dashboard",
   "orders",
@@ -169,12 +170,11 @@ export default function PermissionsPage() {
       )}
 
       <div className="mb-6">
-        <input
-          type="text"
+        <SearchInput
           placeholder="Search roles..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          onChange={setSearch}
+          className="w-full"
         />
       </div>
 

@@ -15,9 +15,10 @@ interface OrderItem {
 
 interface Order {
   id: string;
+  name?: string;
   customerId: string;
   status: "pending" | "confirmed" | "delivered" | "cancelled";
-  items: OrderItem[];
+  items: OrderItem[] | number;  // Cloud Function returns item count as number
   total: number;
   deliveryDate: string;
   paymentMethod: "wallet" | "cash";
@@ -49,8 +50,9 @@ export default function OrdersPage() {
         const getOrderHistory = httpsCallable(functions, "getOrderHistory");
         const result: any = await getOrderHistory({ customerId });
 
-        if (result.data && Array.isArray(result.data)) {
-          setOrders(result.data);
+        const list = (result.data as any)?.orders ?? result.data;
+        if (Array.isArray(list)) {
+          setOrders(list);
         } else {
           setOrders([]);
         }
@@ -140,8 +142,9 @@ export default function OrdersPage() {
               >
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <p className="text-sm text-gray-600">Order ID</p>
-                    <p className="text-lg font-bold text-gray-900">{order.id}</p>
+                    <p className="text-sm text-gray-600">Order</p>
+                    <p className="text-lg font-bold text-gray-900">{order.name || order.id}</p>
+                    {order.name && <p className="text-xs text-gray-400">{order.id}</p>}
                   </div>
                   <div className={`px-4 py-2 rounded-lg font-semibold text-sm ${statusColors[order.status]}`}>
                     {statusLabels[order.status]}
@@ -157,7 +160,9 @@ export default function OrdersPage() {
                   </div>
                   <div>
                     <p className="text-xs text-gray-600 uppercase tracking-wide">Items</p>
-                    <p className="text-gray-900 font-semibold">{order.items.length}</p>
+                    <p className="text-gray-900 font-semibold">
+                      {typeof order.items === "number" ? order.items : (order.items as OrderItem[]).length}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-600 uppercase tracking-wide">Delivery Date</p>
@@ -172,12 +177,14 @@ export default function OrdersPage() {
                 </div>
 
                 {/* Items Preview */}
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <p className="text-sm text-gray-600 mb-2">Items:</p>
-                  <p className="text-sm text-gray-900">
-                    {order.items.map((item) => item.productName).join(", ")}
-                  </p>
-                </div>
+                {Array.isArray(order.items) && order.items.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <p className="text-sm text-gray-600 mb-2">Items:</p>
+                    <p className="text-sm text-gray-900">
+                      {(order.items as OrderItem[]).map((item) => item.productName).join(", ")}
+                    </p>
+                  </div>
+                )}
               </div>
             ))}
           </div>

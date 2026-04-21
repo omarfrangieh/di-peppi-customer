@@ -5,6 +5,7 @@ import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from "
 import { db } from "@/lib/firebase";
 import { generatePOPDF } from "@/lib/generatePOPDF";
 import { formatPrice, formatQty } from "@/lib/formatters";
+import SearchInput from "@/components/SearchInput";
 
 const STATUSES = ["Generated", "Sent", "Delivered", "Paid", "Cancelled"];
 
@@ -137,9 +138,12 @@ Di Peppi`
             <option value="all">All Statuses</option>
             {STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
-          <input type="text" placeholder="Search POs..." value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none w-48" />
+          <SearchInput
+            placeholder="Search POs..."
+            value={search}
+            onChange={setSearch}
+            className="w-48"
+          />
         </div>
       </div>
 

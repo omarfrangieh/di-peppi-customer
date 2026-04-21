@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, getDocs, orderBy, query, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import SearchInput from "@/components/SearchInput";
 
 interface Invoice {
   id: string;
@@ -97,12 +98,11 @@ export default function InvoicesListPage() {
             {invoices.length}
           </span>
         </div>
-        <input
-          type="text"
+        <SearchInput
           placeholder="Search invoices..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 w-56 focus:outline-none focus:ring-2 focus:ring-gray-900"
+          onChange={setSearch}
+          className="w-56"
         />
       </div>
 

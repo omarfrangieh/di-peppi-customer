@@ -50,9 +50,15 @@ export default function ProductsPage() {
         const getProductCatalog = httpsCallable(functions, "getProductCatalog");
         const result: any = await getProductCatalog({ customerId, customerType });
 
-        if (result.data && Array.isArray(result.data)) {
-          setAllProducts(result.data);
-          setFilteredProducts(result.data);
+        const list = Array.isArray(result.data)
+          ? result.data
+          : Array.isArray((result.data as any)?.products)
+            ? (result.data as any).products
+            : null;
+
+        if (list) {
+          setAllProducts(list);
+          setFilteredProducts(list);
         } else {
           setError("Failed to load products");
         }

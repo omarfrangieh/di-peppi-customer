@@ -8,12 +8,13 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { formatQty, formatPrice } from "@/lib/formatters";
 import Image from "next/image";
 import BarcodeDisplay from "./components/BarcodeDisplay";
+import SearchInput from "@/components/SearchInput";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
 const DEFAULT_OPTIONS = {
-  unit: ["KG", "Piece", "Tin", "Jar", "Tube"],
-  storageType: ["Ambient", "Refrigerated", "Frozen", "Chilled", "Fresh"],
+  unit: ["Jar", "KG", "Piece", "Tin", "Tube"],
+  storageType: ["Ambient", "Chilled", "Fresh", "Frozen", "Refrigerated"],
   category: [],
   origin: [],
 };
@@ -729,12 +730,11 @@ export default function AdminProductsPage() {
           >
             + Add Product
           </button>
-          <input
-            type="text"
+          <SearchInput
             placeholder="Search products..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 w-48"
+            onChange={setSearch}
+            className="w-48"
           />
         </div>
       </div>

@@ -4,9 +4,10 @@ import { useEffect, useState, useRef } from "react";
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { formatQty } from "@/lib/formatters";
+import SearchInput from "@/components/SearchInput";
 
-const PAYMENT_TERMS = ["COD", "Net 7", "Net 15", "Net 30", "Net 60", "Prepaid", "Consignment"];
-const CURRENCIES = ["USD", "EUR", "LBP", "GBP"];
+const PAYMENT_TERMS = ["COD", "Consignment", "Net 7", "Net 15", "Net 30", "Net 60", "Prepaid"];
+const CURRENCIES = ["EUR", "GBP", "LBP", "USD"];
 
 function AddSupplierForm({ onAdd, onCancel }: { onAdd: (data: any) => Promise<void>, onCancel: () => void }) {
   const refs = {
@@ -209,9 +210,12 @@ export default function AdminSuppliersPage() {
           <span className="text-xs text-gray-400">{suppliers.length} suppliers</span>
         </div>
         <div className="flex items-center gap-3">
-          <input type="text" placeholder="Search suppliers..." value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 w-48" />
+          <SearchInput
+            placeholder="Search suppliers..."
+            value={search}
+            onChange={setSearch}
+            className="w-48"
+          />
           <button onClick={() => setShowAdd(true)}
             className="px-4 py-2 text-sm text-white rounded-lg font-medium"
             style={{backgroundColor: "#1B2A5E"}}>

@@ -1,8 +1,8 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
-import { getAuth, connectAuthEmulator } from "firebase/auth";
+import { getFunctions } from "firebase/functions";
+import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMFpPM5T2bjV0RB3P9DHYMddptgHsqph8",
@@ -20,13 +20,5 @@ export const storage = getStorage(app);
 export const functions = getFunctions(app);
 export const auth = getAuth(app);
 
-// Connect to Firebase Emulators in development
-if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-  try {
-    connectAuthEmulator(auth, "http://localhost:9099", { disableWarnings: true });
-    connectFirestoreEmulator(db, "localhost", 8080);
-    connectFunctionsEmulator(functions, "localhost", 5001);
-  } catch (err) {
-    // Emulators might already be connected, ignore error
-  }
-}
+// Emulators disabled — always use production Firebase
+

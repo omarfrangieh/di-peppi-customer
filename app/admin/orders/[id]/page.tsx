@@ -14,6 +14,7 @@ import {
   where,
   updateDoc,
   serverTimestamp,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { getPricing } from "@/lib/pricing";
@@ -129,6 +130,34 @@ function money(value: unknown) {
   return `$${formatPrice(num)}`;
 }
 
+/** Convert a Firestore Timestamp, serialised Timestamp object, or date string to YYYY-MM-DD */
+function firestoreDateToString(val: any): string {
+  if (!val) return "";
+  // 1. Firestore Timestamp class instance
+  if (val instanceof Timestamp) {
+    return val.toDate().toISOString().slice(0, 10);
+  }
+  // 2. Timestamp-like object with toDate() (e.g. from older SDK builds)
+  if (typeof val?.toDate === "function") {
+    return (val.toDate() as Date).toISOString().slice(0, 10);
+  }
+  // 3. Plain serialised object { seconds, nanoseconds } (e.g. from Cloud Function JSON)
+  if (typeof val === "object" && typeof val.seconds === "number") {
+    return new Date(val.seconds * 1000).toISOString().slice(0, 10);
+  }
+  // 4. Stringified Timestamp like "Timestamp(seconds=..., nanoseconds=...)" — parse it
+  if (typeof val === "string" && val.startsWith("Timestamp(")) {
+    const m = val.match(/seconds=(\d+)/);
+    if (m) return new Date(Number(m[1]) * 1000).toISOString().slice(0, 10);
+    return "";
+  }
+  // 5. Already a valid YYYY-MM-DD or ISO date string
+  if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val)) {
+    return val.slice(0, 10);
+  }
+  return "";
+}
+
 function cleanNumberInput(value: string) {
   if (value === "") return "";
   const n = Number(value);
@@ -178,6 +207,9 @@ export default function Page() {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Guards the auto-save from firing before the order data has been loaded
+  const [orderDataLoaded, setOrderDataLoaded] = useState(false);
+
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState("");
   const [deletingItemId, setDeletingItemId] = useState("");
@@ -193,6 +225,8 @@ export default function Page() {
   const [priceSource, setPriceSource] = useState<PriceSource>("auto");
 
   const [customerId, setCustomerId] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [orderDate, setOrderDate] = useState(new Date().toISOString().slice(0, 10));
   const [deliveryDate, setDeliveryDate] = useState("");
   const [orderStatus, setOrderStatus] = useState("");
@@ -541,7 +575,11 @@ export default function Page() {
         };
       });
 
-      setCustomers(data.filter(c => c.active !== false));
+      setCustomers(
+        data
+          .filter(c => c.active !== false && !c.manualHold)
+          .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+      );
 } catch (error: any) {
   console.error(
     "Error loading customers:",
@@ -579,11 +617,13 @@ export default function Page() {
     setDeliveryFee("");
     setCustomerId("");
     setOrderDate("");
+    setDeliveryDate("");
     setOrderStatus("");
     setOrderNotes("");
   };
 
   const loadOrderTotals = async (orderId: string) => {
+    setOrderDataLoaded(false);
     if (!orderId) {
       resetOrderHeader();
       return;
@@ -613,10 +653,11 @@ export default function Page() {
         data.deliveryFee !== undefined ? String(Number(data.deliveryFee)) : ""
       );
       setCustomerId(data.customerId !== undefined ? String(data.customerId) : "");
-      setOrderDate(data.orderDate !== undefined ? String(data.orderDate) : "");
-      setDeliveryDate(data.deliveryDate !== undefined ? String(data.deliveryDate) : "");
+      setOrderDate(data.orderDate !== undefined ? firestoreDateToString(data.orderDate) : "");
+      setDeliveryDate(data.deliveryDate !== undefined ? firestoreDateToString(data.deliveryDate) : "");
       setOrderStatus(data.status !== undefined ? String(data.status) : "");
       setOrderNotes(data.notes !== undefined ? String(data.notes) : "");
+      setOrderDataLoaded(true);
     } catch (error) {
       console.error("Error loading order totals:", error);
       resetOrderHeader();
@@ -654,6 +695,7 @@ export default function Page() {
     void loadCustomers();
     void loadPrepOptions();
   }, []);
+
 
   useEffect(() => {
     if (urlOrderId && urlOrderId !== "new" && orders.length > 0) {
@@ -699,7 +741,10 @@ export default function Page() {
   }, [customerId, selectedCustomer]);
 
   useEffect(() => {
-    if (!selectedOrderId) return;
+    // Do NOT save until the order data has been fully loaded from Firestore.
+    // Without this guard, the auto-save fires with the empty initial state and
+    // overwrites the real order data (status, dates, etc.) before they are loaded.
+    if (!selectedOrderId || !orderDataLoaded) return;
 
     const timer = setTimeout(() => {
       void saveOrderTotals();
@@ -708,6 +753,7 @@ export default function Page() {
     return () => clearTimeout(timer);
   }, [
     selectedOrderId,
+    orderDataLoaded,
     customerId,
     orderDate,
     orderStatus,
@@ -1107,8 +1153,9 @@ export default function Page() {
             ) : (
               <div className="divide-y divide-gray-100">
                 {orderItems.map((item) => {
-                  const displayGross = Number(item.grossLineTotal || 0) || Number(item.quantity) * Number(item.unitPrice);
-                  const displayNet = Number(item.netLineTotal || 0) || Number(item.totalPrice || 0);
+                  const qtyXPrice = Number(item.quantity) * Number(item.unitPrice);
+                  const displayGross = Number(item.grossLineTotal || 0) || qtyXPrice;
+                  const displayNet = Number(item.netLineTotal || 0) || Number(item.totalPrice || 0) || qtyXPrice;
                   const discount = Math.max(displayGross - displayNet, 0);
                   return (
                     <div key={item.id} className="px-6 py-3 flex items-center justify-between">
@@ -1204,15 +1251,65 @@ export default function Page() {
         <div className="bg-white rounded-xl border border-gray-200 px-6 py-5 space-y-3">
           <div>
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Customer</label>
-            <select
-              className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${!isNewPage ? "bg-gray-50 text-gray-500 cursor-not-allowed" : "bg-white"}`}
-              value={customerId}
-              disabled={!isNewPage}
-              onChange={(e) => { setCustomerId(e.target.value); setSelectedOrderId(""); }}
-            >
-              <option value="">Select Customer</option>
-              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            {!isNewPage ? (
+              <div className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-gray-50 text-gray-500">
+                {customers.find(c => c.id === customerId)?.name || "—"}
+              </div>
+            ) : (
+              <div className="relative mt-1">
+                {/* Selected display / search input */}
+                <div
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white flex items-center gap-2 cursor-pointer"
+                  onClick={() => { setCustomerDropdownOpen(o => !o); setCustomerSearch(""); }}
+                >
+                  {customerId ? (
+                    <span className="flex-1 text-gray-900">{customers.find(c => c.id === customerId)?.name || "—"}</span>
+                  ) : (
+                    <span className="flex-1 text-gray-400">Select Customer</span>
+                  )}
+                  <span className="text-gray-400 text-xs">{customerDropdownOpen ? "▲" : "▼"}</span>
+                </div>
+
+                {/* Dropdown panel */}
+                {customerDropdownOpen && (
+                  <>
+                    {/* Backdrop — catches outside clicks without event propagation conflicts */}
+                    <div className="fixed inset-0 z-40" onClick={() => { setCustomerDropdownOpen(false); setCustomerSearch(""); }} />
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                      {/* Search */}
+                      <div className="p-2 border-b border-gray-100">
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder="Search customers..."
+                          value={customerSearch}
+                          onChange={e => setCustomerSearch(e.target.value)}
+                          className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                        />
+                      </div>
+                      {/* List */}
+                      <div className="max-h-64 overflow-y-auto">
+                        {customers
+                          .filter(c => (c.name || "").toLowerCase().includes(customerSearch.toLowerCase()))
+                          .map(c => (
+                            <div
+                              key={c.id}
+                              onClick={() => { setCustomerId(c.id); setSelectedOrderId(""); setCustomerDropdownOpen(false); setCustomerSearch(""); }}
+                              className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-gray-50 flex items-center justify-between ${c.id === customerId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-800"}`}
+                            >
+                              <span>{c.name}</span>
+                              {c.customerType && <span className="text-xs text-gray-400">{c.customerType}</span>}
+                            </div>
+                          ))}
+                        {customers.filter(c => (c.name || "").toLowerCase().includes(customerSearch.toLowerCase())).length === 0 && (
+                          <div className="px-4 py-4 text-sm text-gray-400 text-center">No customers found</div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             {selectedCustomer && (
               <div className="mt-2 flex gap-4 text-xs text-gray-500">
                 <span><span className="font-bold text-gray-700">Type:</span> {selectedCustomer.customerType || "B2C"}</span>
