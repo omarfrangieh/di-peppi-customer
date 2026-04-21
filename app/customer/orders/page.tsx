@@ -17,7 +17,7 @@ interface Order {
   id: string;
   name?: string;
   customerId: string;
-  status: "pending" | "confirmed" | "delivered" | "cancelled";
+  status: "Draft" | "Confirmed" | "Preparing" | "To Deliver" | "Delivered" | "Cancelled" | "pending" | "confirmed" | "delivered" | "cancelled";
   items: OrderItem[] | number;  // Cloud Function returns item count as number
   total: number;
   deliveryDate: string;
@@ -75,18 +75,40 @@ export default function OrdersPage() {
     );
   }
 
-  const statusColors = {
-    pending: "bg-yellow-50 text-yellow-600",
-    confirmed: "bg-green-50 text-green-600",
-    delivered: "bg-blue-50 text-blue-600",
-    cancelled: "bg-red-50 text-red-600",
+  const normalizeStatus = (status: string): string => {
+    const statusMap: Record<string, string> = {
+      "pending": "Draft",
+      "Draft": "Draft",
+      "confirmed": "Confirmed",
+      "Confirmed": "Confirmed",
+      "preparing": "Preparing",
+      "Preparing": "Preparing",
+      "to deliver": "To Deliver",
+      "To Deliver": "To Deliver",
+      "delivered": "Delivered",
+      "Delivered": "Delivered",
+      "cancelled": "Cancelled",
+      "Cancelled": "Cancelled",
+    };
+    return statusMap[status] || status;
   };
 
-  const statusLabels = {
-    pending: "Pending",
-    confirmed: "Confirmed",
-    delivered: "Delivered",
-    cancelled: "Cancelled",
+  const statusColors: Record<string, string> = {
+    Draft: "bg-gray-50 text-gray-600",
+    Confirmed: "bg-green-50 text-green-600",
+    Preparing: "bg-yellow-50 text-yellow-600",
+    "To Deliver": "bg-orange-50 text-orange-600",
+    Delivered: "bg-blue-50 text-blue-600",
+    Cancelled: "bg-red-50 text-red-600",
+  };
+
+  const statusLabels: Record<string, string> = {
+    Draft: "Draft",
+    Confirmed: "Confirmed",
+    Preparing: "Preparing",
+    "To Deliver": "To Deliver",
+    Delivered: "Delivered",
+    Cancelled: "Cancelled",
   };
 
   return (
@@ -146,8 +168,8 @@ export default function OrdersPage() {
                     <p className="text-lg font-bold text-gray-900">{order.name || order.id}</p>
                     {order.name && <p className="text-xs text-gray-400">{order.id}</p>}
                   </div>
-                  <div className={`px-4 py-2 rounded-lg font-semibold text-sm ${statusColors[order.status]}`}>
-                    {statusLabels[order.status]}
+                  <div className={`px-4 py-2 rounded-lg font-semibold text-sm ${statusColors[normalizeStatus(order.status)]}`}>
+                    {statusLabels[normalizeStatus(order.status)]}
                   </div>
                 </div>
 

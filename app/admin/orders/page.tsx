@@ -5,7 +5,9 @@ import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/formatters";
-import { X } from "lucide-react";
+import { X, Trash2 } from "lucide-react";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "@/lib/firebase";
 
 const DELIVERY_STATUSES = ["All", "Draft", "Confirmed", "Preparing", "To Deliver", "Delivered", "Cancelled"];
 
@@ -98,6 +100,21 @@ export default function OrdersPage() {
       setCustomers(customerNames);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string, orderName: string) => {
+    if (!confirm(`Are you sure you want to delete order ${orderName}? This will delete the entire order and all items. This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const deleteOrderFn = httpsCallable(functions, "deleteOrder");
+      await deleteOrderFn({ orderId });
+      // Reload orders after deletion
+      await load();
+    } catch (error: any) {
+      alert(`Failed to delete order: ${error.message}`);
     }
   };
 
@@ -262,9 +279,20 @@ export default function OrdersPage() {
                   </div>
                 </div>
               </div>
-              <div className="text-right shrink-0">
+              <div className="text-right shrink-0 flex flex-col items-end gap-2">
                 <p className="font-semibold text-gray-900">${formatPrice(order.finalTotal || 0)}</p>
-                {order.notes && <p className="text-xs text-gray-400 mt-1 max-w-[200px] truncate">{order.notes}</p>}
+                {order.notes && <p className="text-xs text-gray-400 max-w-[200px] truncate">{order.notes}</p>}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteOrder(order.id, order.name);
+                  }}
+                  className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded border border-red-200 flex items-center gap-1 transition-colors"
+                  title="Delete order"
+                >
+                  <Trash2 size={14} />
+                  Delete
+                </button>
               </div>
             </div>
           );
