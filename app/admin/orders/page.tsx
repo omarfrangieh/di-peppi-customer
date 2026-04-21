@@ -5,6 +5,7 @@ import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/formatters";
+import { X } from "lucide-react";
 
 const DELIVERY_STATUSES = ["All", "Draft", "Confirmed", "Preparing", "To Deliver", "Delivered", "Cancelled"];
 
@@ -148,6 +149,16 @@ export default function OrdersPage() {
               onBlur={() => setTimeout(() => setShowClientDropdown(false), 150)}
               className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none w-56"
             />
+            {search && (
+              <button
+                onClick={() => { setSearch(""); setShowClientDropdown(false); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                type="button"
+                title="Clear search"
+              >
+                <X size={16} />
+              </button>
+            )}
             {showClientDropdown && customers.filter(c => c.toLowerCase().includes(search.toLowerCase())).length > 0 && (
               <div className="absolute top-full mt-1 left-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
                 {customers.filter(c => c.toLowerCase().includes(search.toLowerCase())).map(c => (
