@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Trash2, Pencil } from "lucide-react";
+import { Trash2, Pencil, X } from "lucide-react";
 import {
   collection,
   doc,
@@ -1278,14 +1278,26 @@ export default function Page() {
                     <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
                       {/* Search */}
                       <div className="p-2 border-b border-gray-100">
-                        <input
-                          autoFocus
-                          type="text"
-                          placeholder="Search customers..."
-                          value={customerSearch}
-                          onChange={e => setCustomerSearch(e.target.value)}
-                          className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
-                        />
+                        <div className="relative">
+                          <input
+                            autoFocus
+                            type="text"
+                            placeholder="Search customers..."
+                            value={customerSearch}
+                            onChange={e => setCustomerSearch(e.target.value)}
+                            className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                          />
+                          {customerSearch && (
+                            <button
+                              onClick={() => setCustomerSearch("")}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                              type="button"
+                              title="Clear search"
+                            >
+                              <X size={16} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       {/* List */}
                       <div className="max-h-64 overflow-y-auto">
