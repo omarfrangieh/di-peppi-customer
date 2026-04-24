@@ -1,8 +1,8 @@
 "use client";
 import React from "react";
 
-import { useEffect, useState, useRef } from "react";
-import { collection, getDocs, doc, updateDoc, getDoc, setDoc, addDoc, serverTimestamp } from "firebase/firestore";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { collection, getDocs, doc, updateDoc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { formatQty, formatPrice } from "@/lib/formatters";
@@ -65,6 +65,21 @@ export default function AdminProductsPage() {
     barcode: new Set(),
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inactiveStartRef = useRef<HTMLDivElement>(null);
+  const productsHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  // Role-based access: read from session
+  const isAdmin = (() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("session") || "{}");
+      return s.role === "Admin";
+    } catch { return false; }
+  })();
+
+  // Scroll to top when Products heading is clicked
+  const handleProductsHeadingClick = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Validate EAN-13 barcode format and check digit
   const validateEAN13 = (barcode: string): boolean => {
@@ -418,7 +433,10 @@ export default function AdminProductsPage() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    void load();
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -513,6 +531,21 @@ export default function AdminProductsPage() {
   };
 
   const cancelEdit = () => { setEditing(null); setEditData({}); };
+
+  const deleteProduct = async (id: string, name: string) => {
+    if (!confirm(`Delete "${name}" permanently? This cannot be undone.`)) return;
+    setSaving(id);
+    try {
+      await deleteDoc(doc(db, "products", id));
+      setProducts(prev => prev.filter(p => p.id !== id));
+      setEditing(null);
+      setEditData({});
+    } catch (err: any) {
+      alert(err.message || "Failed to delete product");
+    } finally {
+      setSaving(null);
+    }
+  };
 
   const saveProduct = async (id: string) => {
     setSaving(id);
@@ -620,7 +653,17 @@ export default function AdminProductsPage() {
       (p.name || "").toLowerCase().includes(search.toLowerCase()) ||
       (p.category || "").toLowerCase().includes(search.toLowerCase())
     )
-    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    .sort((a, b) => {
+      // Active products first, then inactive
+      if ((a.active !== false) !== (b.active !== false)) {
+        return (a.active !== false) ? -1 : 1;
+      }
+      // Then sort by name
+      return (a.name || "").localeCompare(b.name || "");
+    });
+
+  const inactiveCount = filtered.filter(p => p.active === false).length;
+  const inactiveStartIndex = filtered.findIndex(p => p.active === false);
 
   const storageColor: Record<string, string> = {
     Frozen: "bg-blue-100 text-blue-700",
@@ -713,10 +756,25 @@ export default function AdminProductsPage() {
         <div className="flex items-center gap-4">
 
           <div className="h-4 w-px bg-gray-200" />
-          <h1 className="text-xl font-bold" style={{color: "#B5535A"}}>Products</h1>
+          <h1
+            onClick={handleProductsHeadingClick}
+            className="text-xl font-bold cursor-pointer transition-opacity hover:opacity-70"
+            style={{color: "#B5535A"}}
+            title="Click to scroll to top"
+          >
+            Products
+          </h1>
           <span className="text-xs text-gray-400">{products.length} products</span>
         </div>
         <div className="flex items-center gap-3">
+          {inactiveCount > 0 && (
+            <button
+              onClick={() => inactiveStartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="px-3 py-1.5 text-xs border border-amber-300 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 font-medium"
+            >
+              ↓ Inactive ({inactiveCount})
+            </button>
+          )}
           <button
             onClick={() => setShowOptionsFor(showOptionsFor ? null : "unit")}
             className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
@@ -775,17 +833,20 @@ export default function AdminProductsPage() {
 
       <div className="max-w-7xl mx-auto px-6 py-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(product => (
-            <div key={product.id} className={`bg-white rounded-lg border transition-colors ${
+          {filtered.map((product, index) => (
+            <div
+              key={product.id}
+              ref={index === inactiveStartIndex && inactiveStartIndex !== -1 ? inactiveStartRef : null}
+              className={`bg-white rounded-lg border transition-colors ${
               editing === product.id ? "border-blue-300 bg-blue-50" : "border-gray-200 hover:border-gray-300"
             } ${product.active === false ? "opacity-50" : ""}`}>
 
               {editing === product.id ? (
                 /* EDIT MODE */
                 <div className="space-y-3">
-                  <div className="relative h-32 bg-gray-100 rounded-t-lg overflow-hidden group">
+                  <div className="relative h-32 bg-white rounded-t-lg overflow-hidden group flex items-center justify-center">
                     {editData.productImage ? (
-                      <img src={editData.productImage} alt={editData.name} className="w-full h-full object-cover" />
+                      <img src={editData.productImage} alt={editData.name} className="max-w-full max-h-full object-contain" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-400">📷 No image</div>
                     )}
@@ -903,6 +964,23 @@ export default function AdminProductsPage() {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-gray-200 hover:bg-gray-50">
+                      <div onClick={() => setEditData((p: any) => ({ ...p, requiresWeighing: !p.requiresWeighing }))}
+                        className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${editData.requiresWeighing ? "bg-blue-500" : "bg-gray-300"}`}>
+                        <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${editData.requiresWeighing ? "translate-x-4" : "translate-x-0"}`} />
+                      </div>
+                      <span className="font-medium">⚖️ Requires Weighing</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-gray-200 hover:bg-gray-50">
+                      <div onClick={() => setEditData((p: any) => ({ ...p, trackExpiry: !p.trackExpiry }))}
+                        className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${editData.trackExpiry ? "bg-orange-500" : "bg-gray-300"}`}>
+                        <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${editData.trackExpiry ? "translate-x-4" : "translate-x-0"}`} />
+                      </div>
+                      <span className="font-medium">📦 FIFO / Track Expiry</span>
+                    </label>
+                  </div>
+
                   <div className="flex gap-2 pt-2">
                     <button onClick={() => saveProduct(product.id)} disabled={saving === product.id}
                       className="flex-1 px-3 py-1.5 bg-gray-900 text-white text-xs rounded hover:bg-gray-700 disabled:opacity-50 font-medium">
@@ -912,14 +990,23 @@ export default function AdminProductsPage() {
                       Cancel
                     </button>
                   </div>
+                  {isAdmin && (
+                    <button
+                      onClick={() => deleteProduct(product.id, product.name)}
+                      disabled={saving === product.id}
+                      className="w-full mt-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded disabled:opacity-50 font-medium"
+                    >
+                      🗑 Delete Product
+                    </button>
+                  )}
                 </div>
                 </div>
               ) : (
                 /* VIEW MODE */
                 <div className="space-y-3">
-                  <div className="h-32 bg-gray-100 rounded-t-lg overflow-hidden flex items-center justify-center">
+                  <div className="h-32 bg-white rounded-t-lg overflow-hidden flex items-center justify-center">
                     {product.productImage ? (
-                      <img src={product.productImage} alt={product.name} className="w-full h-full object-cover" />
+                      <img src={product.productImage} alt={product.name} className="max-w-full max-h-full object-contain" />
                     ) : (
                       <div className="text-gray-400 text-center">
                         <div className="text-3xl mb-1">📦</div>
@@ -931,6 +1018,20 @@ export default function AdminProductsPage() {
                     <div>
                       <h3 className="font-semibold text-gray-900">{product.name}</h3>
                       {product.productSubName && <p className="text-xs text-gray-500">{product.productSubName}</p>}
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className={`text-sm font-semibold px-2.5 py-1 rounded-full ${
+                          Number(product.currentStock || 0) === 0 ? "bg-red-100 text-red-700" :
+                          Number(product.currentStock || 0) <= Number(product.minStock || 0) && Number(product.minStock) > 0 ? "bg-yellow-100 text-yellow-700" :
+                          "bg-green-100 text-green-700"
+                        }`}>
+                          {formatQty(product.currentStock)} {product.unit || ""}
+                        </span>
+                        <span className={`text-sm font-semibold px-2.5 py-1 rounded-full ${
+                          product.active !== false ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"
+                        }`}>
+                          {product.active !== false ? "✓ Active" : "○ Inactive"}
+                        </span>
+                      </div>
                     </div>
 
                   <div className="flex flex-wrap gap-2">
