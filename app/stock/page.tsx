@@ -1,9 +1,83 @@
 "use client";
 import React, { useEffect, useState, useMemo } from "react";
-import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { formatQty, formatPrice } from "@/lib/formatters";
 import SearchInput from "@/components/SearchInput";
+
+function AdjustModal({ product, onClose, onSave }: { product: any; onClose: () => void; onSave: (newQty: number, delta: number, reason: string, notes: string) => Promise<void> }) {
+  const [qty, setQty] = useState(String(product.currentStock || 0));
+  const [reason, setReason] = useState("error");
+  const [otherReason, setOtherReason] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const parsedQty = qty === "" ? NaN : Number(qty);
+  const current = Number(product.currentStock || 0);
+  const delta = isNaN(parsedQty) ? 0 : parsedQty - current;
+  const canConfirm = !saving && qty !== "" && !isNaN(parsedQty) && parsedQty >= 0 && parsedQty !== current && !(reason === "other" && !otherReason.trim());
+
+  const handleConfirm = async () => {
+    if (!canConfirm) return;
+    setSaving(true);
+    try {
+      const finalReason = reason === "other" ? otherReason.trim() : reason;
+      await onSave(parsedQty, delta, finalReason, notes);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+        <h3 className="text-base font-bold text-gray-900 mb-1">Adjust Stock</h3>
+        <p className="text-sm text-gray-500 mb-4">{product.name}</p>
+        <div className="space-y-3">
+          <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 flex justify-between">
+            <span>Current stock</span>
+            <span className="font-semibold text-gray-700">{formatQty(product.currentStock)} {product.unit || ""}</span>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Corrected Quantity ({product.unit || "units"})</label>
+            <input type="number" value={qty} onChange={e => setQty(e.target.value)} autoFocus
+              placeholder={String(product.currentStock || 0)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+          </div>
+          {qty !== "" && !isNaN(parsedQty) && parsedQty !== current && (
+            <div className={`rounded-lg px-3 py-2 text-xs flex justify-between ${delta > 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+              <span>Variance</span>
+              <span className="font-semibold">{delta > 0 ? "+" : ""}{formatQty(delta)} {product.unit || ""}</span>
+            </div>
+          )}
+          <div>
+            <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Reason</label>
+            <select value={reason} onChange={e => setReason(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+              {["error", "damaged", "theft", "shrinkage", "expired", "found", "other"].map(r => (
+                <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+          {reason === "other" && (
+            <input type="text" placeholder="Specify reason..." value={otherReason} onChange={e => setOtherReason(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+          )}
+          <div>
+            <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Notes (optional)</label>
+            <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional notes..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50">Cancel</button>
+            <button onClick={handleConfirm} disabled={!canConfirm}
+              className="flex-1 px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-40" style={{ backgroundColor: "#B5535A" }}>
+              {saving ? "Saving..." : "Confirm Adjustment"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function stockStatus(p: any) {
   const cur = Number(p.currentStock || 0);
@@ -31,7 +105,7 @@ export default function StockPage() {
   const [movements, setMovements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("ok");
   const [sortBy, setSortBy] = useState("name");
   const [stockInProduct, setStockInProduct] = useState<any | null>(null);
   const [stockInQty, setStockInQty] = useState("");
@@ -67,6 +141,7 @@ export default function StockPage() {
   const [editReason, setEditReason] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editExpiredDate, setEditExpiredDate] = useState("");
+  const [adjustProduct, setAdjustProduct] = useState<any | null>(null);
 
   useEffect(() => { void load(); }, []);
 
@@ -146,6 +221,29 @@ export default function StockPage() {
       setStockInProduct(null); setStockInQty(""); setStockInNotes(""); setStockInExpiry("");
       await load();
     } finally { setStockInSaving(false); }
+  };
+
+  const handleAdjustSave = async (newQty: number, delta: number, reason: string, notes: string) => {
+    if (!adjustProduct) return;
+    await updateDoc(doc(db, "products", adjustProduct.id), { currentStock: newQty, updatedAt: new Date().toISOString() });
+    await addDoc(collection(db, "stockMovements"), {
+      productId: adjustProduct.id, productName: adjustProduct.name,
+      movementType: delta > 0 ? "In" : "Out",
+      movementSource: "correction",
+      quantity: Math.abs(delta),
+      notes: [reason, notes].filter(Boolean).join(" — "),
+      movementDate: new Date().toISOString().slice(0, 10),
+      createdAt: serverTimestamp(),
+    });
+    setAdjustProduct(null);
+    await load();
+  };
+
+  const handleDeleteMovement = async (movementId: string, productId: string) => {
+    if (!window.confirm("Remove this stock movement? The stock will be recalculated automatically.")) return;
+    await deleteDoc(doc(db, "stockMovements", movementId));
+    setMovements(prev => prev.filter(m => m.id !== movementId));
+    await load();
   };
 
   const handleCreateCount = async () => {
@@ -772,9 +870,15 @@ export default function StockPage() {
                         })() : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-4 py-3">
-                        <button onClick={() => setStockInProduct(p)} className="px-4 py-2 text-sm text-white rounded-lg font-medium" style={{ backgroundColor: "#1B2A5E" }}>
-                          + Stock
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => setStockInProduct(p)} className="px-3 py-2 text-sm text-white rounded-lg font-medium whitespace-nowrap" style={{ backgroundColor: "#22863a" }}>
+                            + Stock
+                          </button>
+                          <button onClick={() => setAdjustProduct(p)}
+                            className="px-3 py-2 text-sm text-white rounded-lg font-medium" style={{ backgroundColor: "#1B2A5E" }}>
+                            Adjust
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     {isExpanded && (
@@ -784,12 +888,13 @@ export default function StockPage() {
                           {pMovements.length === 0 ? <p className="text-xs text-gray-400">No movements recorded</p> : (
                             <div className="space-y-1.5 max-h-48 overflow-y-auto">
                               {pMovements.slice(0, 20).map(m => (
-                                <div key={m.id} className="flex items-center gap-4 text-xs">
+                                <div key={m.id} className="flex items-center gap-4 text-xs group">
                                   <span className="text-gray-400 w-24">{m.movementDate ? (m.movementDate.toDate?.() || new Date(m.movementDate)).toLocaleDateString('en-CA') : "—"}</span>
                                   <span className={"font-semibold w-12 " + (m.movementType === "In" ? "text-green-600" : "text-red-500")}>
                                     {m.movementType === "In" ? "+" : "-"}{formatQty(m.quantity)}
                                   </span>
                                   <span className={"px-1.5 py-0.5 rounded text-xs font-medium " + (m.movementType === "In" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600")}>{m.movementType}</span>
+                                  {m.movementSource === "correction" && <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">correction</span>}
                                   {m.expiryDate && (
                                     <span className="text-orange-500">
                                       Exp: {m.expiryDate.split("-").reverse().join("/")}
@@ -797,6 +902,11 @@ export default function StockPage() {
                                     </span>
                                   )}
                                   {m.notes && <span className="text-gray-400">{m.notes}</span>}
+                                  <button
+                                    onClick={() => handleDeleteMovement(m.id, m.productId)}
+                                    className="ml-auto opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity px-1"
+                                    title="Remove movement"
+                                  >✕</button>
                                 </div>
                               ))}
                             </div>
@@ -812,6 +922,14 @@ export default function StockPage() {
           </table>
         </div>
       </div>
+
+      {adjustProduct && (
+        <AdjustModal
+          product={adjustProduct}
+          onClose={() => setAdjustProduct(null)}
+          onSave={handleAdjustSave}
+        />
+      )}
 
       {stockInProduct && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">

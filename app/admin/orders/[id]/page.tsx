@@ -16,7 +16,8 @@ import {
   serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
 import { getPricing } from "@/lib/pricing";
 import { createDraftInvoice } from "@/lib/createDraftInvoice";
 import { syncOrderToInvoice } from "@/lib/syncOrderToInvoice";
@@ -47,6 +48,8 @@ type Product = {
   b2bPrice?: number;
   b2cPrice?: number;
   costPrice?: number;
+  requiresWeighing?: boolean;
+  trackExpiry?: boolean;
 };
 
 type Order = {
@@ -202,6 +205,8 @@ export default function Page() {
   const [existingInvoiceStatus, setExistingInvoiceStatus] = useState<string | null>(null);
 
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [productSearch, setProductSearch] = useState("");
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [result, setResult] = useState("");
@@ -419,7 +424,7 @@ export default function Page() {
           unit: String(raw.unit || raw.Unit || ""),
           storageType: String(raw.storageType || raw.StorageType || raw["Storage Type"] || ""),
           minStock: Number(raw.minStock || raw.MinStock || raw["Min Stock"] || 0),
-          active: raw.active !== undefined ? Boolean(raw.active) : true,
+          active: raw.active !== false && raw.active !== "false" && raw.active !== 0,
           startingStock: Number(raw.startingStock || raw.StartingStock || 0),
           barcode: String(raw.barcode || raw.Barcode || ""),
           barcodeData: String(raw.barcodeData || raw.BarcodeData || ""),
@@ -430,6 +435,8 @@ export default function Page() {
           costPrice: Number(raw.costPrice || 0),
           b2bPrice: Number(raw.b2bPrice || 0),
           b2cPrice: Number(raw.b2cPrice || 0),
+          requiresWeighing: Boolean(raw.requiresWeighing),
+          trackExpiry: Boolean(raw.trackExpiry),
         };
       });
 
@@ -808,56 +815,25 @@ export default function Page() {
     setLoading(true);
 
     try {
-      const res = await fetch(
-        "https://us-central1-di-peppi.cloudfunctions.net/createOrderItemCallable",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            data: {
-              orderId: selectedOrderId,
-              productId: selectedProductId,
-              quantity: qty,
-              unitPrice: finalUnitPrice,
-              unitCostPrice: Number(pricing.unitCost || 0),
-              itemDiscountPercent: itemDiscountPercentNumber,
-              itemDiscountAmount: itemDiscountAmountNumber,
-              grossLineTotal: createGrossLineTotal,
-              netLineTotal: createNetLineTotal,
-              notes: `UI create | ${manualPrice ? "Manual Price" : pricing.label}`,
-              customerType: selectedCustomer?.customerType || "",
-              preparation: preparation,
-              sample: itemType === "sample",
-              gift: itemType === "gift",
-            },
-          }),
-        }
-      );
+      const createOrderItem = httpsCallable<object, CreateResult>(functions, "createOrderItemCallable");
+      const result = await createOrderItem({
+        orderId: selectedOrderId,
+        productId: selectedProductId,
+        quantity: qty,
+        unitPrice: finalUnitPrice,
+        unitCostPrice: Number(pricing.unitCost || 0),
+        itemDiscountPercent: itemDiscountPercentNumber,
+        itemDiscountAmount: itemDiscountAmountNumber,
+        grossLineTotal: createGrossLineTotal,
+        netLineTotal: createNetLineTotal,
+        notes: `UI create | ${manualPrice ? "Manual Price" : pricing.label}`,
+        customerType: selectedCustomer?.customerType || "",
+        preparation: preparation,
+        sample: itemType === "sample",
+        gift: itemType === "gift",
+      });
 
-      const text = await res.text();
-
-      if (!res.ok) {
-        try {
-          const err = JSON.parse(text);
-          setResult(err?.error?.message || "Create failed");
-        } catch {
-          setResult("Create failed");
-        }
-        return;
-      }
-
-      let parsed: { result?: CreateResult } | CreateResult | null = null;
-
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        parsed = null;
-      }
-
-      const payload =
-        (parsed as { result?: CreateResult })?.result ||
-        (parsed as CreateResult);
-
+      const payload = result.data;
       setResult(
         payload?.success
           ? `Created successfully. Order Item ID: ${payload.orderItemId || "N/A"}`
@@ -873,10 +849,8 @@ export default function Page() {
 
       await loadProducts();
       await loadOrderItems(selectedOrderId);
-    } catch (error) {
-      setResult(
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+    } catch (error: any) {
+      setResult(`Error: ${error?.message || "Unknown error"}`);
     } finally {
       setLoading(false);
     }
@@ -889,36 +863,13 @@ export default function Page() {
     setResult("");
 
     try {
-      const res = await fetch(
-        "https://us-central1-di-peppi.cloudfunctions.net/deleteOrderItemCallable",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            data: { orderItemId },
-          }),
-        }
-      );
-
-      const text = await res.text();
-
-      if (!res.ok) {
-        try {
-          const err = JSON.parse(text);
-          setResult(err?.error?.message || "Delete failed");
-        } catch {
-          setResult("Delete failed");
-        }
-        return;
-      }
-
+      const deleteOrderItem = httpsCallable(functions, "deleteOrderItemCallable");
+      await deleteOrderItem({ orderItemId });
       setResult("Item deleted successfully.");
       await loadProducts();
       await loadOrderItems(selectedOrderId);
-    } catch (error) {
-      setResult(
-        `Delete error: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+    } catch (error: any) {
+      setResult(`Delete error: ${error?.message || "Unknown error"}`);
     } finally {
       setDeletingItemId("");
     }
@@ -991,43 +942,23 @@ export default function Page() {
     }
 
     try {
-      const res = await fetch(
-        "https://us-central1-di-peppi.cloudfunctions.net/updateOrderItemCallable",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            data: {
-              orderItemId: item.id,
-              productId: item.productId,
-              quantity: qty,
-              unitPrice,
-              unitCostPrice: Number(item.unitCostPrice || 0),
-              itemDiscountPercent: editingItemDiscountPercentNumber,
-              itemDiscountAmount: editingItemDiscountAmountNumber,
-              grossLineTotal: editGrossLineTotal,
-              netLineTotal: editNetLineTotal,
-              notes: item.notes || "",
-              customerType: selectedCustomer?.customerType || "",
-              preparation: editingPreparation,
-              sample: itemType === "sample",
-              gift: itemType === "gift",
-            },
-          }),
-        }
-      );
-
-      const text = await res.text();
-
-      if (!res.ok) {
-        try {
-          const err = JSON.parse(text);
-          setResult(err?.error?.message || "Update failed");
-        } catch {
-          setResult("Update failed");
-        }
-        return;
-      }
+      const updateOrderItem = httpsCallable(functions, "updateOrderItemCallable");
+      await updateOrderItem({
+        orderItemId: item.id,
+        productId: item.productId,
+        quantity: qty,
+        unitPrice,
+        unitCostPrice: Number(item.unitCostPrice || 0),
+        itemDiscountPercent: editingItemDiscountPercentNumber,
+        itemDiscountAmount: editingItemDiscountAmountNumber,
+        grossLineTotal: editGrossLineTotal,
+        netLineTotal: editNetLineTotal,
+        notes: item.notes || "",
+        customerType: selectedCustomer?.customerType || "",
+        preparation: editingPreparation,
+        sample: itemType === "sample",
+        gift: itemType === "gift",
+      });
 
       setResult("Item updated successfully.");
       setEditingItemId("");
@@ -1038,10 +969,8 @@ export default function Page() {
 
       await loadProducts();
       await loadOrderItems(selectedOrderId);
-    } catch (error) {
-      setResult(
-        `Update error: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+    } catch (error: any) {
+      setResult(`Update error: ${error?.message || "Unknown error"}`);
     }
   };
 
@@ -1222,13 +1151,17 @@ export default function Page() {
                     ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
                 }`}>📦 POs {poReadiness[selectedOrderId].delivered}/{poReadiness[selectedOrderId].total}</span>
               )}
-              {(orderStatus === "Draft" || orderStatus === "Preparing") && !existingInvoiceId && (
+              {(orderStatus === "Draft" || orderStatus === "Preparing") && (
                 <button
                   onClick={async () => {
-                    if (!confirm("Delete this order? This cannot be undone.")) return;
+                    const msg = existingInvoiceId
+                      ? "Delete this order and its draft invoice? This cannot be undone."
+                      : "Delete this order? This cannot be undone.";
+                    if (!confirm(msg)) return;
                     try {
                       const { doc, deleteDoc } = await import("firebase/firestore");
                       const { db } = await import("@/lib/firebase");
+                      if (existingInvoiceId) await deleteDoc(doc(db, "invoices", existingInvoiceId));
                       await deleteDoc(doc(db, "orders", selectedOrderId));
                       router.push("/admin/orders");
                     } catch (e) {
@@ -1420,15 +1353,61 @@ export default function Page() {
             {/* Add Product */}
             <div className="bg-white rounded-xl border border-gray-200 px-6 py-5 space-y-3">
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">➕ Add Product</h3>
-              <select className="w-full rounded-lg border px-3 py-2 text-sm" value={selectedProductId}
-                onChange={(e) => setSelectedProductId(e.target.value)}>
-                <option value="">Select Product</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id} disabled={p.currentStock <= 0}>
-                    {p.name} ({formatQty(p.currentStock)})
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <div
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white flex items-center gap-2 cursor-pointer"
+                  onClick={() => { setProductDropdownOpen(o => !o); setProductSearch(""); }}
+                >
+                  {selectedProductId ? (
+                    <span className="flex-1 text-gray-900">{products.find(p => p.id === selectedProductId)?.name || "—"}</span>
+                  ) : (
+                    <span className="flex-1 text-gray-400">Select Product</span>
+                  )}
+                  {selectedProductId && (
+                    <span
+                      className="text-gray-400 hover:text-gray-700 text-base leading-none px-0.5"
+                      onClick={e => { e.stopPropagation(); setSelectedProductId(""); setProductDropdownOpen(false); setProductSearch(""); }}
+                    >✕</span>
+                  )}
+                  <span className="text-gray-400 text-xs">{productDropdownOpen ? "▲" : "▼"}</span>
+                </div>
+
+                {productDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => { setProductDropdownOpen(false); setProductSearch(""); }} />
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                      <div className="p-2 border-b border-gray-100">
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder="Search products..."
+                          value={productSearch}
+                          onChange={e => setProductSearch(e.target.value)}
+                          className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                        />
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {products
+                          .filter(p => p.currentStock > 0 && (p.name || "").toLowerCase().includes(productSearch.toLowerCase()))
+                          .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+                          .map(p => (
+                            <div
+                              key={p.id}
+                              onClick={() => { setSelectedProductId(p.id); setProductDropdownOpen(false); setProductSearch(""); }}
+                              className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-gray-50 flex items-center justify-between ${p.id === selectedProductId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-800"}`}
+                            >
+                              <span>{p.name}</span>
+                              <span className="text-xs text-gray-400 shrink-0 ml-2">{formatQty(p.currentStock)}</span>
+                            </div>
+                          ))}
+                        {products.filter(p => (p.name || "").toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
+                          <div className="px-4 py-4 text-sm text-gray-400 text-center">No products found</div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
 
               {selectedProduct && (
                 <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-xs space-y-1">
@@ -1632,7 +1611,7 @@ export default function Page() {
                             </div>
                             <div className="text-right space-y-1 shrink-0">
                               <p className="font-bold text-gray-900">{money(displayNetLine)}</p>
-                              {weighingItemId === item.id ? (
+                              {products.find(p => p.id === item.productId)?.requiresWeighing && weighingItemId === item.id ? (
                                 <div className="flex items-center gap-1">
                                   <input type="number" step="0.001" placeholder="kg..." value={weighedQuantity}
                                     onChange={e => setWeighedQuantity(e.target.value)}
@@ -1640,11 +1619,10 @@ export default function Page() {
                                   <button onClick={async () => {
                                     if (!weighedQuantity || Number(weighedQuantity) <= 0) return;
                                     const qty = Number(weighedQuantity);
-                                    const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/updateOrderItemCallable", {
-                                      method: "POST", headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ data: { orderItemId: item.id, productId: item.productId, quantity: qty, unitPrice: Number(item.unitPrice || 0), unitCostPrice: Number(item.unitCostPrice || 0), itemDiscountPercent: Number(item.itemDiscountPercent || 0), itemDiscountAmount: Number(item.itemDiscountAmount || 0), grossLineTotal: qty * Number(item.unitPrice || 0), netLineTotal: qty * Number(item.unitPrice || 0), notes: item.notes || "", customerType: selectedCustomer?.customerType || "", sample: false, gift: false } })
-                                    });
-                                    if (res.ok) {
+                                    try {
+                                    const updateOrderItem = httpsCallable(functions, "updateOrderItemCallable");
+                                    await updateOrderItem({ orderItemId: item.id, productId: item.productId, quantity: qty, unitPrice: Number(item.unitPrice || 0), unitCostPrice: Number(item.unitCostPrice || 0), itemDiscountPercent: Number(item.itemDiscountPercent || 0), itemDiscountAmount: Number(item.itemDiscountAmount || 0), grossLineTotal: qty * Number(item.unitPrice || 0), netLineTotal: qty * Number(item.unitPrice || 0), notes: item.notes || "", customerType: selectedCustomer?.customerType || "", sample: false, gift: false });
+                                    {
                                       const newGross = qty * Number(item.unitPrice || 0);
                                       const newDiscount = (newGross * Number(item.itemDiscountPercent || 0) / 100) + Number(item.itemDiscountAmount || 0);
                                       const newNet = Math.max(newGross - newDiscount, 0);
@@ -1652,17 +1630,17 @@ export default function Page() {
                                       setOrderItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: qty, totalPrice: newNet, profit: newProfit } : i));
                                       setWeighingItemId(""); setWeighedQuantity("");
                                     }
-                                    else alert("Failed to update quantity");
+                                    } catch { alert("Failed to update quantity"); }
                                   }} className="text-xs px-2 py-1 bg-green-600 text-white rounded">✓</button>
                                   <button onClick={() => { setWeighingItemId(""); setWeighedQuantity(""); }} className="text-xs px-2 py-1 border rounded">✕</button>
                                 </div>
-                              ) : (
+                              ) : products.find(p => p.id === item.productId)?.requiresWeighing ? (
                                 <button
                                   className={`text-xs px-2 py-1 rounded border font-semibold ${Number(item.quantity) % 1 === 0 ? "border-orange-400 text-orange-600 bg-orange-50" : "border-green-400 text-green-600 bg-green-50"}`}
                                   onClick={() => { setWeighingItemId(item.id); setWeighedQuantity(String(item.quantity || "")); }}>
                                   ⚖️ Weigh
                                 </button>
-                              )}
+                              ) : null}
                               <div className="flex gap-1 justify-end">
                                 <Button variant="outline" size="icon" onClick={() => startEdit(item)} disabled={isEditing}><Pencil className="h-3 w-3" /></Button>
                                 <Button variant="outline" size="icon" onClick={() => deleteItem(item.id)} disabled={deletingItemId === item.id}><Trash2 className="h-3 w-3" /></Button>

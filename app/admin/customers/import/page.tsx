@@ -53,7 +53,6 @@ function mapRow(row: Record<string, string>) {
     clientDiscount: parseFloat(row["Client Discount %"] || "0") || 0,
     active: true,
     specialPrices: {},
-    appsheetId: row["ID"]?.trim() || "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };

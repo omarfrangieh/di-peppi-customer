@@ -27,8 +27,10 @@ const W_CLOSED = 56;
 export default function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const { session, logout } = useAuth();
   const w = open ? W_OPEN : W_CLOSED;
+
 
   if (pathname === "/login") {
     return null;
@@ -41,7 +43,7 @@ export default function Sidebar() {
 
         {/* Header — hamburger always left */}
         <div className="flex items-center border-b border-white/10" style={{ height: 60 }}>
-          <button onClick={() => setOpen(p => !p)}
+          <button onClick={() => { const next = !pinned; setPinned(next); setOpen(next); }}
             className="flex items-center justify-center hover:bg-white/10 transition-colors flex-shrink-0"
             style={{ width: W_CLOSED, height: 60 }}>
             <Menu size={18} color="white" />
@@ -57,11 +59,12 @@ export default function Sidebar() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-2 overflow-hidden">
+        <nav className="flex-1 py-2 overflow-y-auto">
           {NAV.map(({ label, href, icon: Icon }) => {
             const active = pathname === href || (href !== "/" && pathname.startsWith(href + "/"));
             return (
               <Link key={href} href={href} title={!open ? label : ""}
+                onClick={() => !open && setOpen(true)}
                 className={`flex items-center transition-colors text-sm font-medium ${
                   active ? "bg-white/20 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"
                 }`}

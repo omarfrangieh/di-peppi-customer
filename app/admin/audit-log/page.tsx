@@ -79,13 +79,13 @@ export default function AuditLogPage() {
           details: data.details,
           timestamp: data.timestamp,
         });
-        actions.add(data.action);
-        entities.add(data.entityType);
+        if (data.action) actions.add(data.action);
+        if (data.entityType) entities.add(data.entityType);
       });
 
       setLogs(logsList);
-      setUniqueActions(Array.from(actions).sort());
-      setUniqueEntities(Array.from(entities).sort());
+      setUniqueActions(Array.from(actions).filter(Boolean).sort());
+      setUniqueEntities(Array.from(entities).filter(Boolean).sort());
     } catch (err) {
       console.error("Failed to load audit logs:", err);
     } finally {
@@ -144,8 +144,8 @@ export default function AuditLogPage() {
               className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none"
             >
               <option value="All">All Actions</option>
-              {uniqueActions.map((action) => (
-                <option key={action} value={action}>
+              {uniqueActions.map((action, i) => (
+                <option key={action || i} value={action}>
                   {ACTION_LABELS[action] || action}
                 </option>
               ))}
@@ -156,8 +156,8 @@ export default function AuditLogPage() {
               className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none"
             >
               <option value="All">All Entities</option>
-              {uniqueEntities.map((entity) => (
-                <option key={entity} value={entity}>
+              {uniqueEntities.map((entity, i) => (
+                <option key={entity || i} value={entity}>
                   {entity}
                 </option>
               ))}

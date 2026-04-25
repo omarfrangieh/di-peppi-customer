@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, deleteDoc, writeBatch, serverTimestamp, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/formatters";
 import { X, Trash2 } from "lucide-react";
-import { httpsCallable } from "firebase/functions";
-import { functions } from "@/lib/firebase";
 
 const DELIVERY_STATUSES = ["All", "Draft", "Confirmed", "Preparing", "To Deliver", "Delivered", "Cancelled"];
 
@@ -109,9 +107,23 @@ export default function OrdersPage() {
     }
 
     try {
-      const deleteOrderFn = httpsCallable(functions, "deleteOrder");
-      await deleteOrderFn({ orderId });
-      // Reload orders after deletion
+      const batch = writeBatch(db);
+
+      // Delete all order items
+      const itemsSnap = await getDocs(query(collection(db, "orderItems"), where("orderId", "==", orderId)));
+      itemsSnap.docs.forEach(d => batch.delete(d.ref));
+
+      // Delete the order
+      batch.delete(doc(db, "orders", orderId));
+
+      // Audit log
+      batch.set(doc(collection(db, "auditLog")), {
+        action: "deleted_order",
+        orderId,
+        timestamp: serverTimestamp(),
+      });
+
+      await batch.commit();
       await load();
     } catch (error: any) {
       alert(`Failed to delete order: ${error.message}`);

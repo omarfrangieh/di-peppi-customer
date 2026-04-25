@@ -2,7 +2,7 @@
 
 import { useEffect, useState, createContext, useContext, ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
+import { onAuthStateChanged, signInWithCustomToken, signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
 interface Session {
@@ -16,7 +16,7 @@ interface Session {
 interface AuthContextType {
   session: Session | null;
   loading: boolean;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -63,6 +63,7 @@ export default function AuthWrapper({ children }: { children: ReactNode }) {
         // No Firebase Auth session — clear stale local session and redirect to login
         localStorage.removeItem("session");
         localStorage.removeItem("customToken");
+        await signOut(auth).catch(() => {});
         router.push("/admin/login");
         setLoading(false);
         return;
@@ -88,7 +89,8 @@ export default function AuthWrapper({ children }: { children: ReactNode }) {
     };
   }, [isLoginPage, router]);
 
-  const logout = () => {
+  const logout = async () => {
+    await signOut(auth).catch(() => {});
     localStorage.removeItem("session");
     setSession(null);
     router.push("/admin/login");

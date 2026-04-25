@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import { db, functions } from "@/lib/firebase";
-import { httpsCallable } from "firebase/functions";
+import { collection, getDocs, doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import SearchInput from "@/components/SearchInput";
 
@@ -91,14 +90,24 @@ export default function UsersPage() {
         throw new Error("Email and name are required");
       }
 
-      const createUserFn = httpsCallable(functions, "createUser");
-      await createUserFn({
+      // Check if user already exists
+      const existingSnap = await getDoc(doc(db, "users", formData.email));
+      if (existingSnap.exists()) {
+        throw new Error("A user with this email already exists");
+      }
+
+      // Write directly to Firestore
+      const now = serverTimestamp();
+      await setDoc(doc(db, "users", formData.email), {
         email: formData.email,
         name: formData.name,
-        phone: formData.phone,
-        role: formData.role,
-        accountType: formData.accountType,
-        assignedWarehouses: formData.assignedWarehouses,
+        phone: formData.phone || "",
+        role: formData.role || "",
+        accountType: formData.accountType || "Employee",
+        assignedWarehouses: formData.assignedWarehouses || [],
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
       });
 
       await load();
@@ -119,23 +128,16 @@ export default function UsersPage() {
     setSaving(true);
 
     try {
-      const updateUserFn = httpsCallable(functions, "updateUser");
-      await updateUserFn({
-        userId: editingUser.email,
+      const updates: Record<string, any> = {
         name: formData.name,
-        phone: formData.phone,
-        role: formData.role,
-        accountType: formData.accountType,
-        assignedWarehouses: formData.assignedWarehouses,
-      });
+        phone: formData.phone || "",
+        role: formData.role || "",
+        accountType: formData.accountType || "Employee",
+        assignedWarehouses: formData.assignedWarehouses || [],
+        updatedAt: serverTimestamp(),
+      };
 
-      if (showChangePassword && newPassword) {
-        const resetPasswordFn = httpsCallable(functions, "resetPassword");
-        await resetPasswordFn({
-          userId: editingUser.email,
-          newPassword,
-        });
-      }
+      await updateDoc(doc(db, "users", editingUser.email), updates);
 
       await load();
       setShowEditModal(false);
@@ -151,11 +153,13 @@ export default function UsersPage() {
     if (!confirm("Are you sure you want to deactivate this user?")) return;
 
     try {
-      const deleteUserFn = httpsCallable(functions, "deleteUser");
-      await deleteUserFn({userId: email});
+      await updateDoc(doc(db, "users", email), {
+        isActive: false,
+        updatedAt: serverTimestamp(),
+      });
       await load();
     } catch (err: any) {
-      alert(err.message || "Failed to delete user");
+      alert(err.message || "Failed to deactivate user");
     }
   };
 
@@ -164,7 +168,6 @@ export default function UsersPage() {
     setFormData({
       email: user.email,
       name: user.name,
-      password: "",
       phone: user.phone || "",
       role: user.role,
       accountType: user.accountType,
@@ -180,7 +183,6 @@ export default function UsersPage() {
     setFormData({
       email: "",
       name: "",
-      password: "",
       phone: "",
       role: "Operator",
       accountType: "Employee",

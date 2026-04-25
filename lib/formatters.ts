@@ -4,5 +4,5 @@ export function formatQty(num: number | string | null | undefined): string {
 }
 
 export function formatPrice(num: number | string | null | undefined): string {
-  return Number(num || 0).toFixed(2);
+  return Number(num || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
