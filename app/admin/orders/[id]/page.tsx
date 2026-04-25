@@ -454,10 +454,20 @@ export default function Page() {
 
   const loadOrders = async () => {
     try {
-      const res = await fetch(
-        "https://us-central1-di-peppi.cloudfunctions.net/getOrders"
-      );
-      const data = await res.json();
+      const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
+      let data: any[] = [];
+      if (isLocal) {
+        try {
+          const res = await fetch("http://localhost:5001/di-peppi/us-central1/getOrders");
+          if (res.ok) data = await res.json();
+        } catch {
+          // emulator not running — fall through to production
+        }
+      }
+      if (!data.length) {
+        const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
+        data = await res.json();
+      }
       setOrders(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error loading orders:", error);
@@ -605,12 +615,20 @@ export default function Page() {
     }
 
     try {
-      const res = await fetch(
-        `https://us-central1-di-peppi.cloudfunctions.net/getOrderItems?orderId=${encodeURIComponent(
-          orderId
-        )}`
-      );
-      const data = await res.json();
+      const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
+      let data: any[] = [];
+      if (isLocal) {
+        try {
+          const res = await fetch(`http://localhost:5001/di-peppi/us-central1/getOrderItems?orderId=${encodeURIComponent(orderId)}`);
+          if (res.ok) data = await res.json();
+        } catch {
+          // emulator not running — fall through to production
+        }
+      }
+      if (!data.length) {
+        const res = await fetch(`https://us-central1-di-peppi.cloudfunctions.net/getOrderItems?orderId=${encodeURIComponent(orderId)}`);
+        data = await res.json();
+      }
       setOrderItems(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error loading order items:", error);
@@ -679,7 +697,7 @@ export default function Page() {
         customerId,
         orderDate,
         deliveryDate,
-        status: orderStatus,
+        status: orderStatus || "Draft",
         notes: orderNotes,
         discountPercent: discountPercentNumber,
         discountAmount: discountAmountNumber,
@@ -705,18 +723,26 @@ export default function Page() {
 
 
   useEffect(() => {
-    if (urlOrderId && urlOrderId !== "new" && orders.length > 0) {
-      const order = orders.find(o => o.id === urlOrderId);
-      if (order) {
-        setCustomerId(order.customerId || "");
-        setSelectedOrderId(urlOrderId);
+    if (!urlOrderId || urlOrderId === "new") return;
+    // Set selectedOrderId directly from URL — don't gate on orders list loading
+    setSelectedOrderId(urlOrderId);
+    // Load invoice for this order
+    getDocs(query(collection(db, "invoices"), where("orderId", "==", urlOrderId))).then(snap => {
+      if (!snap.empty) {
+        setExistingInvoiceId(snap.docs[0].id);
+        setExistingInvoiceStatus(snap.docs[0].data().status || "draft");
       }
-      getDocs(query(collection(db, "invoices"), where("orderId", "==", urlOrderId))).then(snap => {
-        if (!snap.empty) {
-          setExistingInvoiceId(snap.docs[0].id);
-          setExistingInvoiceStatus(snap.docs[0].data().status || "draft");
-        }
-      });
+    });
+    // Populate fields from production orders list — this data is always correct and
+    // serves as a fallback when the local Firestore doc has corrupted/empty values
+    // (e.g. dates cleared by early auto-saves before the orderDataLoaded guard existed).
+    const order = orders.find(o => o.id === urlOrderId);
+    if (order) {
+      setCustomerId(order.customerId || "");
+      // Functional update: only fills in if the value is still empty (Firestore may have set it already)
+      if (order.orderDate) setOrderDate(prev => prev || firestoreDateToString(order.orderDate));
+      if (order.deliveryDate) setDeliveryDate(prev => prev || firestoreDateToString(order.deliveryDate));
+      if (order.status) setOrderStatus(prev => prev || order.status);
     }
   }, [urlOrderId, orders]);
 
@@ -763,6 +789,7 @@ export default function Page() {
     orderDataLoaded,
     customerId,
     orderDate,
+    deliveryDate,
     orderStatus,
     orderNotes,
     grossSubtotal,
@@ -800,7 +827,7 @@ export default function Page() {
       return;
     }
 
-    if (selectedProduct && qty > Number(selectedProduct.currentStock || 0)) {
+    if (selectedProduct && Number(selectedProduct.currentStock) > 0 && qty > Number(selectedProduct.currentStock)) {
       setResult(
         `Insufficient stock. Requested ${qty}, available ${selectedProduct.currentStock}.`
       );
@@ -1021,18 +1048,26 @@ export default function Page() {
               style={{backgroundColor: "#1B2A5E"}}>
               + New Order
             </button>
-            {existingInvoiceStatus === "draft" && (
+            {(!order?.status || order?.status === "Draft" || order?.status === "Confirmed" || order?.status === "Preparing") && (
               <button
                 onClick={async () => {
-                  if (!confirm("Delete this order and its draft invoice? This cannot be undone.")) return;
+                  const msg = existingInvoiceId
+                    ? "Delete this order and its draft invoice? This cannot be undone."
+                    : "Delete this order? This cannot be undone.";
+                  if (!confirm(msg)) return;
                   try {
-                    const { doc, deleteDoc } = await import("firebase/firestore");
+                    const { doc, deleteDoc, collection, getDocs, query, where } = await import("firebase/firestore");
                     const { db } = await import("@/lib/firebase");
-                    await deleteDoc(doc(db, "invoices", existingInvoiceId));
+                    // Delete order items
+                    const itemsSnap = await getDocs(query(collection(db, "orderItems"), where("orderId", "==", selectedOrderId)));
+                    await Promise.all(itemsSnap.docs.map(d => deleteDoc(d.ref)));
+                    // Delete invoice if exists
+                    if (existingInvoiceId) await deleteDoc(doc(db, "invoices", existingInvoiceId));
+                    // Delete order
                     await deleteDoc(doc(db, "orders", selectedOrderId));
                     router.push("/admin/orders");
-                  } catch (e) {
-                    alert("Failed to delete order");
+                  } catch (e: any) {
+                    alert(`Failed to delete order: ${e.message}`);
                   }
                 }}
                 className="px-3 py-1.5 text-xs rounded-lg font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
@@ -1151,7 +1186,7 @@ export default function Page() {
                     ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
                 }`}>📦 POs {poReadiness[selectedOrderId].delivered}/{poReadiness[selectedOrderId].total}</span>
               )}
-              {(orderStatus === "Draft" || orderStatus === "Preparing") && (
+              {(!orderStatus || orderStatus === "Draft" || orderStatus === "Confirmed" || orderStatus === "Preparing") && (
                 <button
                   onClick={async () => {
                     const msg = existingInvoiceId
@@ -1159,13 +1194,15 @@ export default function Page() {
                       : "Delete this order? This cannot be undone.";
                     if (!confirm(msg)) return;
                     try {
-                      const { doc, deleteDoc } = await import("firebase/firestore");
+                      const { doc, deleteDoc, collection, getDocs, query, where } = await import("firebase/firestore");
                       const { db } = await import("@/lib/firebase");
+                      const itemsSnap = await getDocs(query(collection(db, "orderItems"), where("orderId", "==", selectedOrderId)));
+                      await Promise.all(itemsSnap.docs.map(d => deleteDoc(d.ref)));
                       if (existingInvoiceId) await deleteDoc(doc(db, "invoices", existingInvoiceId));
                       await deleteDoc(doc(db, "orders", selectedOrderId));
                       router.push("/admin/orders");
-                    } catch (e) {
-                      alert("Failed to delete order");
+                    } catch (e: any) {
+                      alert(`Failed to delete order: ${e.message}`);
                     }
                   }}
                   className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
@@ -1269,11 +1306,6 @@ export default function Page() {
               style={{backgroundColor: "#1B2A5E"}}>
               + New Order
             </button>
-          )}
-          {selectedOrderId && !existingInvoiceId && (
-            <div className="flex items-center gap-2 text-xs text-green-600 font-medium">
-              ✅ Order saved automatically as Draft
-            </div>
           )}
         </div>
 
@@ -1388,7 +1420,7 @@ export default function Page() {
                       </div>
                       <div className="max-h-64 overflow-y-auto">
                         {products
-                          .filter(p => p.currentStock > 0 && (p.name || "").toLowerCase().includes(productSearch.toLowerCase()))
+                          .filter(p => (p.name || "").toLowerCase().includes(productSearch.toLowerCase()))
                           .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
                           .map(p => (
                             <div

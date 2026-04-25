@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, orderBy, doc, deleteDoc, writeBatch, serverTimestamp, where } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, deleteDoc, writeBatch, serverTimestamp, where, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/formatters";
@@ -75,8 +75,20 @@ export default function OrdersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
-      const data = await res.json();
+      const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
+      let data: any[] = [];
+      if (isLocal) {
+        try {
+          const res = await fetch("http://localhost:5001/di-peppi/us-central1/getOrders");
+          if (res.ok) data = await res.json();
+        } catch {
+          // emulator not running — fall through to production
+        }
+      }
+      if (!data.length) {
+        const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
+        data = await res.json();
+      }
       setOrders(Array.isArray(data) ? data : []);
 
       // Load PO readiness
@@ -116,17 +128,23 @@ export default function OrdersPage() {
       // Delete the order
       batch.delete(doc(db, "orders", orderId));
 
-      // Audit log
-      batch.set(doc(collection(db, "auditLog")), {
-        action: "deleted_order",
-        orderId,
-        timestamp: serverTimestamp(),
-      });
-
       await batch.commit();
+
+      // Audit log separately — never block deletion if this fails
+      try {
+        await addDoc(collection(db, "auditLog"), {
+          action: "deleted_order",
+          orderId,
+          timestamp: serverTimestamp(),
+        });
+      } catch (auditErr) {
+        console.warn("Audit log failed (non-blocking):", auditErr);
+      }
+
       await load();
     } catch (error: any) {
-      alert(`Failed to delete order: ${error.message}`);
+      console.error("Delete order error:", error);
+      alert(`Failed to delete order: ${error.message || JSON.stringify(error)}`);
     }
   };
 
