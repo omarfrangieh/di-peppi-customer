@@ -8,6 +8,9 @@ import {
   setDoc,
   doc,
   deleteDoc,
+  query,
+  where,
+  writeBatch,
 } from "firebase/firestore";
 
 interface Category {
@@ -23,6 +26,7 @@ export default function CategoriesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [search, setSearch] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [showInitPrompt, setShowInitPrompt] = useState(false);
@@ -94,21 +98,31 @@ export default function CategoriesPage() {
   };
 
   const handleToggleActive = async (categoryId: string, currentActive: boolean) => {
+    const category = categories.find(c => c.id === categoryId);
+    if (!category) return;
+
+    // When deactivating, confirm since it affects all products in this category
+    if (currentActive && !window.confirm(
+      `Deactivating "${category.name}" will also deactivate all products in this category. Continue?`
+    )) return;
+
     try {
       const now = new Date().toISOString();
-      await setDoc(
-        doc(db, "productCategories", categoryId),
-        {
-          active: !currentActive,
-          updatedAt: now,
-        },
-        { merge: true }
-      );
+      const batch = writeBatch(db);
+
+      // Update the category itself
+      batch.set(doc(db, "productCategories", categoryId), { active: !currentActive, updatedAt: now }, { merge: true });
+
+      // When deactivating, also deactivate all products in this category
+      if (currentActive) {
+        const productsSnap = await getDocs(query(collection(db, "products"), where("category", "==", category.name)));
+        productsSnap.docs.forEach(d => batch.update(d.ref, { active: false, updatedAt: now }));
+      }
+
+      await batch.commit();
 
       setCategories((prev) =>
-        prev.map((cat) =>
-          cat.id === categoryId ? { ...cat, active: !currentActive, updatedAt: now } : cat
-        )
+        prev.map((cat) => cat.id === categoryId ? { ...cat, active: !currentActive, updatedAt: now } : cat)
       );
     } catch (err: any) {
       setError(err.message || "Failed to update category");
@@ -116,12 +130,22 @@ export default function CategoriesPage() {
   };
 
   const handleDeleteCategory = async (categoryId: string) => {
-    if (!window.confirm("Are you sure? This will hide the category for customers.")) {
-      return;
-    }
+    const category = categories.find(c => c.id === categoryId);
+    if (!category) return;
+
+    if (!window.confirm(
+      `Delete "${category.name}"? This will also delete all products in this category. This cannot be undone.`
+    )) return;
 
     try {
-      await deleteDoc(doc(db, "productCategories", categoryId));
+      const batch = writeBatch(db);
+
+      batch.delete(doc(db, "productCategories", categoryId));
+
+      const productsSnap = await getDocs(query(collection(db, "products"), where("category", "==", category.name)));
+      productsSnap.docs.forEach(d => batch.delete(d.ref));
+
+      await batch.commit();
       setCategories((prev) => prev.filter((cat) => cat.id !== categoryId));
     } catch (err: any) {
       setError(err.message || "Failed to delete category");
@@ -254,6 +278,17 @@ export default function CategoriesPage() {
         </div>
       )}
 
+      {/* Search */}
+      {categories.length > 0 && (
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search categories..."
+          className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+        />
+      )}
+
       {/* Categories Table */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         {loading ? (
@@ -284,7 +319,7 @@ export default function CategoriesPage() {
                 </tr>
               </thead>
               <tbody>
-                {categories.map((category) => (
+                {categories.filter(c => c.name.toLowerCase().includes(search.toLowerCase())).map((category) => (
                   <tr key={category.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-6 py-4 text-gray-900 font-medium">{category.name}</td>
                     <td className="px-6 py-4">
