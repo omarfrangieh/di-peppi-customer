@@ -19,6 +19,13 @@ const DEFAULT_OPTIONS = {
   origin: [],
 };
 
+function ProductImage({ src, alt, className }: { src?: string | null; alt: string; className?: string }) {
+  const [failed, setFailed] = React.useState(false);
+  const isValid = src && (src.startsWith("/") || src.startsWith("http://") || src.startsWith("https://"));
+  if (!isValid || failed) return null;
+  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
+}
+
 function Badge({ label, color }: { label: string; color: string }) {
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
@@ -845,9 +852,8 @@ export default function AdminProductsPage() {
                 /* EDIT MODE */
                 <div className="space-y-3">
                   <div className="relative h-32 bg-white rounded-t-lg overflow-hidden group flex items-center justify-center">
-                    {editData.productImage ? (
-                      <img src={editData.productImage} alt={editData.name} className="max-w-full max-h-full object-contain" />
-                    ) : (
+                    <ProductImage src={editData.productImage} alt={editData.name} className="max-w-full max-h-full object-contain" />
+                    {!editData.productImage && (
                       <div className="w-full h-full flex items-center justify-center text-gray-400">📷 No image</div>
                     )}
                     <input type="file" accept="image/*" ref={fileInputRef} className="hidden"
@@ -1005,9 +1011,8 @@ export default function AdminProductsPage() {
                 /* VIEW MODE */
                 <div className="space-y-3">
                   <div className="h-32 bg-white rounded-t-lg overflow-hidden flex items-center justify-center">
-                    {product.productImage ? (
-                      <img src={product.productImage} alt={product.name} className="max-w-full max-h-full object-contain" />
-                    ) : (
+                    <ProductImage src={product.productImage} alt={product.name} className="max-w-full max-h-full object-contain" />
+                    {!product.productImage && (
                       <div className="text-gray-400 text-center">
                         <div className="text-3xl mb-1">📦</div>
                         <div className="text-xs">No image</div>
