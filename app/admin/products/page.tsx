@@ -771,7 +771,7 @@ export default function AdminProductsPage() {
           >
             Products
           </h1>
-          <span className="text-xs text-gray-400">{products.length} products</span>
+          <span className="text-xs text-gray-400">{products.filter(p => p.active !== false).length} products</span>
         </div>
         <div className="flex items-center gap-3">
           {inactiveCount > 0 && (
@@ -960,7 +960,7 @@ export default function AdminProductsPage() {
                     <div>
                       <label className="text-xs text-gray-500 block mb-1">Min Stock</label>
                       <input type="number" value={editData.minStock || ""} onChange={e => setEditData((p: any) => ({ ...p, minStock: e.target.value }))}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                        placeholder="0" className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
                     </div>
                     <div className="flex items-end">
                       <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -1025,8 +1025,8 @@ export default function AdminProductsPage() {
                       {product.productSubName && <p className="text-xs text-gray-500">{product.productSubName}</p>}
                       <div className="mt-2 flex items-center gap-2">
                         <span className={`text-sm font-semibold px-2.5 py-1 rounded-full ${
-                          Number(product.currentStock || 0) === 0 ? "bg-red-100 text-red-700" :
-                          Number(product.currentStock || 0) <= Number(product.minStock || 0) && Number(product.minStock) > 0 ? "bg-yellow-100 text-yellow-700" :
+                          (Number(product.currentStock || 0) === 0 || (Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock))) ? "bg-red-100 text-red-700" :
+                          (Number(product.minStock) > 0 && Number(product.currentStock || 0) === Number(product.minStock)) ? "bg-yellow-100 text-yellow-700" :
                           "bg-green-100 text-green-700"
                         }`}>
                           {formatQty(product.currentStock)} {product.unit || ""}
@@ -1081,7 +1081,11 @@ export default function AdminProductsPage() {
                   <div className="grid grid-cols-2 gap-2 text-sm border-t pt-3">
                     <div>
                       <p className="text-xs text-gray-500">Stock</p>
-                      <p className={Number(product.currentStock) <= Number(product.minStock || 0) && Number(product.minStock) > 0 ? "text-red-600 font-semibold" : "text-gray-900"}>
+                      <p className={
+                        (Number(product.currentStock || 0) === 0 || (Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock))) ? "text-red-600 font-semibold" :
+                        (Number(product.minStock) > 0 && Number(product.currentStock || 0) === Number(product.minStock)) ? "text-yellow-600 font-semibold" :
+                        "text-gray-900"
+                      }>
                         {formatQty(product.currentStock)}
                       </p>
                     </div>
