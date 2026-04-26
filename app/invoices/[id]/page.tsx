@@ -881,7 +881,9 @@ Please call/message the supplier(s): ${suppliers}`);
                     {generatingPOs ? "Generating..." : invoicePOs.length > 0 ? "🔄 Regenerate POs" : "📦 Generate POs"}
                   </button>
                 )}
-                <a href="/admin/purchase-orders" className="text-xs text-[#1B2A5E] hover:underline">View all POs →</a>
+                <a href="/admin/purchase-orders" className="text-xs px-3 py-1.5 text-white rounded-lg font-medium hover:opacity-90 transition-opacity" style={{backgroundColor: "#1B2A5E"}}>
+                  View all POs →
+                </a>
               </div>
             </div>
             {invoicePOs.length === 0 ? (
