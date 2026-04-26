@@ -583,18 +583,22 @@ Please call/message the supplier(s): ${suppliers}`);
     if (!invoiceId) return;
     setSaving(true);
     try {
-      const taxAmount = Math.round(((invoice?.subtotalNet || 0) * taxRate / 100) * 100) / 100;
+      const cleanTaxRate = Number(taxRate) || 0;
+      const taxAmount = Math.round(((invoice?.subtotalNet || 0) * cleanTaxRate / 100) * 100) / 100;
+      const deliveryAmount = includeDelivery ? (invoice?.deliveryFee || 0) : 0;
+      const finalTotal = (invoice?.subtotalNet || 0) + taxAmount + deliveryAmount;
       await updateDoc(doc(db, "invoices", invoiceId), {
         status,
         dueDate,
         notes,
-        taxRate,
+        taxRate: cleanTaxRate,
         taxAmount,
+        finalTotal,
         includeDelivery,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-      setInvoice((prev) => prev ? { ...prev, status, dueDate, notes } : prev);
+      setInvoice((prev) => prev ? { ...prev, status, dueDate, notes, taxRate: cleanTaxRate, taxAmount, finalTotal } : prev);
     } catch (err) {
       console.error(err);
       alert("Error saving changes");
@@ -606,15 +610,17 @@ Please call/message the supplier(s): ${suppliers}`);
   const recalculateTotalsFromLines = async (currentLines: typeof lines) => {
     try {
       const gross = currentLines.reduce((sum, l) => (l.sample || l.gift) ? sum : sum + Number(l.lineGross || 0), 0);
-      const deliveryFee = Number(invoice?.deliveryFee || 0);
-      const finalTotal = gross + deliveryFee;
+      const taxAmount = Math.round((gross * taxRate / 100) * 100) / 100;
+      const deliveryFee = includeDelivery ? (Number(invoice?.deliveryFee || 0)) : 0;
+      const finalTotal = gross + taxAmount + deliveryFee;
       await updateDoc(doc(db, "invoices", invoiceId), {
         subtotalGross: gross,
         subtotalNet: gross,
+        taxAmount,
         finalTotal: finalTotal,
         updatedAt: serverTimestamp(),
       });
-      setInvoice((prev: any) => prev ? { ...prev, subtotalGross: gross, subtotalNet: gross, finalTotal } : prev);
+      setInvoice((prev: any) => prev ? { ...prev, subtotalGross: gross, subtotalNet: gross, taxAmount, finalTotal } : prev);
       } catch(e) {
       console.error("Failed to recalculate", e);
     }
@@ -1255,8 +1261,12 @@ Please call/message the supplier(s): ${suppliers}`);
                     type="number"
                     min="0"
                     max="100"
-                    value={taxRate}
-                    onChange={(e) => setTaxRate(Number(e.target.value))}
+                    value={taxRate === 0 ? "" : taxRate}
+                    onChange={(e) => {
+                      const val = e.target.value === "" ? 0 : Number(e.target.value);
+                      setTaxRate(val);
+                    }}
+                    placeholder="0"
                     className="w-16 text-right border border-gray-200 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                   />
                   <span className="text-gray-500 text-sm">%</span>
