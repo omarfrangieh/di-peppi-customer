@@ -34,8 +34,19 @@ export default function Dashboard() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
-      const data = await res.json();
+      const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
+      let data: any[] = [];
+      let emulatorOk = false;
+      if (isLocal) {
+        try {
+          const res = await fetch("http://localhost:5001/di-peppi/us-central1/getOrders");
+          if (res.ok) { data = await res.json(); emulatorOk = true; }
+        } catch { /* emulator not running */ }
+      }
+      if (!emulatorOk) {
+        const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
+        data = await res.json();
+      }
       setOrders(Array.isArray(data) ? data : []);
 
       // Find orders that have items with requiresWeighing products
