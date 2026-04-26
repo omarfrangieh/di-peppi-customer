@@ -38,6 +38,8 @@ interface Invoice {
   subtotalNet: number;
   deliveryFee: number;
   finalTotal: number;
+  taxRate?: number;
+  taxAmount?: number;
   notes: string;
   sourceOrderName: string;
   orderId: string;
