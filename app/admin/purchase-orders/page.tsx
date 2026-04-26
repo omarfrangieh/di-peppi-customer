@@ -190,6 +190,10 @@ Di Peppi`
                     className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none">
                     {STATUSES.map(s => <option key={s}>{s}</option>)}
                   </select>
+                  <button onClick={() => setExpanded(expanded === po.id ? null : po.id)}
+                    className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">
+                    {expanded === po.id ? "▲ Hide" : "▼ Items"}
+                  </button>
                   <button onClick={() => setPreviewPO(po)}
                     className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">
                     Preview
