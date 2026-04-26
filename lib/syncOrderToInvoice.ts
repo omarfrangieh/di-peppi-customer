@@ -59,6 +59,7 @@ export async function syncOrderToInvoice({
   let subtotalGross = 0;
   let subtotalNet = 0;
   let itemDiscountTotal = 0;
+  let taxAmount = 0;
 
   await Promise.all(
     orderItems.map(async (item: any) => {
@@ -66,10 +67,15 @@ export async function syncOrderToInvoice({
       const lineGross = isFree ? 0 : Number(item.grossLineTotal || item.totalPrice || 0);
       const lineNet = isFree ? 0 : Number(item.netLineTotal || item.totalPrice || 0);
       const profit = isFree ? -(Number(item.unitCostPrice || 0) * Number(item.quantity || 0)) : Number(item.profit || 0);
+      const vatRate = productMap[item.productId]?.vatRate;
 
       subtotalGross += lineGross;
       subtotalNet += lineNet;
       itemDiscountTotal += Math.max(lineGross - lineNet, 0);
+
+      if (!isFree && vatRate) {
+        taxAmount += Math.round((lineNet * vatRate / 100) * 100) / 100;
+      }
 
       await addDoc(collection(db, "invoiceLines"), {
         invoiceId,
@@ -86,6 +92,7 @@ export async function syncOrderToInvoice({
         lineNet,
         profit,
         totalCostPrice: Number(item.unitCostPrice || 0) * Number(item.quantity || 0),
+        vatRate,
         notes: item.notes || "",
         preparation: item.preparation || "",
         sample: Boolean(item.sample),
@@ -103,7 +110,7 @@ export async function syncOrderToInvoice({
     ? subtotalNet * (orderDiscountPercent / 100)
     : orderDiscountAmount;
 
-  const rawFinalTotal = Math.max(subtotalNet - orderDiscountValue + deliveryFee, 0);
+  const rawFinalTotal = Math.max(subtotalNet - orderDiscountValue + taxAmount + deliveryFee, 0);
   const finalTotal = customer?.customerType === "B2C" ? roundToHalf(rawFinalTotal) : rawFinalTotal;
   const roundingAdjustment = finalTotal - rawFinalTotal;
 
@@ -114,6 +121,7 @@ export async function syncOrderToInvoice({
     orderDiscountPercent,
     orderDiscountAmount: orderDiscountValue,
     deliveryFee,
+    taxAmount,
     finalTotal,
     roundingAdjustment,
     updatedAt: serverTimestamp(),

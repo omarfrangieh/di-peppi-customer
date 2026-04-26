@@ -63,14 +63,16 @@ const items = itemsSnap.docs.map((doc) => ({
   ...doc.data(),
 }));
 
-// Fetch product names
+// Fetch product names and VAT rates
   const productIds = [...new Set(items.map((i: any) => i.productId).filter(Boolean))];
   const productNames: Record<string, string> = {};
+  const productVatRates: Record<string, number | undefined> = {};
   await Promise.all(
     productIds.map(async (pid: any) => {
       const snap = await getDoc(doc(db, 'products', pid));
       if (snap.exists()) {
         productNames[pid] = snap.data().name || pid;
+        productVatRates[pid] = snap.data().vatRate;
       }
     })
   );
@@ -81,6 +83,20 @@ console.log("FIRST ORDER ITEM USED FOR INVOICE:", items[0]);
 if (items.length === 0) {
   throw new Error("No order items found");
 }
+
+// Calculate initial VAT based on product VAT rates
+let initialTaxAmount = 0;
+items.forEach((item: any) => {
+  const vatRate = productVatRates[item.productId] || 0;
+  const lineNet = Number(item.totalPrice || 0);
+  if (vatRate > 0) {
+    initialTaxAmount += Math.round((lineNet * vatRate / 100) * 100) / 100;
+  }
+});
+
+const subtotalNet = Number(order.netTotal || order.totalPrice || 0);
+const deliveryFee = Number(order.deliveryFee || 0);
+const finalTotal = subtotalNet + initialTaxAmount + deliveryFee;
 
 // Create invoice
   const invoiceRef = await addDoc(collection(db, "invoices"), {
@@ -104,12 +120,11 @@ if (items.length === 0) {
     itemDiscountTotal: Number(order.itemDiscountTotal || 0),
     orderDiscountPercent: Number(order.discountPercent || 0),
     orderDiscountAmount: Number(order.discountAmount || 0),
-    subtotalNet: Number(order.netTotal || order.totalPrice || 0),
-    deliveryFee: Number(order.deliveryFee || 0),
-    finalTotal: order.customerType === "B2C" ? Math.round(Number(order.rawFinalTotal || order.finalTotal || 0) * 2) / 2 : Number(order.finalTotal || 0),
-    roundingAdjustment: order.customerType === "B2C" ? (Math.round(Number(order.rawFinalTotal || order.finalTotal || 0) * 2) / 2) - Number(order.rawFinalTotal || order.finalTotal || 0) : 0,
-    taxRate: 0,
-    taxAmount: 0,
+    subtotalNet: subtotalNet,
+    deliveryFee: deliveryFee,
+    finalTotal: finalTotal,
+    roundingAdjustment: 0,
+    taxAmount: initialTaxAmount,
     includeDelivery: true,
     canceledAt: "",
     canceledBy: "",
@@ -141,6 +156,7 @@ if (items.length === 0) {
         lineNet: Number(item.totalPrice || 0),         // ✅ was item.lineNet
         profit: Number(item.profit || 0),              // ✅ new field
         totalCostPrice: Number(item.totalCostPrice || 0), // ✅ new field
+        vatRate: productVatRates[item.productId],
         notes: item.notes || "",
         preparation: item.preparation || "",
         sample: Boolean(item.sample),

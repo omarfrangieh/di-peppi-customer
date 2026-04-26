@@ -61,6 +61,7 @@ export default function AdminProductsPage() {
     costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "",
     active: true, requiresWeighing: false, trackExpiry: false,
     minWeightPerUnit: "", maxWeightPerUnit: "", barcodeNumber: "",
+    vatRate: "",
   });
   const [addingSaving, setAddingSaving] = useState(false);
   const [showMarginsFor, setShowMarginsFor] = useState<string | null>(null);
@@ -521,11 +522,12 @@ export default function AdminProductsPage() {
         minWeightPerUnit: newProduct.minWeightPerUnit ? Number(newProduct.minWeightPerUnit) : null,
         maxWeightPerUnit: newProduct.maxWeightPerUnit ? Number(newProduct.maxWeightPerUnit) : null,
         barcodeNumber: newProduct.barcodeNumber || "",
+        vatRate: newProduct.vatRate ? Number(newProduct.vatRate) : null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
       setShowAddProduct(false);
-      setNewProduct({ name: "", productSubName: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "", barcodeNumber: "" });
+      setNewProduct({ name: "", productSubName: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "", barcodeNumber: "", vatRate: "" });
       await load();
     } finally {
       setAddingSaving(false);
@@ -954,6 +956,12 @@ export default function AdminProductsPage() {
                         )}
                       </div>
                     </div>
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">VAT Rate (%)</label>
+                      <input type="number" value={editData.vatRate || ""} onChange={e => setEditData((p: any) => ({ ...p, vatRate: e.target.value }))}
+                        placeholder="Empty = exempt" className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                      <p className="text-xs text-gray-400 mt-0.5">Leave empty for exempt</p>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -1344,6 +1352,12 @@ export default function AdminProductsPage() {
                       Margin: {((Number(newProduct.b2cPrice) - Number(newProduct.costPrice)) / Number(newProduct.b2cPrice) * 100).toFixed(1)}%
                     </p>
                   )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">VAT Rate (%)</label>
+                  <input type="number" value={newProduct.vatRate} onChange={e => setNewProduct((p:any) => ({...p, vatRate: e.target.value}))}
+                    placeholder="Leave empty for VAT-exempt" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                  <p className="text-xs text-gray-400 mt-1">Leave empty for VAT-exempt items. E.g., 12 for 12% VAT</p>
                 </div>
               </div>
               {(newProduct.unit === "KG" || newProduct.unit === "Piece") && (

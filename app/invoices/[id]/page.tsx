@@ -38,7 +38,6 @@ interface Invoice {
   subtotalNet: number;
   deliveryFee: number;
   finalTotal: number;
-  taxRate?: number;
   taxAmount?: number;
   notes: string;
   sourceOrderName: string;
@@ -86,6 +85,7 @@ interface InvoiceLine {
   sample: boolean;
   gift: boolean;
   preparation?: string;
+  vatRate?: number;
 }
 
 const STATUS_OPTIONS = ["draft", "issued", "paid", "overdue", "cancelled"];
@@ -155,7 +155,6 @@ export default function InvoiceDetailPage() {
   const [editLineDiscount, setEditLineDiscount] = useState("");
   const [savingLine, setSavingLine] = useState(false);
   const [includeDelivery, setIncludeDelivery] = useState(true);
-  const [taxRate, setTaxRate] = useState<number>(0);
 
   const [status, setStatus] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -180,7 +179,6 @@ export default function InvoiceDetailPage() {
       setStatus(data.status || "draft");
       setDueDate(data.dueDate || "");
       setNotes(data.notes || "");
-      setTaxRate(Number(data.taxRate) || 0);
       setIncludeDelivery(data.includeDelivery !== false);
 
       const linesQuery = query(
@@ -583,22 +581,18 @@ Please call/message the supplier(s): ${suppliers}`);
     if (!invoiceId) return;
     setSaving(true);
     try {
-      const cleanTaxRate = Number(taxRate) || 0;
-      const taxAmount = Math.round(((invoice?.subtotalNet || 0) * cleanTaxRate / 100) * 100) / 100;
-      const deliveryAmount = includeDelivery ? (invoice?.deliveryFee || 0) : 0;
-      const finalTotal = (invoice?.subtotalNet || 0) + taxAmount + deliveryAmount;
       await updateDoc(doc(db, "invoices", invoiceId), {
         status,
         dueDate,
         notes,
-        taxRate: cleanTaxRate,
-        taxAmount,
-        finalTotal,
         includeDelivery,
+        updatedAt: serverTimestamp(),
       });
+      // Recalculate totals if delivery inclusion changed (affects finalTotal)
+      await recalculateTotalsFromLines(lines);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-      setInvoice((prev) => prev ? { ...prev, status, dueDate, notes, taxRate: cleanTaxRate, taxAmount, finalTotal } : prev);
+      setInvoice((prev) => prev ? { ...prev, status, dueDate, notes, includeDelivery } : prev);
     } catch (err) {
       console.error(err);
       alert("Error saving changes");
@@ -609,18 +603,37 @@ Please call/message the supplier(s): ${suppliers}`);
 
   const recalculateTotalsFromLines = async (currentLines: typeof lines) => {
     try {
-      const gross = currentLines.reduce((sum, l) => (l.sample || l.gift) ? sum : sum + Number(l.lineGross || 0), 0);
-      const taxAmount = Math.round((gross * taxRate / 100) * 100) / 100;
+      let subtotalGross = 0;
+      let totalVat = 0;
+
+      // Calculate line-by-line with per-product VAT (rounding each line separately)
+      currentLines.forEach(line => {
+        if (!line.sample && !line.gift) {
+          subtotalGross += Number(line.lineNet || 0);
+          const lineVat = line.vatRate ?
+            Math.round((Number(line.lineNet || 0) * line.vatRate / 100) * 100) / 100 :
+            0;
+          totalVat += lineVat;
+        }
+      });
+
       const deliveryFee = includeDelivery ? (Number(invoice?.deliveryFee || 0)) : 0;
-      const finalTotal = gross + taxAmount + deliveryFee;
+      const finalTotal = subtotalGross + totalVat + deliveryFee;
+
       await updateDoc(doc(db, "invoices", invoiceId), {
-        subtotalGross: gross,
-        subtotalNet: gross,
-        taxAmount,
+        subtotalGross: subtotalGross,
+        subtotalNet: subtotalGross,
+        taxAmount: totalVat,
         finalTotal: finalTotal,
         updatedAt: serverTimestamp(),
       });
-      setInvoice((prev: any) => prev ? { ...prev, subtotalGross: gross, subtotalNet: gross, taxAmount, finalTotal } : prev);
+      setInvoice((prev: any) => prev ? {
+        ...prev,
+        subtotalGross,
+        subtotalNet: subtotalGross,
+        taxAmount: totalVat,
+        finalTotal
+      } : prev);
       } catch(e) {
       console.error("Failed to recalculate", e);
     }
@@ -634,6 +647,18 @@ Please call/message the supplier(s): ${suppliers}`);
       const price = Number(newLinePrice);
       const discount = Number(newLineDiscount || 0);
       const net = qty * price * (1 - discount / 100);
+
+      // Fetch product to get vatRate
+      let vatRate: number | undefined;
+      try {
+        const snap = await getDoc(doc(db, "products", newLineProductId));
+        if (snap.exists()) {
+          vatRate = snap.data().vatRate || undefined;
+        }
+      } catch (e) {
+        console.warn("Failed to fetch product vatRate:", e);
+      }
+
       const newLineRef = await addDoc(collection(db, "invoiceLines"), {
         invoiceId: invoiceId,
         productId: newLineProductId,
@@ -647,6 +672,7 @@ Please call/message the supplier(s): ${suppliers}`);
         sample: false,
         gift: false,
         notes: "",
+        vatRate,
         createdAt: serverTimestamp(),
       });
       setLines(prev => [...prev, {
@@ -662,6 +688,7 @@ Please call/message the supplier(s): ${suppliers}`);
         sample: false,
         gift: false,
         notes: "",
+        vatRate,
       } as any]);
       setShowAddLine(false);
       setNewLineProductId("");
@@ -671,7 +698,7 @@ Please call/message the supplier(s): ${suppliers}`);
       setNewLineQty("");
       setNewLinePrice("");
       setNewLineDiscount("0");
-      await recalculateTotalsFromLines([...lines, { lineGross: net } as any]);
+      await recalculateTotalsFromLines([...lines, { lineGross: net, vatRate } as any]);
     } catch(e) {
       alert("Failed to add line item");
     } finally {
@@ -960,6 +987,7 @@ Please call/message the supplier(s): ${suppliers}`);
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Unit Price</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">VAT</th>
                   <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -993,6 +1021,18 @@ Please call/message the supplier(s): ${suppliers}`);
                             placeholder="0"
                             className="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />}
                         </td>
+                        <td className="px-4 py-3 text-right text-sm text-gray-500">
+                          {(line.sample || line.gift) ? (
+                            <span className="text-gray-300">—</span>
+                          ) : line.vatRate ? (
+                            <div className="space-y-1">
+                              <div>{line.vatRate}% VAT</div>
+                              <div className="text-xs">${formatPrice(Math.round((Number(editLineQty || line.quantity) * Number(editLinePrice || line.unitPrice) * line.vatRate / 100) * 100) / 100)}</div>
+                            </div>
+                          ) : (
+                            <span>Exempt</span>
+                          )}
+                        </td>
                         <td className="px-6 py-3 text-right text-sm font-medium">
                           {(line.sample || line.gift) ? <span className="text-green-600 font-semibold">$0.00</span> :
                           <span className="text-gray-900">${formatPrice(Number(editLineQty || line.quantity) * Number(editLinePrice || line.unitPrice))}</span>}
@@ -1016,6 +1056,18 @@ Please call/message the supplier(s): ${suppliers}`);
                         </td>
                         <td className="px-4 py-4 text-right text-sm text-gray-500">
                           {(line.sample || line.gift) ? "—" : line.itemDiscountPercent > 0 ? `-${line.itemDiscountPercent}%` : "—"}
+                        </td>
+                        <td className="px-4 py-4 text-right text-sm text-gray-500">
+                          {(line.sample || line.gift) ? (
+                            <span className="text-gray-300">—</span>
+                          ) : line.vatRate ? (
+                            <div className="space-y-1">
+                              <div>{line.vatRate}% VAT</div>
+                              <div className="text-xs">${formatPrice(Math.round((Number(line.lineNet || 0) * line.vatRate / 100) * 100) / 100)}</div>
+                            </div>
+                          ) : (
+                            <span>Exempt</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-right text-sm font-medium text-gray-900">
                           {(line.sample || line.gift) ? <span className="text-green-600 font-semibold">$0.00</span> : money(line.lineGross)}
@@ -1254,48 +1306,49 @@ Please call/message the supplier(s): ${suppliers}`);
                   <span className={includeDelivery ? "text-gray-900" : "text-gray-400 line-through"}>{money(invoice.deliveryFee)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-sm items-center">
-                <span className="text-gray-500">VAT Rate</span>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={taxRate === 0 ? "" : taxRate}
-                    onChange={(e) => {
-                      const val = e.target.value === "" ? 0 : Number(e.target.value);
-                      setTaxRate(val);
-                    }}
-                    onBlur={(e) => {
-                      const val = e.target.value === "" ? 0 : Number(e.target.value);
-                      setTaxRate(val);
-                      const cleanTaxRate = Number(val) || 0;
-                      const taxAmount = Math.round(((invoice?.subtotalNet || 0) * cleanTaxRate / 100) * 100) / 100;
-                      const deliveryAmount = includeDelivery ? (invoice?.deliveryFee || 0) : 0;
-                      const finalTotal = (invoice?.subtotalNet || 0) + taxAmount + deliveryAmount;
-                      setInvoice((prev: any) => prev ? { ...prev, taxRate: cleanTaxRate, taxAmount, finalTotal } : prev);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const val = (e.target as HTMLInputElement).value === "" ? 0 : Number((e.target as HTMLInputElement).value);
-                        setTaxRate(val);
-                        const cleanTaxRate = Number(val) || 0;
-                        const taxAmount = Math.round(((invoice?.subtotalNet || 0) * cleanTaxRate / 100) * 100) / 100;
-                        const deliveryAmount = includeDelivery ? (invoice?.deliveryFee || 0) : 0;
-                        const finalTotal = (invoice?.subtotalNet || 0) + taxAmount + deliveryAmount;
-                        setInvoice((prev: any) => prev ? { ...prev, taxRate: cleanTaxRate, taxAmount, finalTotal } : prev);
-                      }
-                    }}
-                    placeholder="0"
-                    className="w-16 text-right border border-gray-200 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  />
-                  <span className="text-gray-500 text-sm">%</span>
-                </div>
-              </div>
-              {taxRate > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">VAT ({taxRate}%)</span>
-                  <span className="text-gray-900">{money((invoice.subtotalNet || 0) * taxRate / 100)}</span>
+              {(() => {
+                const vatGroups: Record<number, { net: number; vat: number }> = {};
+                lines.forEach(line => {
+                  if (!line.sample && !line.gift) {
+                    const rate = line.vatRate || 0;
+                    if (!vatGroups[rate]) vatGroups[rate] = { net: 0, vat: 0 };
+                    vatGroups[rate].net += Number(line.lineNet || 0);
+                    if (rate > 0) {
+                      vatGroups[rate].vat += Math.round((Number(line.lineNet || 0) * rate / 100) * 100) / 100;
+                    }
+                  }
+                });
+                const sortedRates = Object.keys(vatGroups).map(Number).sort((a, b) => b - a);
+                return sortedRates.length > 0 ? (
+                  <>
+                    {sortedRates.map(rate => (
+                      <div key={rate} className="space-y-1 border-l-2 border-blue-100 pl-3">
+                        <div className="flex justify-between text-sm font-medium text-gray-700">
+                          {rate === 0 ? "Exempt Items" : `Items with ${rate}% VAT`}
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-500 pl-1">
+                          <span>Net</span>
+                          <span>{money(vatGroups[rate].net)}</span>
+                        </div>
+                        {rate > 0 && (
+                          <div className="flex justify-between text-xs text-gray-500 pl-1">
+                            <span>VAT ({rate}%)</span>
+                            <span>{money(vatGroups[rate].vat)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-sm font-medium text-gray-900 pl-1 pt-0.5">
+                          <span>Subtotal</span>
+                          <span>{money(vatGroups[rate].net + vatGroups[rate].vat)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                ) : null;
+              })()}
+              {invoice.taxAmount > 0 && (
+                <div className="flex justify-between text-sm font-medium text-gray-900 py-1">
+                  <span>Total VAT</span>
+                  <span>{money(invoice.taxAmount)}</span>
                 </div>
               )}
               {invoice.roundingAdjustment !== 0 && invoice.roundingAdjustment !== undefined && (
