@@ -77,15 +77,16 @@ export default function OrdersPage() {
     try {
       const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
       let data: any[] = [];
+      let emulatorOk = false;
       if (isLocal) {
         try {
           const res = await fetch("http://localhost:5001/di-peppi/us-central1/getOrders");
-          if (res.ok) data = await res.json();
+          if (res.ok) { data = await res.json(); emulatorOk = true; }
         } catch {
           // emulator not running — fall through to production
         }
       }
-      if (!data.length) {
+      if (!emulatorOk) {
         const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
         data = await res.json();
       }

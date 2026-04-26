@@ -456,15 +456,16 @@ export default function Page() {
     try {
       const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
       let data: any[] = [];
+      let emulatorOk = false;
       if (isLocal) {
         try {
           const res = await fetch("http://localhost:5001/di-peppi/us-central1/getOrders");
-          if (res.ok) data = await res.json();
+          if (res.ok) { data = await res.json(); emulatorOk = true; }
         } catch {
           // emulator not running — fall through to production
         }
       }
-      if (!data.length) {
+      if (!emulatorOk) {
         const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
         data = await res.json();
       }
@@ -617,15 +618,16 @@ export default function Page() {
     try {
       const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
       let data: any[] = [];
+      let emulatorOk = false;
       if (isLocal) {
         try {
           const res = await fetch(`http://localhost:5001/di-peppi/us-central1/getOrderItems?orderId=${encodeURIComponent(orderId)}`);
-          if (res.ok) data = await res.json();
+          if (res.ok) { data = await res.json(); emulatorOk = true; }
         } catch {
           // emulator not running — fall through to production
         }
       }
-      if (!data.length) {
+      if (!emulatorOk) {
         const res = await fetch(`https://us-central1-di-peppi.cloudfunctions.net/getOrderItems?orderId=${encodeURIComponent(orderId)}`);
         data = await res.json();
       }
@@ -1056,15 +1058,10 @@ export default function Page() {
                     : "Delete this order? This cannot be undone.";
                   if (!confirm(msg)) return;
                   try {
-                    const { doc, deleteDoc, collection, getDocs, query, where } = await import("firebase/firestore");
-                    const { db } = await import("@/lib/firebase");
-                    // Delete order items
-                    const itemsSnap = await getDocs(query(collection(db, "orderItems"), where("orderId", "==", selectedOrderId)));
-                    await Promise.all(itemsSnap.docs.map(d => deleteDoc(d.ref)));
-                    // Delete invoice if exists
-                    if (existingInvoiceId) await deleteDoc(doc(db, "invoices", existingInvoiceId));
-                    // Delete order
-                    await deleteDoc(doc(db, "orders", selectedOrderId));
+                    const { httpsCallable } = await import("firebase/functions");
+                    const { functions } = await import("@/lib/firebase");
+                    const deleteOrder = httpsCallable(functions, "deleteOrder");
+                    await deleteOrder({ orderId: selectedOrderId });
                     router.push("/admin/orders");
                   } catch (e: any) {
                     alert(`Failed to delete order: ${e.message}`);
@@ -1194,12 +1191,10 @@ export default function Page() {
                       : "Delete this order? This cannot be undone.";
                     if (!confirm(msg)) return;
                     try {
-                      const { doc, deleteDoc, collection, getDocs, query, where } = await import("firebase/firestore");
-                      const { db } = await import("@/lib/firebase");
-                      const itemsSnap = await getDocs(query(collection(db, "orderItems"), where("orderId", "==", selectedOrderId)));
-                      await Promise.all(itemsSnap.docs.map(d => deleteDoc(d.ref)));
-                      if (existingInvoiceId) await deleteDoc(doc(db, "invoices", existingInvoiceId));
-                      await deleteDoc(doc(db, "orders", selectedOrderId));
+                      const { httpsCallable } = await import("firebase/functions");
+                      const { functions } = await import("@/lib/firebase");
+                      const deleteOrder = httpsCallable(functions, "deleteOrder");
+                      await deleteOrder({ orderId: selectedOrderId });
                       router.push("/admin/orders");
                     } catch (e: any) {
                       alert(`Failed to delete order: ${e.message}`);
