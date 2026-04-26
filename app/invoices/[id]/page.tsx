@@ -680,15 +680,18 @@ Please call/message the supplier(s): ${suppliers}`);
 
     setGeneratingPOs(true);
     try {
-      // Enrich invoice lines with supplier info from products
+      // Enrich invoice lines with supplier & cost info from products
       const invoiceItems = await Promise.all(
         lines.map(async (line: any) => {
           let supplierId = "";
+          let unitCostPrice = line.unitCostPrice || 0;
           if (line.productId) {
             try {
               const snap = await getDoc(doc(db, "products", line.productId));
               if (snap.exists()) {
-                supplierId = snap.data().supplierId || "";
+                const productData = snap.data();
+                supplierId = productData.supplierId || "";
+                unitCostPrice = productData.unitCostPrice || 0;
               }
             } catch (e) {
               console.warn("Product not found:", line.productId);
@@ -697,6 +700,7 @@ Please call/message the supplier(s): ${suppliers}`);
           return {
             ...line,
             supplierId,
+            unitCostPrice,
             preparation: line.preparation || "",
             sample: Boolean(line.sample),
             gift: Boolean(line.gift),
