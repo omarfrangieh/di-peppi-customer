@@ -111,6 +111,8 @@ export default function InvoiceDetailPage() {
   const [showAddLine, setShowAddLine] = useState(false);
   const [newLineProductId, setNewLineProductId] = useState("");
   const [newLineProductName, setNewLineProductName] = useState("");
+  const [newLineProductDropdownOpen, setNewLineProductDropdownOpen] = useState(false);
+  const [newLineProductSearch, setNewLineProductSearch] = useState("");
   const [newLineQty, setNewLineQty] = useState("");
   const [newLinePrice, setNewLinePrice] = useState("");
   const [newLineDiscount, setNewLineDiscount] = useState("0");
@@ -656,6 +658,8 @@ Please call/message the supplier(s): ${suppliers}`);
       setShowAddLine(false);
       setNewLineProductId("");
       setNewLineProductName("");
+      setNewLineProductDropdownOpen(false);
+      setNewLineProductSearch("");
       setNewLineQty("");
       setNewLinePrice("");
       setNewLineDiscount("0");
@@ -669,15 +673,36 @@ Please call/message the supplier(s): ${suppliers}`);
 
   const handleGeneratePOs = async () => {
     if (!invoice?.orderId) { alert("No order linked to this invoice."); return; }
+    if (lines.length === 0) { alert("Add line items to the invoice first."); return; }
     if (invoicePOs.some(p => ["Sent", "Delivered", "Paid"].includes(p.status))) {
       if (!confirm("Some POs have already been sent or delivered. Regenerating will only replace 'Generated' POs. Continue?")) return;
-    } else if (!confirm("Generate Purchase Orders from this order's items?")) return;
+    } else if (!confirm("Generate Purchase Orders from this invoice's line items?")) return;
 
     setGeneratingPOs(true);
     try {
-      const itemsSnap = await getDocs(query(collection(db, "orderItems"), where("orderId", "==", invoice.orderId)));
-      const orderItems = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      if (orderItems.length === 0) { alert("No items found on the linked order."); return; }
+      // Enrich invoice lines with supplier info from products
+      const invoiceItems = await Promise.all(
+        lines.map(async (line: any) => {
+          let supplierId = "";
+          if (line.productId) {
+            try {
+              const snap = await getDoc(doc(db, "products", line.productId));
+              if (snap.exists()) {
+                supplierId = snap.data().supplierId || "";
+              }
+            } catch (e) {
+              console.warn("Product not found:", line.productId);
+            }
+          }
+          return {
+            ...line,
+            supplierId,
+            preparation: line.preparation || "",
+            sample: Boolean(line.sample),
+            gift: Boolean(line.gift),
+          };
+        })
+      );
 
       const orderSnap = await getDoc(doc(db, "orders", invoice.orderId));
       const order = orderSnap.exists() ? orderSnap.data() : {};
@@ -690,14 +715,14 @@ Please call/message the supplier(s): ${suppliers}`);
         orderId: invoice.orderId,
         invoiceId,
         deliveryDate: order.deliveryDate || "",
-        orderItems,
+        orderItems: invoiceItems,
       });
 
       const poSnap = await getDocs(query(collection(db, "purchaseOrders"), where("invoiceId", "==", invoiceId)));
       const newPOs = poSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       setInvoicePOs(newPOs);
       if (newPOs.length === 0) {
-        alert("No POs created — make sure order items have a supplier assigned.");
+        alert("No POs created — make sure products have suppliers assigned in the Products master data.");
       }
     } catch (e: any) {
       alert("Failed to generate POs: " + e.message);
@@ -1001,18 +1026,65 @@ Please call/message the supplier(s): ${suppliers}`);
             <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 space-y-3">
               <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">New Line Item</p>
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <select value={newLineProductId} onChange={e => {
-                    const p = products.find((p:any) => p.id === e.target.value);
-                    setNewLineProductId(e.target.value);
-                    setNewLineProductName(p?.name || "");
-                    setNewLinePrice(String(p?.b2cPrice || p?.b2bPrice || ""));
-                  }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
-                    <option value="">Select Product</option>
-                    {products.map((p:any) => (
-                      <option key={p.id} value={p.id}>{p.name} (stock: {formatQty(p.currentStock)})</option>
-                    ))}
-                  </select>
+                <div className="col-span-2 relative">
+                  <div
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white flex items-center gap-2 cursor-pointer"
+                    onClick={() => { setNewLineProductDropdownOpen(o => !o); setNewLineProductSearch(""); }}
+                  >
+                    {newLineProductId ? (
+                      <span className="flex-1 text-gray-900">{products.find((p:any) => p.id === newLineProductId)?.name || "—"}</span>
+                    ) : (
+                      <span className="flex-1 text-gray-400">Select Product</span>
+                    )}
+                    {newLineProductId && (
+                      <span
+                        className="text-gray-400 hover:text-gray-700 text-base leading-none px-0.5"
+                        onClick={e => { e.stopPropagation(); setNewLineProductId(""); setNewLineProductName(""); setNewLineProductDropdownOpen(false); setNewLineProductSearch(""); }}
+                      >✕</span>
+                    )}
+                    <span className="text-gray-400 text-xs">{newLineProductDropdownOpen ? "▲" : "▼"}</span>
+                  </div>
+                  {newLineProductDropdownOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => { setNewLineProductDropdownOpen(false); setNewLineProductSearch(""); }} />
+                      <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                        <div className="p-2 border-b border-gray-100">
+                          <input
+                            autoFocus
+                            type="text"
+                            placeholder="Search products..."
+                            value={newLineProductSearch}
+                            onChange={e => setNewLineProductSearch(e.target.value)}
+                            className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                          />
+                        </div>
+                        <div className="max-h-64 overflow-y-auto">
+                          {products
+                            .filter((p:any) => (p.name || "").toLowerCase().includes(newLineProductSearch.toLowerCase()))
+                            .sort((a:any, b:any) => (a.name || "").localeCompare(b.name || ""))
+                            .map((p:any) => (
+                              <div
+                                key={p.id}
+                                onClick={() => {
+                                  setNewLineProductId(p.id);
+                                  setNewLineProductName(p.name || "");
+                                  setNewLinePrice(String(p.b2cPrice || p.b2bPrice || ""));
+                                  setNewLineProductDropdownOpen(false);
+                                  setNewLineProductSearch("");
+                                }}
+                                className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-gray-50 flex items-center justify-between ${p.id === newLineProductId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-800"}`}
+                              >
+                                <span>{p.name}</span>
+                                <span className="text-xs text-gray-400 shrink-0 ml-2">{formatQty(p.currentStock)}</span>
+                              </div>
+                            ))}
+                          {products.filter((p:any) => (p.name || "").toLowerCase().includes(newLineProductSearch.toLowerCase())).length === 0 && (
+                            <div className="px-4 py-4 text-sm text-gray-400 text-center">No products found</div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Quantity</label>
