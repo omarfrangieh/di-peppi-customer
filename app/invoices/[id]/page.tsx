@@ -1266,6 +1266,26 @@ Please call/message the supplier(s): ${suppliers}`);
                       const val = e.target.value === "" ? 0 : Number(e.target.value);
                       setTaxRate(val);
                     }}
+                    onBlur={(e) => {
+                      const val = e.target.value === "" ? 0 : Number(e.target.value);
+                      setTaxRate(val);
+                      const cleanTaxRate = Number(val) || 0;
+                      const taxAmount = Math.round(((invoice?.subtotalNet || 0) * cleanTaxRate / 100) * 100) / 100;
+                      const deliveryAmount = includeDelivery ? (invoice?.deliveryFee || 0) : 0;
+                      const finalTotal = (invoice?.subtotalNet || 0) + taxAmount + deliveryAmount;
+                      setInvoice((prev: any) => prev ? { ...prev, taxRate: cleanTaxRate, taxAmount, finalTotal } : prev);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const val = (e.target as HTMLInputElement).value === "" ? 0 : Number((e.target as HTMLInputElement).value);
+                        setTaxRate(val);
+                        const cleanTaxRate = Number(val) || 0;
+                        const taxAmount = Math.round(((invoice?.subtotalNet || 0) * cleanTaxRate / 100) * 100) / 100;
+                        const deliveryAmount = includeDelivery ? (invoice?.deliveryFee || 0) : 0;
+                        const finalTotal = (invoice?.subtotalNet || 0) + taxAmount + deliveryAmount;
+                        setInvoice((prev: any) => prev ? { ...prev, taxRate: cleanTaxRate, taxAmount, finalTotal } : prev);
+                      }
+                    }}
                     placeholder="0"
                     className="w-16 text-right border border-gray-200 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                   />
