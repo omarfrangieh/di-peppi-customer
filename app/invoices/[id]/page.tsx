@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { generateInvoicePDF } from "@/lib/generateInvoicePDF";
+import { createPurchaseOrdersForInvoice } from "@/lib/createPurchaseOrders";
 import { formatQty, formatPrice } from "@/lib/formatters";
 
 interface Invoice {
@@ -141,6 +142,7 @@ export default function InvoiceDetailPage() {
   const [savingEditPayment, setSavingEditPayment] = useState(false);
   const [payReference, setPayReference] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [generatingPOs, setGeneratingPOs] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
   const [applyingWallet, setApplyingWallet] = useState(false);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
@@ -665,6 +667,45 @@ Please call/message the supplier(s): ${suppliers}`);
     }
   };
 
+  const handleGeneratePOs = async () => {
+    if (!invoice?.orderId) { alert("No order linked to this invoice."); return; }
+    if (invoicePOs.some(p => ["Sent", "Delivered", "Paid"].includes(p.status))) {
+      if (!confirm("Some POs have already been sent or delivered. Regenerating will only replace 'Generated' POs. Continue?")) return;
+    } else if (!confirm("Generate Purchase Orders from this order's items?")) return;
+
+    setGeneratingPOs(true);
+    try {
+      const itemsSnap = await getDocs(query(collection(db, "orderItems"), where("orderId", "==", invoice.orderId)));
+      const orderItems = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (orderItems.length === 0) { alert("No items found on the linked order."); return; }
+
+      const orderSnap = await getDoc(doc(db, "orders", invoice.orderId));
+      const order = orderSnap.exists() ? orderSnap.data() : {};
+
+      // Delete only Generated POs (leave Sent/Delivered/Paid intact)
+      const deletable = invoicePOs.filter(p => p.status === "Generated");
+      await Promise.all(deletable.map(p => deleteDoc(doc(db, "purchaseOrders", p.id))));
+
+      await createPurchaseOrdersForInvoice({
+        orderId: invoice.orderId,
+        invoiceId,
+        deliveryDate: order.deliveryDate || "",
+        orderItems,
+      });
+
+      const poSnap = await getDocs(query(collection(db, "purchaseOrders"), where("invoiceId", "==", invoiceId)));
+      const newPOs = poSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setInvoicePOs(newPOs);
+      if (newPOs.length === 0) {
+        alert("No POs created — make sure order items have a supplier assigned.");
+      }
+    } catch (e: any) {
+      alert("Failed to generate POs: " + e.message);
+    } finally {
+      setGeneratingPOs(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -797,44 +838,61 @@ Please call/message the supplier(s): ${suppliers}`);
           </div>
         </div>
 
-        {invoicePOs.length > 0 && (
+        {invoice?.orderId && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-900">Purchase Orders</h3>
-              <a href="/admin/purchase-orders" className="text-xs text-[#1B2A5E] hover:underline">View all POs →</a>
+              <div className="flex items-center gap-3">
+                {status !== "cancelled" && (
+                  <button
+                    onClick={handleGeneratePOs}
+                    disabled={generatingPOs}
+                    className="text-xs px-3 py-1.5 text-white rounded-lg font-medium disabled:opacity-50"
+                    style={{backgroundColor: "#B5535A"}}>
+                    {generatingPOs ? "Generating..." : invoicePOs.length > 0 ? "🔄 Regenerate POs" : "📦 Generate POs"}
+                  </button>
+                )}
+                <a href="/admin/purchase-orders" className="text-xs text-[#1B2A5E] hover:underline">View all POs →</a>
+              </div>
             </div>
-            <div className="divide-y divide-gray-100">
-              {invoicePOs.map((po: any) => {
-                const statusColors: Record<string, string> = {
-                  Generated: "bg-gray-100 text-gray-600",
-                  Sent: "bg-blue-50 text-blue-600",
-                  Delivered: "bg-green-50 text-green-600",
-                  Paid: "bg-purple-50 text-purple-700",
-                  Cancelled: "bg-red-50 text-red-500",
-                };
-                return (
-                  <div key={po.id} className="px-6 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-gray-900">{po.poNumber}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[po.status] || "bg-gray-100 text-gray-600"}`}>
-                        {po.status}
-                      </span>
-                      <span className="text-xs text-gray-500">🏭 {po.supplierName}</span>
+            {invoicePOs.length === 0 ? (
+              <div className="px-6 py-6 text-center text-sm text-gray-400">
+                No purchase orders yet. Click "Generate POs" to create them from order items.
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {invoicePOs.map((po: any) => {
+                  const statusColors: Record<string, string> = {
+                    Generated: "bg-gray-100 text-gray-600",
+                    Sent: "bg-blue-50 text-blue-600",
+                    Delivered: "bg-green-50 text-green-600",
+                    Paid: "bg-purple-50 text-purple-700",
+                    Cancelled: "bg-red-50 text-red-500",
+                  };
+                  return (
+                    <div key={po.id} className="px-6 py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-medium text-gray-900">{po.poNumber}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[po.status] || "bg-gray-100 text-gray-600"}`}>
+                          {po.status}
+                        </span>
+                        <span className="text-xs text-gray-500">🏭 {po.supplierName}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500">
+                          Delivery: {po.deliveryDate ? po.deliveryDate.split("-").reverse().join("-") : "TBD"}
+                        </span>
+                        <span className="text-sm font-semibold text-gray-900">${formatPrice(po.poTotal)}</span>
+                        <button onClick={() => setPreviewPO(po)}
+                          className="text-xs px-2 py-1 rounded-lg text-white font-medium" style={{backgroundColor: "#1B2A5E"}}>
+                          Preview
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-gray-500">
-                        Delivery: {po.deliveryDate ? po.deliveryDate.split("-").reverse().join("-") : "TBD"}
-                      </span>
-                      <span className="text-sm font-semibold text-gray-900">${formatPrice(po.poTotal)}</span>
-                      <button onClick={() => setPreviewPO(po)}
-                        className="text-xs px-2 py-1 rounded-lg text-white font-medium" style={{backgroundColor: "#1B2A5E"}}>
-                        Preview
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
