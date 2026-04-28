@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, getDocs, orderBy, query, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -17,9 +17,10 @@ interface Invoice {
   finalTotal: number;
   currency: string;
   sourceOrderName: string;
+  paymentMethod?: string;
 }
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
   draft:     { bg: "bg-gray-100",  text: "text-gray-600",  dot: "bg-gray-400" },
   issued:    { bg: "bg-blue-50",   text: "text-blue-700",  dot: "bg-blue-400" },
   paid:      { bg: "bg-green-50",  text: "text-green-700", dot: "bg-green-500" },
@@ -27,7 +28,7 @@ const STATUS_COLORS = {
   cancelled: { bg: "bg-orange-50", text: "text-orange-700",dot: "bg-orange-400" },
 };
 
-function money(val) {
+function money(val: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val || 0);
 }
 
@@ -35,7 +36,7 @@ const ALL_STATUSES = ["all", "draft", "issued", "paid", "overdue", "cancelled"];
 
 export default function InvoicesListPage() {
   const router = useRouter();
-  const [invoices, setInvoices] = useState([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -49,7 +50,7 @@ export default function InvoicesListPage() {
     try {
       const q = query(collection(db, "invoices"), orderBy("createdAt", "desc"));
       const snap = await getDocs(q);
-      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Invoice[];
       setInvoices(data);
     } catch (err) {
       console.error(err);
@@ -58,7 +59,7 @@ export default function InvoicesListPage() {
     }
   };
 
-  const handleQuickPay = async (e, invId) => {
+  const handleQuickPay = async (e: React.MouseEvent, invId: string) => {
     e.stopPropagation();
     const method = prompt("Payment method? (Cash / Card / Transfer / Cheque / Other)", "Cash");
     if (!method) return;
@@ -85,7 +86,7 @@ export default function InvoicesListPage() {
     return matchStatus && matchSearch;
   });
 
-  const totalByStatus = (status) =>
+  const totalByStatus = (status: string) =>
     invoices.filter((i) => i.status === status).length;
 
   return (

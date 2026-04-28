@@ -155,7 +155,7 @@ export default function StockPage() {
       ]);
       setProducts(prodSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setMovements(movSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setInventoryCounts(countsSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(b.countDate || "").localeCompare(String(a.countDate || ""))));
+      setInventoryCounts((countsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[]).sort((a, b) => String(b.countDate || "").localeCompare(String(a.countDate || ""))));
     } finally { setLoading(false); }
   };
 
@@ -351,8 +351,8 @@ export default function StockPage() {
   const handleViewCountDetails = async (countId: string) => {
     try {
       const itemsSnap = await getDocs(collection(db, "inventoryCountItems"));
-      const items = itemsSnap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
+      const items = (itemsSnap.docs
+        .map(d => ({ id: d.id, ...d.data() })) as any[])
         .filter(i => i.countId === countId);
       setSelectedCountId(countId);
       setSelectedCountItems(items);

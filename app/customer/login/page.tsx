@@ -268,7 +268,6 @@ export default function CustomerLoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               onKeyPress={(e) => e.key === "Enter" && handleSendOTP()}
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all text-gray-900 placeholder-gray-400"
-              style={{focusRingColor: "#1B2A5E"}}
               disabled={sendingOTP}
             />
           </div>

@@ -21,10 +21,10 @@ export default function DiPeppiInventoryUI() {
   const [createForm, setCreateForm] = useState({
     orderId: "TEST_ORDER",
     productId: "TEST_PRODUCT",
-    quantity: 2,
-    unitPrice: 10,
-    unitCostPrice: 6,
-    itemDiscountPercent: 0,
+    quantity: "2",
+    unitPrice: "10",
+    unitCostPrice: "6",
+    itemDiscountPercent: "0",
     notes: "",
     sample: false,
     gift: false,
@@ -33,17 +33,17 @@ export default function DiPeppiInventoryUI() {
   const [updateForm, setUpdateForm] = useState({
     orderItemId: "",
     productId: "TEST_PRODUCT",
-    quantity: 5,
-    unitPrice: 10,
-    unitCostPrice: 6,
-    itemDiscountPercent: 0,
+    quantity: "5",
+    unitPrice: "10",
+    unitCostPrice: "6",
+    itemDiscountPercent: "0",
     notes: "",
     sample: false,
     gift: false,
   });
 
   const [deleteForm, setDeleteForm] = useState({ orderItemId: "" });
-  const [lastResult, setLastResult] = useState(null);
+  const [lastResult, setLastResult] = useState<{ type: string; action: string; payload: unknown } | null>(null);
   const [loadingAction, setLoadingAction] = useState("");
 
   const endpointBase = useMemo(() => {
@@ -53,7 +53,7 @@ export default function DiPeppiInventoryUI() {
     return `https://${config.region}-${config.projectId}.cloudfunctions.net`;
   }, [config]);
 
-  const callFunction = async (name, payload) => {
+  const callFunction = async (name: string, payload: unknown) => {
     const response = await fetch(`${endpointBase}/${name}`, {
       method: "POST",
       headers: {
@@ -102,7 +102,7 @@ export default function DiPeppiInventoryUI() {
       }
       setLastResult({ type: "success", action: "Create", payload: result });
     } catch (error) {
-      setLastResult({ type: "error", action: "Create", payload: error.message });
+      setLastResult({ type: "error", action: "Create", payload: (error as Error).message });
     } finally {
       setLoadingAction("");
     }
@@ -124,7 +124,7 @@ export default function DiPeppiInventoryUI() {
       });
       setLastResult({ type: "success", action: "Update", payload: result });
     } catch (error) {
-      setLastResult({ type: "error", action: "Update", payload: error.message });
+      setLastResult({ type: "error", action: "Update", payload: (error as Error).message });
     } finally {
       setLoadingAction("");
     }
@@ -138,13 +138,13 @@ export default function DiPeppiInventoryUI() {
       });
       setLastResult({ type: "success", action: "Delete", payload: result });
     } catch (error) {
-      setLastResult({ type: "error", action: "Delete", payload: error.message });
+      setLastResult({ type: "error", action: "Delete", payload: (error as Error).message });
     } finally {
       setLoadingAction("");
     }
   };
 
-  const setCfg = (key, value) => setConfig((s) => ({ ...s, [key]: value }));
+  const setCfg = (key: string, value: unknown) => setConfig((s) => ({ ...s, [key]: value }));
 
   const statusBadge = lastResult?.type === "success" ? (
     <Badge className="rounded-full">Success</Badge>
@@ -425,7 +425,7 @@ export default function DiPeppiInventoryUI() {
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
@@ -434,11 +434,11 @@ function Field({ label, children }) {
   );
 }
 
-function TwoCol({ children }) {
+function TwoCol({ children }: { children: React.ReactNode }) {
   return <div className="grid gap-4 md:grid-cols-2">{children}</div>;
 }
 
-function FormBlock({ title, icon, description, children }) {
+function FormBlock({ title, icon, description, children }: { title: string; icon: React.ReactNode; description: string; children: React.ReactNode }) {
   return (
     <div className="rounded-3xl border bg-white p-5 shadow-sm">
       <div className="mb-5 flex items-start gap-3">
@@ -453,12 +453,12 @@ function FormBlock({ title, icon, description, children }) {
   );
 }
 
-function QuickGuide({ title, items }) {
+function QuickGuide({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="rounded-3xl border bg-white p-5 shadow-sm">
       <h3 className="text-lg font-semibold">{title}</h3>
       <div className="mt-4 space-y-3">
-        {items.map((item) => (
+        {items.map((item: string) => (
           <div key={item} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
             {item}
           </div>

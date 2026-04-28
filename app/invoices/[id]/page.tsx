@@ -1345,10 +1345,10 @@ Please call/message the supplier(s): ${suppliers}`);
                   </>
                 ) : null;
               })()}
-              {invoice.taxAmount > 0 && (
+              {(invoice.taxAmount ?? 0) > 0 && (
                 <div className="flex justify-between text-sm font-medium text-gray-900 py-1">
                   <span>Total VAT</span>
-                  <span>{money(invoice.taxAmount)}</span>
+                  <span>{money(invoice.taxAmount ?? 0)}</span>
                 </div>
               )}
               {invoice.roundingAdjustment !== 0 && invoice.roundingAdjustment !== undefined && (

@@ -83,7 +83,7 @@ function getSpecialPrice(
   if (!customer || !productId) return null;
 
   const raw = customer.specialPrices?.[productId];
-  if (raw === undefined || raw === null || raw === "") return null;
+  if (raw === undefined || raw === null) return null;
 
   const num = Number(raw);
   return Number.isFinite(num) ? num : null;

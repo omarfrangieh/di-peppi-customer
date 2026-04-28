@@ -117,7 +117,7 @@ export default function AdminSuppliersPage() {
         getDocs(collection(db, "products")),
       ]);
       setProducts(prodSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
       setSuppliers(data.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
     } finally {
       setLoading(false);

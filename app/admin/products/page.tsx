@@ -12,7 +12,7 @@ import SearchInput from "@/components/SearchInput";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
-const DEFAULT_OPTIONS = {
+const DEFAULT_OPTIONS: { unit: string[]; storageType: string[]; category: string[]; origin: string[] } = {
   unit: ["Jar", "KG", "Piece", "Tin", "Tube"],
   storageType: ["Ambient", "Chilled", "Fresh", "Frozen", "Refrigerated"],
   category: [],
@@ -498,6 +498,80 @@ export default function AdminProductsPage() {
     }
   };
 
+  const downloadCsvTemplate = () => {
+    const headers = "name,productSubName,supplier,category,origin,unit,storageType,costPrice,b2bPrice,b2cPrice,vatRate,minStock,barcodeNumber,requiresWeighing,trackExpiry,active";
+    const example = "Olive Oil Extra Virgin,500ml,LE MARIN TRAITEUR,Oils,ITALY,Jar,Ambient,12.50,18.00,22.00,,10,1234567890123,false,false,true";
+    const blob = new Blob([headers + "\n" + example], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "products-import-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const text = await file.text();
+    const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+    if (lines.length < 2) { alert("CSV has no data rows."); return; }
+
+    const headers = lines[0].split(",").map(h => h.trim());
+    const rows = lines.slice(1).map(line => {
+      const vals = line.split(",");
+      const obj: any = {};
+      headers.forEach((h, i) => { obj[h] = vals[i]?.trim() ?? ""; });
+      return obj;
+    });
+
+    const invalid = rows.filter(r => !r.name);
+    if (invalid.length) { alert(`${invalid.length} row(s) are missing a product name. Fix and re-import.`); return; }
+
+    const confirmed = confirm(`Import ${rows.length} products? This will add them to the database.`);
+    if (!confirmed) return;
+
+    let imported = 0;
+    let failed = 0;
+    for (const row of rows) {
+      try {
+        const supplierMatch = suppliers.find((s: any) => s.name?.toLowerCase() === row.supplier?.toLowerCase());
+        await addDoc(collection(db, "products"), {
+          name: row.name.trim(),
+          productSubName: row.productSubName || "",
+          supplierId: supplierMatch?.id || "",
+          supplier: row.supplier || "",
+          category: row.category || "",
+          origin: row.origin || "",
+          unit: row.unit || "KG",
+          storageType: row.storageType || "",
+          costPrice: Number(row.costPrice || 0),
+          b2bPrice: Number(row.b2bPrice || 0),
+          b2cPrice: Number(row.b2cPrice || 0),
+          vatRate: row.vatRate ? Number(row.vatRate) : null,
+          minStock: Number(row.minStock || 0),
+          barcodeNumber: row.barcodeNumber || "",
+          requiresWeighing: row.requiresWeighing === "true",
+          trackExpiry: row.trackExpiry === "true",
+          active: row.active !== "false",
+          stock: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        imported++;
+      } catch {
+        failed++;
+      }
+    }
+
+    alert(`Import complete: ${imported} added${failed ? `, ${failed} failed` : ""}.`);
+    // Reload products
+    const snap = await getDocs(collection(db, "products"));
+    setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  };
+
   const saveNewProduct = async () => {
     if (!newProduct.name.trim()) { alert("Product name is required"); return; }
     setAddingSaving(true);
@@ -790,6 +864,31 @@ export default function AdminProductsPage() {
           >
             ⚙️ Manage Dropdowns
           </button>
+          <input
+            id="csv-import-input"
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleCsvImport}
+          />
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => document.getElementById("csv-import-input")?.click()}
+              className="px-3 py-1.5 text-sm rounded-lg font-medium border"
+              style={{borderColor: "#1B2A5E", color: "#1B2A5E"}}
+              title="Import products from CSV"
+            >
+              ↑ Import CSV
+            </button>
+            <button
+              onClick={downloadCsvTemplate}
+              className="px-2 py-1.5 text-sm rounded-lg border"
+              style={{borderColor: "#1B2A5E", color: "#1B2A5E"}}
+              title="Download CSV template"
+            >
+              ⬇
+            </button>
+          </div>
           <button
             onClick={() => setShowAddProduct(true)}
             className="px-4 py-1.5 text-sm text-white rounded-lg font-medium"

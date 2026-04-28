@@ -744,7 +744,7 @@ export default function Page() {
       // Functional update: only fills in if the value is still empty (Firestore may have set it already)
       if (order.orderDate) setOrderDate(prev => prev || firestoreDateToString(order.orderDate));
       if (order.deliveryDate) setDeliveryDate(prev => prev || firestoreDateToString(order.deliveryDate));
-      if (order.status) setOrderStatus(prev => prev || order.status);
+      if (order.status) setOrderStatus(prev => prev || order.status || "");
     }
   }, [urlOrderId, orders]);
 

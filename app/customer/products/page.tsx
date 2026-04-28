@@ -106,7 +106,7 @@ export default function ProductsPage() {
 
         {/* Search & Filter */}
         {!loading && allProducts.length > 0 && (
-          <SearchFilter products={allProducts} onFilterChange={setFilteredProducts} />
+          <SearchFilter products={allProducts} onFilterChange={(filtered) => setFilteredProducts(filtered as Product[])} />
         )}
 
         {/* Product Grid */}

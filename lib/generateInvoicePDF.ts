@@ -1,39 +1,40 @@
 import jsPDF from "jspdf";
 
-function money(val) {
+function money(val: number) {
   return "$" + (Number(val) || 0).toFixed(2);
 }
 
-function formatDate(dateStr) {
+function formatDate(dateStr: string) {
   if (!dateStr) return "";
   const [y, m, d] = dateStr.split("-");
   return d + "-" + m + "-" + y;
 }
 
-async function loadImage(url) {
+async function loadImage(url: string): Promise<string | null> {
   try {
     const res = await fetch(url);
     const blob = await res.blob();
     return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
+      reader.onloadend = () => resolve(reader.result as string);
       reader.readAsDataURL(blob);
     });
   } catch { return null; }
 }
 
-export async function generateInvoicePDF(invoice, lines) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function generateInvoicePDF(invoice: any, lines: any[]) {
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const W = 210;
   const margin = 18;
 
   // Brand colors
-  const navy = [27, 42, 94];
-  const rose = [181, 83, 90];
-  const gray = [100, 100, 100];
-  const lightGray = [180, 180, 180];
-  const dark = [30, 30, 30];
-  const white = [255, 255, 255];
+  const navy: [number, number, number] = [27, 42, 94];
+  const rose: [number, number, number] = [181, 83, 90];
+  const gray: [number, number, number] = [100, 100, 100];
+  const lightGray: [number, number, number] = [180, 180, 180];
+  const dark: [number, number, number] = [30, 30, 30];
+  const white: [number, number, number] = [255, 255, 255];
 
   let y = 16;
 
@@ -125,7 +126,7 @@ export async function generateInvoicePDF(invoice, lines) {
     invoice.customerAdditionalInstructions ? "Notes: " + invoice.customerAdditionalInstructions : "",
   ].filter(Boolean);
 
-  addrLines.forEach((line) => { pdf.text(line, billToX, y); y += 5; });
+  addrLines.forEach((line: string) => { pdf.text(line, billToX, y); y += 5; });
 
   // Google Maps link
   if (invoice.customerMapsLink) {
@@ -165,7 +166,7 @@ export async function generateInvoicePDF(invoice, lines) {
   y += rowH;
 
   // ── TABLE ROWS ────────────────────────────────────────
-  lines.forEach((line, i) => {
+  lines.forEach((line: any, i: number) => {
     if (i % 2 === 0) {
       pdf.setFillColor(247, 248, 250);
       pdf.rect(margin, y, colAmt - margin + 10, rowH, "F");
@@ -195,7 +196,7 @@ export async function generateInvoicePDF(invoice, lines) {
   const labelX = 130;
   const valueX = W - margin;
 
-  const addTotalRow = (label, value, color, bold = false) => {
+  const addTotalRow = (label: string, value: string, color: [number, number, number], bold = false) => {
     pdf.setFont("helvetica", bold ? "bold" : "normal");
     pdf.setFontSize(bold ? 10 : 9);
     pdf.setTextColor(...color);
@@ -229,7 +230,7 @@ export async function generateInvoicePDF(invoice, lines) {
 
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(10);
-  pdf.setTextColor(...(balanceDue <= 0 ? [34, 197, 94] : rose));
+  pdf.setTextColor(...(balanceDue <= 0 ? [34, 197, 94] as [number, number, number] : rose));
   pdf.text("Balance Due:", labelX, y);
   pdf.text(money(balanceDue), valueX, y, { align: "right" });
   y += 10;
