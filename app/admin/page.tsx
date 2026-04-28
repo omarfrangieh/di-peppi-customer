@@ -95,7 +95,8 @@ export default function Dashboard() {
       const lowStock: any[] = [];
       productsSnap.forEach(d => {
         const p = d.data();
-        const cur = Number(p.currentStock || 0);
+        // Round to 3dp to match formatQty display precision — avoids 0.0001 showing as "0 Kg" instead of "❌ Out"
+        const cur = Math.round(Number(p.currentStock || 0) * 1000) / 1000;
         const min = Number(p.minStock || 0);
         if (p.active !== false && min > 0 && cur <= min) {
           const pct = cur <= 0 ? 0 : cur / min;
