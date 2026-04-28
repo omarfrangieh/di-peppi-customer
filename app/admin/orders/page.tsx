@@ -66,6 +66,7 @@ export default function OrdersPage() {
   const [filterStatus, setFilterStatus] = useState("All");
   const [filterType, setFilterType] = useState("All");
   const [poReadiness, setPoReadiness] = useState<Record<string, { total: number; delivered: number }>>({});
+  const [weighingOrderIds, setWeighingOrderIds] = useState<Set<string>>(new Set());
   const [clientSearch, setClientSearch] = useState("");
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [customers, setCustomers] = useState<string[]>([]);
@@ -91,6 +92,20 @@ export default function OrdersPage() {
         data = await res.json();
       }
       setOrders(Array.isArray(data) ? data : []);
+
+      // Load "To Weigh" — find orders that have items requiring weighing
+      const [productsSnap, itemsSnap] = await Promise.all([
+        getDocs(collection(db, "products")),
+        getDocs(collection(db, "orderItems")),
+      ]);
+      const weighingProductIds = new Set<string>();
+      productsSnap.forEach(d => { if (d.data().requiresWeighing) weighingProductIds.add(d.id); });
+      const weighingOrders = new Set<string>();
+      itemsSnap.forEach(d => {
+        const item = d.data();
+        if (item.orderId && weighingProductIds.has(item.productId)) weighingOrders.add(item.orderId);
+      });
+      setWeighingOrderIds(weighingOrders);
 
       // Load PO readiness
       const poSnap = await getDocs(collection(db, "purchaseOrders"));
@@ -289,6 +304,11 @@ export default function OrdersPage() {
                     {isOverdue && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">
                         ⚠️ Overdue
+                      </span>
+                    )}
+                    {weighingOrderIds.has(order.id) && !["Delivered", "Cancelled", "Canceled"].includes(order.status) && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold border border-red-300">
+                        ⚖️ To Weigh
                       </span>
                     )}
                   </div>

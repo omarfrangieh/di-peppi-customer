@@ -51,6 +51,18 @@ export default function InvoicesListPage() {
       const q = query(collection(db, "invoices"), orderBy("createdAt", "desc"));
       const snap = await getDocs(q);
       const data = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Invoice[];
+
+      // Auto-mark overdue: issued invoices whose dueDate has passed
+      const today = new Date().toISOString().slice(0, 10);
+      const overdueUpdates: Promise<void>[] = [];
+      data.forEach((inv) => {
+        if (inv.status === "issued" && inv.dueDate && inv.dueDate < today) {
+          inv.status = "overdue";
+          overdueUpdates.push(updateDoc(doc(db, "invoices", inv.id), { status: "overdue" }));
+        }
+      });
+      if (overdueUpdates.length > 0) await Promise.all(overdueUpdates);
+
       setInvoices(data);
     } catch (err) {
       console.error(err);
@@ -88,6 +100,14 @@ export default function InvoicesListPage() {
 
   const totalByStatus = (status: string) =>
     invoices.filter((i) => i.status === status).length;
+
+  const outstandingTotal = invoices
+    .filter((i) => i.status === "issued" || i.status === "overdue")
+    .reduce((sum, i) => sum + (i.finalTotal || 0), 0);
+
+  const overdueTotal = invoices
+    .filter((i) => i.status === "overdue")
+    .reduce((sum, i) => sum + (i.finalTotal || 0), 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -135,6 +155,23 @@ export default function InvoicesListPage() {
             );
           })}
         </div>
+
+        {/* Outstanding summary */}
+        {outstandingTotal > 0 && (
+          <div className={`rounded-xl border px-4 py-3 mb-4 flex items-center justify-between ${overdueTotal > 0 ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"}`}>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-gray-900">💰 Total Outstanding</span>
+              {overdueTotal > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
+                  {money(overdueTotal)} overdue
+                </span>
+              )}
+            </div>
+            <span className={`text-lg font-bold ${overdueTotal > 0 ? "text-red-700" : "text-blue-700"}`}>
+              {money(outstandingTotal)}
+            </span>
+          </div>
+        )}
 
         {/* Filter tabs */}
         <div className="flex gap-2 mb-4 flex-wrap">

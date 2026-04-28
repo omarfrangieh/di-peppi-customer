@@ -27,6 +27,8 @@ export default function Dashboard() {
   const [weighingOrderIds, setWeighingOrderIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [expiringBatches, setExpiringBatches] = useState<any[]>([]);
+  const [lowStockProducts, setLowStockProducts] = useState<any[]>([]);
+  const [invoiceStats, setInvoiceStats] = useState({ outstanding: 0, overdueCount: 0 });
   const todayISO = new Date().toISOString().slice(0, 10);
 
   useEffect(() => { void load(); }, []);
@@ -94,6 +96,32 @@ export default function Dashboard() {
       });
       batches.sort((a, b) => a.expiryDate.localeCompare(b.expiryDate));
       setExpiringBatches(batches);
+
+      // Low-stock products (currentStock <= minStock, minStock > 0, active)
+      const lowStock: any[] = [];
+      productsSnap.forEach(d => {
+        const p = d.data();
+        const cur = Number(p.currentStock || 0);
+        const min = Number(p.minStock || 0);
+        if (p.active !== false && min > 0 && cur <= min) {
+          lowStock.push({ id: d.id, name: p.name, currentStock: cur, minStock: min, unit: p.unit || "" });
+        }
+      });
+      lowStock.sort((a, b) => a.currentStock - b.currentStock);
+      setLowStockProducts(lowStock);
+
+      // Invoice stats — outstanding total + overdue count
+      const invoicesSnap = await getDocs(collection(db, "invoices"));
+      let outstanding = 0;
+      let overdueCount = 0;
+      invoicesSnap.forEach(d => {
+        const inv = d.data();
+        if (inv.status === "issued" || inv.status === "overdue") {
+          outstanding += Number(inv.finalTotal || 0);
+          if (inv.status === "overdue" || (inv.dueDate && inv.dueDate < todayISO)) overdueCount += 1;
+        }
+      });
+      setInvoiceStats({ outstanding, overdueCount });
     } finally {
       setLoading(false);
     }
@@ -196,6 +224,47 @@ export default function Dashboard() {
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
 
+        {/* KPI Bar */}
+        {!loading && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              {
+                label: "Active Orders",
+                value: orders.filter(o => !["Delivered","Cancelled","Canceled"].includes(o.status)).length,
+                sub: `${orders.filter(o => o.status === "To Deliver").length} ready to deliver`,
+                color: "text-blue-700",
+                bg: "bg-blue-50 border-blue-200",
+              },
+              {
+                label: "Revenue (Delivered)",
+                value: "$" + orders.filter(o => o.status === "Delivered").reduce((s, o) => s + Number(o.finalTotal || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+                sub: `${orders.filter(o => o.status === "Delivered").length} delivered orders`,
+                color: "text-green-700",
+                bg: "bg-green-50 border-green-200",
+              },
+              {
+                label: "Outstanding Invoices",
+                value: "$" + invoiceStats.outstanding.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+                sub: invoiceStats.overdueCount > 0 ? `${invoiceStats.overdueCount} overdue` : "All on time",
+                color: invoiceStats.overdueCount > 0 ? "text-red-700" : "text-gray-700",
+                bg: invoiceStats.overdueCount > 0 ? "bg-red-50 border-red-200" : "bg-white border-gray-200",
+              },
+              {
+                label: "⚖️ Need Weighing",
+                value: orders.filter(o => weighingOrderIds.has(o.id) && !["Delivered","Cancelled","Canceled"].includes(o.status)).length,
+                sub: "active orders with weigh items",
+                color: "text-orange-700",
+                bg: "bg-orange-50 border-orange-200",
+              },
+            ].map(kpi => (
+              <div key={kpi.label} className={`rounded-xl border px-4 py-3 ${kpi.bg}`}>
+                <p className="text-xs text-gray-500 mb-1">{kpi.label}</p>
+                <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.value}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{kpi.sub}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Expiry Alerts */}
         {expiringBatches.length > 0 && (
@@ -221,6 +290,34 @@ export default function Dashboard() {
                   </p>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Low Stock Alert */}
+        {lowStockProducts.length > 0 && (
+          <div className="bg-white rounded-2xl border border-yellow-200 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <h2 className="font-bold text-gray-900 text-sm">📦 Low Stock</h2>
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-yellow-100 text-yellow-700">
+                {lowStockProducts.length} product{lowStockProducts.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+              {lowStockProducts.slice(0, 12).map(p => (
+                <div key={p.id} className={`rounded-xl border px-3 py-2 text-xs ${p.currentStock <= 0 ? "bg-red-50 border-red-200" : "bg-yellow-50 border-yellow-200"}`}>
+                  <p className="font-semibold text-gray-900 truncate">{p.name}</p>
+                  <p className={`font-bold mt-0.5 ${p.currentStock <= 0 ? "text-red-600" : "text-yellow-700"}`}>
+                    {p.currentStock <= 0 ? "❌ Out" : `${formatQty(p.currentStock)} ${p.unit}`}
+                  </p>
+                  <p className="text-gray-400 mt-0.5">Min: {formatQty(p.minStock)}</p>
+                </div>
+              ))}
+              {lowStockProducts.length > 12 && (
+                <div className="rounded-xl border border-dashed border-gray-200 px-3 py-2 text-xs flex items-center justify-center text-gray-400">
+                  +{lowStockProducts.length - 12} more
+                </div>
+              )}
             </div>
           </div>
         )}
