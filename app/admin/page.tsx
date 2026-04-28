@@ -411,31 +411,54 @@ export default function Dashboard() {
   const OrderCard = ({ order }: { order: any }) => {
     const isOverdue  = order.deliveryDate && order.deliveryDate < todayISO;
     const isDragging = dragOrderId === order.id;
+    const statusDot: Record<string, string> = {
+      Draft: "bg-gray-400", Confirmed: "bg-blue-400", Preparing: "bg-yellow-400",
+      "To Deliver": "bg-orange-400", Delivered: "bg-green-500", Cancelled: "bg-red-400",
+    };
+
+    if (isCompact) {
+      return (
+        <div draggable
+          onDragStart={() => setDragOrderId(order.id)}
+          onDragEnd={() => { setDragOrderId(null); setDragOverCol(null); }}
+          onClick={() => router.push(`/admin/orders/${order.id}`)}
+          className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 cursor-grab active:cursor-grabbing hover:shadow-sm transition-all select-none text-xs ${isDragging ? "opacity-40" : ""} ${
+            order.status === "Draft"      ? "bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600" :
+            order.status === "Preparing"  ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200" :
+            order.status === "To Deliver" ? "bg-orange-50 dark:bg-orange-900/20 border-orange-200" :
+            order.status === "Delivered"  ? "bg-green-50 dark:bg-green-900/20 border-green-200" :
+            "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+          }`}>
+          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDot[order.status] || "bg-gray-400"}`} />
+          <span className="font-medium text-gray-900 dark:text-white truncate flex-1">{order.customerName || order.name}</span>
+          {weighingOrderIds.has(order.id) && <span className="text-red-500 flex-shrink-0">⚖️</span>}
+          {isOverdue && <span className="text-red-400 flex-shrink-0">⚠️</span>}
+          <span className="font-semibold text-gray-700 dark:text-gray-300 flex-shrink-0">${formatPrice(order.finalTotal || 0)}</span>
+        </div>
+      );
+    }
+
     return (
       <div draggable
         onDragStart={() => setDragOrderId(order.id)}
         onDragEnd={() => { setDragOrderId(null); setDragOverCol(null); }}
         onClick={() => router.push(`/admin/orders/${order.id}`)}
-        className={`rounded-lg border cursor-grab active:cursor-grabbing hover:shadow-sm transition-all select-none
-          ${isDragging ? "opacity-40" : ""}
-          ${isCompact ? "px-3 py-2" : "px-4 py-3"}
-          ${order.status === "Draft"      ? "bg-gray-50 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600" :
-            order.status === "Preparing"  ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200" :
-            order.status === "To Deliver" ? "bg-orange-50 dark:bg-orange-900/20 border-orange-200" :
-            order.status === "Delivered"  ? "bg-green-50 dark:bg-green-900/20 border-green-200" :
-            (order.status === "Cancelled" || order.status === "Canceled") ? "bg-red-50 dark:bg-red-900/20 border-red-200" :
-            "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"}`}>
+        className={`rounded-lg border px-4 py-3 cursor-grab active:cursor-grabbing hover:shadow-sm transition-all select-none ${isDragging ? "opacity-40" : ""} ${
+          order.status === "Draft"      ? "bg-gray-50 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600" :
+          order.status === "Preparing"  ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200" :
+          order.status === "To Deliver" ? "bg-orange-50 dark:bg-orange-900/20 border-orange-200" :
+          order.status === "Delivered"  ? "bg-green-50 dark:bg-green-900/20 border-green-200" :
+          (order.status === "Cancelled" || order.status === "Canceled") ? "bg-red-50 dark:bg-red-900/20 border-red-200" :
+          "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"}`}>
         <div className="flex items-center justify-between">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <p className={`font-semibold text-gray-900 dark:text-white truncate ${isCompact ? "text-xs" : "text-sm"}`}>
-                {order.customerName || order.name}
-              </p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{order.customerName || order.name}</p>
               <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 flex-shrink-0">
                 {order.customerType || "B2C"}
               </span>
             </div>
-            {!isCompact && <p className="text-xs text-gray-400 mt-0.5">{order.name}</p>}
+            <p className="text-xs text-gray-400 mt-0.5">{order.name}</p>
             <div className="flex items-center gap-2 mt-1">
               <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium ${
                 order.status === "Draft"      ? "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300" :
@@ -450,18 +473,18 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-          <p className={`font-bold text-gray-900 dark:text-white flex-shrink-0 ml-2 ${isCompact ? "text-xs" : "text-sm"}`}>
+          <p className="text-sm font-bold text-gray-900 dark:text-white flex-shrink-0 ml-2">
             ${formatPrice(order.finalTotal || 0)}
           </p>
         </div>
-        {!isCompact && order.deliveryDate && (
+        {order.deliveryDate && (
           <p className={`text-xs mt-1 font-medium ${isOverdue ? "text-red-500" : "text-gray-400"}`}>
             {isOverdue ? "⚠️ " : ""}Delivery: {formatDate(order.deliveryDate)}
           </p>
         )}
         {["Draft", "Confirmed", "Preparing", "To Deliver"].includes(order.status) && (
           <button onClick={(e) => markDelivered(order.id, e)}
-            className={`mt-1.5 w-full text-xs rounded-lg border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 font-medium transition-all ${isCompact ? "py-0.5" : "py-1"}`}>
+            className="mt-2 w-full text-xs py-1 rounded-lg border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 font-medium transition-all">
             ✓ Mark Delivered
           </button>
         )}
@@ -677,7 +700,7 @@ export default function Dashboard() {
             <div className="w-8 h-8 border-2 border-gray-900 dark:border-white border-t-transparent dark:border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-4">
+          <div className={`grid grid-cols-3 ${isCompact ? "gap-2" : "gap-4"}`}>
             {PIPELINE_COLS.map(col => {
               const list = colOrders[col.key] || [];
               const isDragTarget = dragOverCol === col.key && dragOrderId !== null;
@@ -686,7 +709,7 @@ export default function Dashboard() {
                   onDragOver={e => { e.preventDefault(); setDragOverCol(col.key); }}
                   onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null); }}
                   onDrop={() => handleDrop(col.key, col.dropStatus)}
-                  className={`bg-white dark:bg-gray-800 rounded-2xl p-4 space-y-3 border transition-all min-h-[140px] ${
+                  className={`bg-white dark:bg-gray-800 rounded-2xl border transition-all min-h-[80px] ${isCompact ? "p-2 space-y-1" : "p-4 space-y-3"} ${
                     isDragTarget ? "border-blue-400 ring-2 ring-blue-200 bg-blue-50/30 dark:bg-blue-900/10" : "border-gray-200 dark:border-gray-700"
                   }`}>
                   <div className="flex items-center justify-between">
@@ -699,16 +722,7 @@ export default function Dashboard() {
                     </div>
                   )}
                   {list.length === 0 && !isDragTarget && (
-                    <div className="flex flex-col items-center gap-3 py-6">
-                      <p className="text-xs text-gray-400">{col.emptyMsg}</p>
-                      {col.key === "preparing" && (
-                        <button onClick={() => router.push("/admin/orders/new")}
-                          className="text-xs px-3 py-1.5 rounded-lg text-white font-medium transition-colors hover:opacity-90"
-                          style={{ backgroundColor: "#1B2A5E" }}>
-                          + New Order
-                        </button>
-                      )}
-                    </div>
+                    <p className="text-xs text-gray-400 text-center py-6">{col.emptyMsg}</p>
                   )}
                   {list.map(o => <OrderCard key={o.id} order={o} />)}
                 </div>
