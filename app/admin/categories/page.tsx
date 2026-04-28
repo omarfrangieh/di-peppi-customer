@@ -12,6 +12,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
+import SearchInput from "@/components/SearchInput";
 
 interface Category {
   id: string;
@@ -29,64 +30,47 @@ export default function CategoriesPage() {
   const [search, setSearch] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
-  const [showInitPrompt, setShowInitPrompt] = useState(false);
 
-  // Load categories from Firestore
   useEffect(() => {
-    const loadCategories = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const categoriesRef = collection(db, "productCategories");
-        const snapshot = await getDocs(categoriesRef);
-        const loaded = snapshot.docs
-          .map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          } as Category))
-          .sort((a, b) => a.name.localeCompare(b.name));
-
-        setCategories(loaded);
-      } catch (err: any) {
-        console.error("Error loading categories:", err);
-        setError(err.message || "Failed to load categories");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadCategories();
+    void loadCategories();
   }, []);
 
-  const handleAddCategory = async () => {
-    if (!newCategoryName.trim()) {
-      setError("Category name is required");
-      return;
+  const loadCategories = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const snap = await getDocs(collection(db, "productCategories"));
+      const loaded = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Category))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setCategories(loaded);
+    } catch (err: any) {
+      setError(err.message || "Failed to load categories");
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // Check for duplicates
-    if (categories.some((c) => c.name.toLowerCase() === newCategoryName.toLowerCase())) {
+  const handleAddCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) { setError("Category name is required"); return; }
+    if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
       setError("Category already exists");
       return;
     }
-
     setIsAdding(true);
     setError(null);
-
     try {
-      const categoryId = newCategoryName.toLowerCase().replace(/\s+/g, "-");
+      const categoryId = name.toLowerCase().replace(/\s+/g, "-");
       const now = new Date().toISOString();
-
       await setDoc(doc(db, "productCategories", categoryId), {
-        name: newCategoryName,
+        name,
         active: true,
         createdAt: now,
         updatedAt: now,
       });
-
       setCategories((prev) =>
-        [...prev, { id: categoryId, name: newCategoryName, active: true, createdAt: now, updatedAt: now }]
+        [...prev, { id: categoryId, name, active: true, createdAt: now, updatedAt: now }]
           .sort((a, b) => a.name.localeCompare(b.name))
       );
       setNewCategoryName("");
@@ -98,29 +82,20 @@ export default function CategoriesPage() {
   };
 
   const handleToggleActive = async (categoryId: string, currentActive: boolean) => {
-    const category = categories.find(c => c.id === categoryId);
+    const category = categories.find((c) => c.id === categoryId);
     if (!category) return;
-
-    // When deactivating, confirm since it affects all products in this category
     if (currentActive && !window.confirm(
       `Deactivating "${category.name}" will also deactivate all products in this category. Continue?`
     )) return;
-
     try {
       const now = new Date().toISOString();
       const batch = writeBatch(db);
-
-      // Update the category itself
       batch.set(doc(db, "productCategories", categoryId), { active: !currentActive, updatedAt: now }, { merge: true });
-
-      // When deactivating, also deactivate all products in this category
       if (currentActive) {
-        const productsSnap = await getDocs(query(collection(db, "products"), where("category", "==", category.name)));
-        productsSnap.docs.forEach(d => batch.update(d.ref, { active: false, updatedAt: now }));
+        const prodSnap = await getDocs(query(collection(db, "products"), where("category", "==", category.name)));
+        prodSnap.docs.forEach((d) => batch.update(d.ref, { active: false, updatedAt: now }));
       }
-
       await batch.commit();
-
       setCategories((prev) =>
         prev.map((cat) => cat.id === categoryId ? { ...cat, active: !currentActive, updatedAt: now } : cat)
       );
@@ -130,21 +105,16 @@ export default function CategoriesPage() {
   };
 
   const handleDeleteCategory = async (categoryId: string) => {
-    const category = categories.find(c => c.id === categoryId);
+    const category = categories.find((c) => c.id === categoryId);
     if (!category) return;
-
     if (!window.confirm(
       `Delete "${category.name}"? This will also delete all products in this category. This cannot be undone.`
     )) return;
-
     try {
       const batch = writeBatch(db);
-
       batch.delete(doc(db, "productCategories", categoryId));
-
-      const productsSnap = await getDocs(query(collection(db, "products"), where("category", "==", category.name)));
-      productsSnap.docs.forEach(d => batch.delete(d.ref));
-
+      const prodSnap = await getDocs(query(collection(db, "products"), where("category", "==", category.name)));
+      prodSnap.docs.forEach((d) => batch.delete(d.ref));
       await batch.commit();
       setCategories((prev) => prev.filter((cat) => cat.id !== categoryId));
     } catch (err: any) {
@@ -155,64 +125,22 @@ export default function CategoriesPage() {
   const handleInitializeCategories = async () => {
     if (!window.confirm(
       "This will extract all categories from your products and mark them as active. Continue?"
-    )) {
-      return;
-    }
-
+    )) return;
     setIsInitializing(true);
     setError(null);
-
     try {
-      // Get all unique categories from products
-      const productsSnap = await getDocs(collection(db, "products"));
-      const uniqueCategories = new Set<string>();
-
-      productsSnap.docs.forEach((doc) => {
-        const category = doc.data().category;
-        if (category && typeof category === "string") {
-          uniqueCategories.add(category);
-        }
+      const prodSnap = await getDocs(collection(db, "products"));
+      const unique = new Set<string>();
+      prodSnap.docs.forEach((d) => {
+        const cat = d.data().category;
+        if (cat && typeof cat === "string") unique.add(cat);
       });
-
-      // Add each category to productCategories collection
       const now = new Date().toISOString();
-      let addedCount = 0;
-
-      for (const categoryName of Array.from(uniqueCategories).sort()) {
-        const categoryId = categoryName.toLowerCase().replace(/\s+/g, "-");
-
-        try {
-          await setDoc(
-            doc(db, "productCategories", categoryId),
-            {
-              name: categoryName,
-              active: true,
-              createdAt: now,
-              updatedAt: now,
-            },
-            { merge: true }
-          );
-          addedCount++;
-        } catch (err) {
-          console.warn(`Failed to add category ${categoryName}:`, err);
-        }
+      for (const name of Array.from(unique).sort()) {
+        const id = name.toLowerCase().replace(/\s+/g, "-");
+        await setDoc(doc(db, "productCategories", id), { name, active: true, createdAt: now, updatedAt: now }, { merge: true });
       }
-
-      // Reload categories
-      const categoriesRef = collection(db, "productCategories");
-      const snapshot = await getDocs(categoriesRef);
-      const loaded = snapshot.docs
-        .map((d) => ({
-          id: d.id,
-          ...d.data(),
-        } as Category))
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      setCategories(loaded);
-      setShowInitPrompt(false);
-      alert(
-        `Successfully initialized ${addedCount} categories! All are marked as active.`
-      );
+      await loadCategories();
     } catch (err: any) {
       setError(err.message || "Failed to initialize categories");
     } finally {
@@ -220,162 +148,167 @@ export default function CategoriesPage() {
     }
   };
 
+  const filtered = categories.filter((c) =>
+    c.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const activeCount = categories.filter((c) => c.active).length;
+  const inactiveCount = categories.length - activeCount;
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Category Management</h1>
-        <p className="text-gray-600 mt-1">Manage product categories and visibility</p>
-      </div>
-
-      {/* Initialize Prompt */}
-      {categories.length === 0 && !loading && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-blue-900 mb-2">
-            🚀 Quick Start: Initialize Categories
-          </h3>
-          <p className="text-blue-800 mb-4">
-            You have {loading ? "..." : "products"} but no categories configured yet. Click below to
-            automatically extract all categories from your products and enable them.
-          </p>
-          <button
-            onClick={handleInitializeCategories}
-            disabled={isInitializing}
-            className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-semibold rounded-lg transition-colors"
-          >
-            {isInitializing ? "Initializing..." : "Initialize Categories Now"}
-          </button>
+    <div className="min-h-screen bg-gray-50">
+      {/* Sticky header */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-bold" style={{ color: "#B5535A" }}>Categories</h1>
+          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            {categories.length}
+          </span>
+          {activeCount > 0 && (
+            <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">
+              {activeCount} active
+            </span>
+          )}
+          {inactiveCount > 0 && (
+            <span className="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">
+              {inactiveCount} inactive
+            </span>
+          )}
         </div>
-      )}
-
-      {/* Add Category Form */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Add New Category</h2>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleAddCategory()}
-            placeholder="Enter category name (e.g., SALMON)"
-            className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
-          />
-          <button
-            onClick={handleAddCategory}
-            disabled={isAdding || !newCategoryName.trim()}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold rounded-lg transition-colors"
-            style={{ backgroundColor: "#1B2A5E" }}
-          >
-            {isAdding ? "Adding..." : "Add Category"}
-          </button>
-        </div>
-      </div>
-
-      {/* Error Message */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-600 font-semibold">{error}</p>
-        </div>
-      )}
-
-      {/* Search */}
-      {categories.length > 0 && (
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+        <SearchInput
           placeholder="Search categories..."
-          className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+          value={search}
+          onChange={setSearch}
+          className="w-56"
         />
-      )}
+      </div>
 
-      {/* Categories Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      <div className="max-w-3xl mx-auto px-6 py-8 space-y-5">
+
+        {/* Initialize prompt — only shown when empty */}
+        {categories.length === 0 && !loading && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <p className="text-sm font-semibold text-gray-900 mb-1">No categories yet</p>
+            <p className="text-sm text-gray-500 mb-4">
+              Import existing categories from your products to get started quickly.
+            </p>
+            <button
+              onClick={handleInitializeCategories}
+              disabled={isInitializing}
+              className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-colors"
+              style={{ backgroundColor: "#1B2A5E" }}
+            >
+              {isInitializing ? "Importing..." : "Import from Products"}
+            </button>
           </div>
-        ) : categories.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No categories yet. Create one to get started!</p>
+        )}
+
+        {/* Add category */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-sm font-semibold text-gray-900 mb-3">Add Category</p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => { setNewCategoryName(e.target.value); setError(null); }}
+              onKeyDown={(e) => e.key === "Enter" && handleAddCategory()}
+              placeholder="e.g. SALMON"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+            />
+            <button
+              onClick={handleAddCategory}
+              disabled={isAdding || !newCategoryName.trim()}
+              className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-40 transition-colors"
+              style={{ backgroundColor: "#1B2A5E" }}
+            >
+              {isAdding ? "Adding..." : "Add"}
+            </button>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
+          {error && (
+            <p className="text-xs text-red-600 mt-2">{error}</p>
+          )}
+        </div>
+
+        {/* Categories table */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-6 h-6 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-16 text-sm text-gray-400">
+              {search ? "No categories match your search." : "No categories yet. Add one above."}
+            </div>
+          ) : (
             <table className="w-full">
               <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                    Category Name
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Name
                   </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Created
                   </th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">
+                  <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                {categories.filter(c => c.name.toLowerCase().includes(search.toLowerCase())).map((category) => (
-                  <tr key={category.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="px-6 py-4 text-gray-900 font-medium">{category.name}</td>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map((cat) => (
+                  <tr key={cat.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{cat.name}</td>
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                          category.active
-                            ? "bg-green-50 text-green-600"
-                            : "bg-red-50 text-red-600"
-                        }`}
-                      >
-                        {category.active ? "Active" : "Inactive"}
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                        cat.active
+                          ? "bg-green-50 text-green-700"
+                          : "bg-gray-100 text-gray-500"
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${cat.active ? "bg-green-500" : "bg-gray-400"}`} />
+                        {cat.active ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {new Date(category.createdAt).toLocaleDateString()}
+                    <td className="px-6 py-4 text-sm text-gray-400">
+                      {cat.createdAt ? new Date(cat.createdAt).toLocaleDateString("en-GB") : "—"}
                     </td>
-                    <td className="px-6 py-4 text-right space-x-2">
-                      <button
-                        onClick={() => handleToggleActive(category.id, category.active)}
-                        className={`px-3 py-1 text-sm font-semibold rounded-lg transition-colors ${
-                          category.active
-                            ? "bg-yellow-50 text-yellow-600 hover:bg-yellow-100"
-                            : "bg-green-50 text-green-600 hover:bg-green-100"
-                        }`}
-                      >
-                        {category.active ? "Deactivate" : "Activate"}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteCategory(category.id)}
-                        className="px-3 py-1 text-sm font-semibold bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                      >
-                        Delete
-                      </button>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleToggleActive(cat.id, cat.active)}
+                          className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            cat.active
+                              ? "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                              : "bg-green-50 text-green-700 hover:bg-green-100"
+                          }`}
+                        >
+                          {cat.active ? "Deactivate" : "Activate"}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCategory(cat.id)}
+                          className="px-3 py-1 text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-      </div>
-
-      {/* Summary */}
-      {!loading && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p className="text-blue-900 font-semibold mb-2">Category Summary</p>
-          <p className="text-blue-800 text-sm">
-            Total Categories: <span className="font-bold">{categories.length}</span> |
-            Active: <span className="font-bold text-green-600">{categories.filter((c) => c.active).length}</span> |
-            Inactive: <span className="font-bold text-red-600">{categories.filter((c) => !c.active).length}</span>
-          </p>
-          <p className="text-blue-800 text-sm mt-2">
-            💡 Deactivate categories to hide them from the customer product filter without deleting them.
-          </p>
+          )}
         </div>
-      )}
+
+        {/* Tip */}
+        {!loading && categories.length > 0 && (
+          <p className="text-xs text-gray-400 text-center">
+            Deactivating a category hides it from the customer product filter without deleting it.
+          </p>
+        )}
+
+      </div>
     </div>
   );
 }
