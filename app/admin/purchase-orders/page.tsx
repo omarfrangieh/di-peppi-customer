@@ -38,8 +38,19 @@ export default function PurchaseOrdersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const snap = await getDocs(query(collection(db, "purchaseOrders"), orderBy("createdAt", "desc")));
-      setPOs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      let snap;
+      try {
+        snap = await getDocs(query(collection(db, "purchaseOrders"), orderBy("createdAt", "desc")));
+      } catch {
+        // Index may not exist on emulator — fall back to unordered fetch
+        snap = await getDocs(collection(db, "purchaseOrders"));
+      }
+      const data = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as any))
+        .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      setPOs(data);
+    } catch (err) {
+      console.error("Failed to load purchase orders:", err);
     } finally {
       setLoading(false);
     }
