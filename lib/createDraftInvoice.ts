@@ -156,7 +156,7 @@ const finalTotal = subtotalNet + initialTaxAmount + deliveryFee;
         lineNet: Number(item.totalPrice || 0),         // ✅ was item.lineNet
         profit: Number(item.profit || 0),              // ✅ new field
         totalCostPrice: Number(item.totalCostPrice || 0), // ✅ new field
-        vatRate: productVatRates[item.productId],
+        vatRate: productVatRates[item.productId] ?? null,
         notes: item.notes || "",
         preparation: item.preparation || "",
         sample: Boolean(item.sample),

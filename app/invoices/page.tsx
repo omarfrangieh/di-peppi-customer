@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { collection, getDocs, orderBy, query, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -20,25 +20,66 @@ interface Invoice {
   paymentMethod?: string;
 }
 
-const STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-  draft:     { bg: "bg-gray-100",  text: "text-gray-600",  dot: "bg-gray-400" },
-  issued:    { bg: "bg-blue-50",   text: "text-blue-700",  dot: "bg-blue-400" },
-  paid:      { bg: "bg-green-50",  text: "text-green-700", dot: "bg-green-500" },
-  overdue:   { bg: "bg-red-50",    text: "text-red-700",   dot: "bg-red-500" },
-  cancelled: { bg: "bg-orange-50", text: "text-orange-700",dot: "bg-orange-400" },
+const STATUS_COLORS: Record<string, { bg: string; text: string; dot: string; ring: string }> = {
+  draft:     { bg: "bg-gray-100 dark:bg-gray-700/60",    text: "text-gray-600 dark:text-gray-300",    dot: "bg-gray-400",   ring: "ring-gray-400" },
+  issued:    { bg: "bg-blue-50 dark:bg-blue-900/30",     text: "text-blue-700 dark:text-blue-400",    dot: "bg-blue-400",   ring: "ring-blue-400" },
+  paid:      { bg: "bg-green-50 dark:bg-green-900/30",   text: "text-green-700 dark:text-green-400",  dot: "bg-green-500",  ring: "ring-green-500" },
+  overdue:   { bg: "bg-red-50 dark:bg-red-900/30",       text: "text-red-700 dark:text-red-400",      dot: "bg-red-500",    ring: "ring-red-500" },
+  cancelled: { bg: "bg-orange-50 dark:bg-orange-900/30", text: "text-orange-700 dark:text-orange-400",dot: "bg-orange-400", ring: "ring-orange-400" },
 };
 
 function money(val: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val || 0);
 }
 
-const ALL_STATUSES = ["all", "draft", "issued", "paid", "overdue", "cancelled"];
+const DATE_RANGES = [
+  { label: "All time",    value: "all" },
+  { label: "This month",  value: "this_month" },
+  { label: "Last month",  value: "last_month" },
+  { label: "This year",   value: "this_year" },
+];
+
+function filterByDateRange(invoices: Invoice[], range: string): Invoice[] {
+  if (range === "all") return invoices;
+  const now = new Date();
+  const thisMonth = now.getMonth();
+  const thisYear = now.getFullYear();
+  return invoices.filter((inv) => {
+    if (!inv.invoiceDate) return false;
+    const d = new Date(inv.invoiceDate);
+    if (range === "this_month") return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
+    if (range === "last_month") {
+      const lm = thisMonth === 0 ? 11 : thisMonth - 1;
+      const ly = thisMonth === 0 ? thisYear - 1 : thisYear;
+      return d.getMonth() === lm && d.getFullYear() === ly;
+    }
+    if (range === "this_year") return d.getFullYear() === thisYear;
+    return true;
+  });
+}
+
+function EmptyIllustration() {
+  return (
+    <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="10" width="80" height="100" rx="6" fill="currentColor" className="text-gray-100 dark:text-gray-800" />
+      <rect x="32" y="26" width="40" height="5" rx="2.5" fill="currentColor" className="text-gray-300 dark:text-gray-600" />
+      <rect x="32" y="38" width="56" height="4" rx="2" fill="currentColor" className="text-gray-200 dark:text-gray-700" />
+      <rect x="32" y="48" width="48" height="4" rx="2" fill="currentColor" className="text-gray-200 dark:text-gray-700" />
+      <rect x="32" y="58" width="52" height="4" rx="2" fill="currentColor" className="text-gray-200 dark:text-gray-700" />
+      <rect x="32" y="74" width="56" height="8" rx="4" fill="currentColor" className="text-gray-200 dark:text-gray-700" />
+      <rect x="32" y="88" width="36" height="8" rx="4" fill="currentColor" className="text-gray-300 dark:text-gray-600" />
+      <circle cx="88" cy="88" r="18" fill="#FEF2F2" />
+      <path d="M88 80v8M88 92v1" stroke="#B5535A" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export default function InvoicesListPage() {
   const router = useRouter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateRange, setDateRange] = useState("all");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -52,7 +93,6 @@ export default function InvoicesListPage() {
       const snap = await getDocs(q);
       const data = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Invoice[];
 
-      // Auto-mark overdue: issued invoices whose dueDate has passed
       const today = new Date().toISOString().slice(0, 10);
       const overdueUpdates: Promise<void>[] = [];
       data.forEach((inv) => {
@@ -77,19 +117,28 @@ export default function InvoicesListPage() {
     if (!method) return;
     const date = new Date().toISOString().slice(0, 10);
     try {
-      await updateDoc(doc(db, "invoices", invId), {
-        status: "paid",
-        paidAt: date,
-        paymentMethod: method,
-      });
+      await updateDoc(doc(db, "invoices", invId), { status: "paid", paidAt: date, paymentMethod: method });
       await loadInvoices();
-    } catch (err) {
+    } catch {
       alert("Error marking as paid");
     }
   };
 
-  const filtered = invoices.filter((inv) => {
-    const matchStatus = filter === "all" || inv.status === filter;
+  const dateFiltered = useMemo(() => filterByDateRange(invoices, dateRange), [invoices, dateRange]);
+
+  const countByStatus = (s: string) => dateFiltered.filter((i) => i.status === s).length;
+  const totalByStatus = (s: string) =>
+    dateFiltered.filter((i) => i.status === s).reduce((sum, i) => sum + (i.finalTotal || 0), 0);
+
+  const outstandingTotal = dateFiltered
+    .filter((i) => i.status === "issued" || i.status === "overdue")
+    .reduce((sum, i) => sum + (i.finalTotal || 0), 0);
+  const overdueTotal = dateFiltered
+    .filter((i) => i.status === "overdue")
+    .reduce((sum, i) => sum + (i.finalTotal || 0), 0);
+
+  const filtered = dateFiltered.filter((inv) => {
+    const matchStatus = statusFilter === "all" || inv.status === statusFilter;
     const matchSearch =
       !search ||
       inv.invoiceNumber?.toLowerCase().includes(search.toLowerCase()) ||
@@ -98,159 +147,211 @@ export default function InvoicesListPage() {
     return matchStatus && matchSearch;
   });
 
-  const totalByStatus = (status: string) =>
-    invoices.filter((i) => i.status === status).length;
+  const hasActiveFilter = statusFilter !== "all" || search || dateRange !== "all";
 
-  const outstandingTotal = invoices
-    .filter((i) => i.status === "issued" || i.status === "overdue")
-    .reduce((sum, i) => sum + (i.finalTotal || 0), 0);
-
-  const overdueTotal = invoices
-    .filter((i) => i.status === "overdue")
-    .reduce((sum, i) => sum + (i.finalTotal || 0), 0);
+  // Full empty state — no invoices exist at all
+  if (!loading && invoices.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 sticky top-0 z-10">
+          <h1 className="text-xl font-bold" style={{ color: "#B5535A" }}>Invoices</h1>
+        </div>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+          <EmptyIllustration />
+          <div className="text-center">
+            <p className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1">No invoices yet</p>
+            <p className="text-sm text-gray-400 mb-6">Create your first invoice from an order to get started.</p>
+            <button
+              onClick={() => router.push("/admin/orders")}
+              className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ backgroundColor: "#B5535A" }}
+            >
+              Go to Orders
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Top bar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold" style={{color: "#B5535A"}}>Invoices</h1>
-          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold" style={{ color: "#B5535A" }}>Invoices</h1>
+          <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
             {invoices.length}
           </span>
         </div>
-        <SearchInput
-          placeholder="Search invoices..."
-          value={search}
-          onChange={setSearch}
-          className="w-56"
-        />
+        <div className="flex items-center gap-2">
+          {/* Date range */}
+          <select
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value)}
+            className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-600 cursor-pointer"
+          >
+            {DATE_RANGES.map((r) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </select>
+          {/* Search — kept compact */}
+          <SearchInput
+            placeholder="Search invoices..."
+            value={search}
+            onChange={setSearch}
+            className="w-44"
+          />
+        </div>
       </div>
 
       <div className="max-w-5xl mx-auto px-6 py-8">
 
-        {/* Stats */}
+        {/* KPI cards — these ARE the filter */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {["draft", "issued", "paid", "overdue"].map((s) => {
+          {(["draft", "issued", "paid", "overdue"] as const).map((s) => {
             const style = STATUS_COLORS[s];
-            const count = totalByStatus(s);
-            const total = invoices
-              .filter((i) => i.status === s)
-              .reduce((sum, i) => sum + (i.finalTotal || 0), 0);
+            const count = countByStatus(s);
+            const total = totalByStatus(s);
+            const isActive = statusFilter === s;
             return (
-              <div
+              <button
                 key={s}
-                onClick={() => setFilter(s === filter ? "all" : s)}
-                className={`bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:border-gray-400 transition-all ${filter === s ? "ring-2 ring-gray-900" : ""}`}
+                onClick={() => setStatusFilter(isActive ? "all" : s)}
+                className={`text-left bg-white dark:bg-gray-800 rounded-xl border p-4 transition-all hover:border-gray-400 dark:hover:border-gray-500 focus:outline-none ${
+                  isActive
+                    ? `ring-2 border-transparent ${style.ring}`
+                    : "border-gray-200 dark:border-gray-700"
+                }`}
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <span className={`w-2 h-2 rounded-full ${style.dot}`} />
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${style.dot}`} />
                   <span className={`text-xs font-medium ${style.text}`}>
                     {s.charAt(0).toUpperCase() + s.slice(1)}
                   </span>
+                  {isActive && (
+                    <span className="ml-auto text-gray-300 dark:text-gray-600 text-xs leading-none">✕</span>
+                  )}
                 </div>
-                <p className="text-xl font-bold text-gray-900">{count}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{money(total)}</p>
-              </div>
+                <p className={`text-2xl font-bold tabular-nums ${count === 0 ? "text-gray-200 dark:text-gray-700" : "text-gray-900 dark:text-white"}`}>
+                  {count}
+                </p>
+                {total > 0 && (
+                  <p className="text-xs text-gray-400 mt-0.5 tabular-nums">{money(total)}</p>
+                )}
+              </button>
             );
           })}
         </div>
 
-        {/* Outstanding summary */}
+        {/* Outstanding banner */}
         {outstandingTotal > 0 && (
-          <div className={`rounded-xl border px-4 py-3 mb-4 flex items-center justify-between ${overdueTotal > 0 ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"}`}>
+          <div className={`rounded-xl border px-4 py-3 mb-4 flex items-center justify-between ${
+            overdueTotal > 0
+              ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+              : "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
+          }`}>
             <div className="flex items-center gap-3">
-              <span className="text-sm font-semibold text-gray-900">💰 Total Outstanding</span>
+              <span className="text-sm font-semibold text-gray-900 dark:text-white">Total Outstanding</span>
               {overdueTotal > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 font-medium">
                   {money(overdueTotal)} overdue
                 </span>
               )}
             </div>
-            <span className={`text-lg font-bold ${overdueTotal > 0 ? "text-red-700" : "text-blue-700"}`}>
+            <span className={`text-lg font-bold tabular-nums ${overdueTotal > 0 ? "text-red-700 dark:text-red-400" : "text-blue-700 dark:text-blue-400"}`}>
               {money(outstandingTotal)}
             </span>
           </div>
         )}
 
-        {/* Filter tabs */}
-        <div className="flex gap-2 mb-4 flex-wrap">
-          {ALL_STATUSES.map((s) => (
+        {/* Secondary filters row: Cancelled pill + clear */}
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setStatusFilter(statusFilter === "cancelled" ? "all" : "cancelled")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              statusFilter === "cancelled"
+                ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900"
+                : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+            }`}
+          >
+            Cancelled
+            <span className="ml-1.5 opacity-60">{countByStatus("cancelled")}</span>
+          </button>
+          {hasActiveFilter && (
             <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                filter === s
-                  ? "bg-gray-900 text-white"
-                  : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
-              }`}
+              onClick={() => { setStatusFilter("all"); setSearch(""); setDateRange("all"); }}
+              className="ml-auto text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline underline-offset-2"
             >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-              {s !== "all" && (
-                <span className="ml-1.5 opacity-60">{totalByStatus(s)}</span>
-              )}
+              Clear filters
             </button>
-          ))}
+          )}
         </div>
 
         {/* List */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-16">
-              <div className="w-6 h-6 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-16 text-sm text-gray-400">
-              No invoices found
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <p className="text-sm text-gray-400">No invoices match your filters</p>
+              <button
+                onClick={() => { setStatusFilter("all"); setSearch(""); setDateRange("all"); }}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                Clear filters
+              </button>
             </div>
           ) : (
             <table className="w-full">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                <tr className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-100 dark:border-gray-700">
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Invoice</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Customer</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                  <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {filtered.map((inv) => {
                   const style = STATUS_COLORS[inv.status] || STATUS_COLORS.draft;
                   return (
                     <tr
                       key={inv.id}
                       onClick={() => router.push("/invoices/" + inv.id)}
-                      className="hover:bg-gray-50 cursor-pointer transition-colors"
+                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
                     >
                       <td className="px-6 py-4">
-                        <p className="text-sm font-semibold text-gray-900">{inv.invoiceNumber || "—"}</p>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{inv.invoiceNumber || "—"}</p>
                         <p className="text-xs text-gray-400 mt-0.5">{inv.sourceOrderName || inv.id}</p>
                       </td>
                       <td className="px-4 py-4">
-                        <p className="text-sm text-gray-900">{inv.customerName || "—"}</p>
+                        <p className="text-sm text-gray-900 dark:text-white">{inv.customerName || "—"}</p>
                         <p className="text-xs text-gray-400">{inv.customerType}</p>
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-500">{inv.invoiceDate || "—"}</td>
+                      <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">{inv.invoiceDate || "—"}</td>
                       <td className="px-4 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${style.bg} ${style.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                           {(inv.status || "draft").charAt(0).toUpperCase() + (inv.status || "draft").slice(1)}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-right text-sm font-semibold text-gray-900">
+                      <td className="px-6 py-4 text-right text-sm font-semibold text-gray-900 dark:text-white">
                         <div className="flex items-center justify-end gap-3">
-                          <span>{money(inv.finalTotal)}</span>
-                          {inv.status !== "paid" && (
+                          <span className="tabular-nums">{money(inv.finalTotal)}</span>
+                          {inv.status !== "paid" && inv.status !== "cancelled" && (
                             <button
                               onClick={(e) => handleQuickPay(e, inv.id)}
-                              className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors font-medium"
+                              className="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-md hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors font-medium"
                             >
                               Pay
                             </button>
                           )}
                           {inv.status === "paid" && (
-                            <span className="text-xs text-green-600 font-medium">✓ {inv.paymentMethod}</span>
+                            <span className="text-xs text-green-600 dark:text-green-400 font-medium">✓ {inv.paymentMethod}</span>
                           )}
                         </div>
                       </td>

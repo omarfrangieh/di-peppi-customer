@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import AuthWrapper from "@/components/AuthWrapper";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -16,9 +17,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} h-full antialiased`}>
       <body className="min-h-full">
-        <AuthWrapper>
-          {children}
-        </AuthWrapper>
+        {/* Prevent flash of unstyled content — runs before React hydration */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem('dp-dark')==='1')document.documentElement.classList.add('dark')}catch(e){}`,
+          }}
+        />
+        <ThemeProvider>
+          <AuthWrapper>
+            {children}
+          </AuthWrapper>
+        </ThemeProvider>
       </body>
     </html>
   );

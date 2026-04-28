@@ -8,6 +8,7 @@ import {
   UserCog, Lock, History, Tags,
 } from "lucide-react";
 import { useAuth } from "./AuthWrapper";
+import { useTheme } from "./ThemeProvider";
 
 const NAV = [
   { label: "Dashboard",       href: "/admin",                 icon: LayoutDashboard },
@@ -35,6 +36,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const { session, logout } = useAuth();
+  const { theme, toggle } = useTheme();
 
   // Close on Escape
   useEffect(() => {
@@ -173,6 +175,21 @@ export default function Sidebar() {
               </div>
             </div>
           )}
+
+          {/* Dark mode toggle */}
+          <button
+            onClick={toggle}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            className="w-full flex items-center text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-sm py-2"
+          >
+            <span
+              className="flex items-center justify-center flex-shrink-0 text-base"
+              style={{ width: W_CLOSED - 16 }}
+            >
+              {theme === "dark" ? "☀️" : "🌙"}
+            </span>
+            {open && <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>}
+          </button>
 
           <button
             onClick={logout}

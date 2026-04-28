@@ -5,6 +5,7 @@ import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { formatPrice, formatQty } from "@/lib/formatters";
+import { useTheme } from "@/components/ThemeProvider";
 
 /* ─── helpers ─── */
 
@@ -144,27 +145,14 @@ export default function Dashboard() {
   // UI state
   const [density, setDensity]     = useState<"comfortable" | "compact">("comfortable");
   const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "all">("all");
-  const [darkMode, setDarkMode]   = useState(false);
+  const { theme, toggle: toggleDark } = useTheme();
+  const darkMode = theme === "dark";
   const [dragOrderId, setDragOrderId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [searchOpen, setSearchOpen]   = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const todayISO = new Date().toISOString().slice(0, 10);
-
-  // Dark mode — persist to localStorage and toggle html class
-  useEffect(() => {
-    const saved = localStorage.getItem("dp-dark");
-    if (saved === "1") { setDarkMode(true); document.documentElement.classList.add("dark"); }
-  }, []);
-  const toggleDark = () => {
-    setDarkMode(d => {
-      const next = !d;
-      document.documentElement.classList.toggle("dark", next);
-      localStorage.setItem("dp-dark", next ? "1" : "0");
-      return next;
-    });
-  };
 
   // ⌘K keyboard shortcut
   useEffect(() => {

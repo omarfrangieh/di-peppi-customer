@@ -649,11 +649,11 @@ Please call/message the supplier(s): ${suppliers}`);
       const net = qty * price * (1 - discount / 100);
 
       // Fetch product to get vatRate
-      let vatRate: number | undefined;
+      let vatRate: number | null = null;
       try {
         const snap = await getDoc(doc(db, "products", newLineProductId));
         if (snap.exists()) {
-          vatRate = snap.data().vatRate || undefined;
+          vatRate = snap.data().vatRate ?? null;
         }
       } catch (e) {
         console.warn("Failed to fetch product vatRate:", e);
