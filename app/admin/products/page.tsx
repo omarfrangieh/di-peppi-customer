@@ -67,6 +67,12 @@ export default function AdminProductsPage() {
   const [showMarginsFor, setShowMarginsFor] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const [selectedForPrint, setSelectedForPrint] = useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+    try { return (localStorage.getItem("dp-products-view") as "grid" | "list") || "grid"; } catch { return "grid"; }
+  });
+  const [selectedSuppliers, setSelectedSuppliers] = useState<Set<string>>(new Set());
   const [isPrinting, setIsPrinting] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, Set<string>>>({
     pricing: new Set(),
@@ -615,18 +621,23 @@ export default function AdminProductsPage() {
 
   const cancelEdit = () => { setEditing(null); setEditData({}); };
 
-  const deleteProduct = async (id: string, name: string) => {
-    if (!confirm(`Delete "${name}" permanently? This cannot be undone.`)) return;
-    setSaving(id);
+  const deleteProduct = (id: string, name: string) => {
+    setDeleteTarget({ id, name });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteDoc(doc(db, "products", id));
-      setProducts(prev => prev.filter(p => p.id !== id));
+      await deleteDoc(doc(db, "products", deleteTarget.id));
+      setProducts(prev => prev.filter(p => p.id !== deleteTarget.id));
       setEditing(null);
       setEditData({});
+      setDeleteTarget(null);
     } catch (err: any) {
       alert(err.message || "Failed to delete product");
     } finally {
-      setSaving(null);
+      setDeleting(false);
     }
   };
 
@@ -731,11 +742,16 @@ export default function AdminProductsPage() {
     await saveOptions(field, list);
   };
 
+  const uniqueSupplierNames = Array.from(new Set(products.map(p => p.supplier).filter(Boolean))).sort() as string[];
+
   const filtered = products
-    .filter(p =>
-      (p.name || "").toLowerCase().includes(search.toLowerCase()) ||
-      (p.category || "").toLowerCase().includes(search.toLowerCase())
-    )
+    .filter(p => {
+      const matchesSearch =
+        (p.name || "").toLowerCase().includes(search.toLowerCase()) ||
+        (p.category || "").toLowerCase().includes(search.toLowerCase());
+      const matchesSupplier = selectedSuppliers.size === 0 || selectedSuppliers.has(p.supplier || "");
+      return matchesSearch && matchesSupplier;
+    })
     .sort((a, b) => {
       // Active products first, then inactive
       if ((a.active !== false) !== (b.active !== false)) {
@@ -758,12 +774,12 @@ export default function AdminProductsPage() {
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      <div className="w-8 h-8 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full animate-spin" />
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Bulk Print Controls */}
       {selectedForPrint.size > 0 && (
         <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 flex items-center justify-between sticky top-0 z-20">
@@ -835,10 +851,10 @@ export default function AdminProductsPage() {
         </div>
       )}
 
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
 
-          <div className="h-4 w-px bg-gray-200" />
+          <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
           <h1
             onClick={handleProductsHeadingClick}
             className="text-xl font-bold cursor-pointer transition-opacity hover:opacity-70"
@@ -847,7 +863,7 @@ export default function AdminProductsPage() {
           >
             Products
           </h1>
-          <span className="text-xs text-gray-400">{products.filter(p => p.active !== false).length} products</span>
+          <span className="text-xs text-gray-400 dark:text-gray-400">{products.filter(p => p.active !== false).length} products</span>
         </div>
         <div className="flex items-center gap-3">
           {inactiveCount > 0 && (
@@ -860,7 +876,7 @@ export default function AdminProductsPage() {
           )}
           <button
             onClick={() => setShowOptionsFor(showOptionsFor ? null : "unit")}
-            className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+            className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:text-gray-300"
           >
             ⚙️ Manage Dropdowns
           </button>
@@ -902,21 +918,58 @@ export default function AdminProductsPage() {
             onChange={setSearch}
             className="w-48"
           />
+          <div className="flex items-center gap-1 border border-gray-200 dark:border-gray-700 rounded-lg p-0.5">
+            <button
+              onClick={() => { setViewMode("grid"); localStorage.setItem("dp-products-view", "grid"); }}
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${viewMode === "grid" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
+              title="Grid view"
+            >⊞</button>
+            <button
+              onClick={() => { setViewMode("list"); localStorage.setItem("dp-products-view", "list"); }}
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${viewMode === "list" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
+              title="List view"
+            >☰</button>
+          </div>
         </div>
       </div>
 
+      {/* Supplier filter chips */}
+      {uniqueSupplierNames.length > 0 && (
+        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-2 flex items-center gap-2 overflow-x-auto">
+          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">Supplier:</span>
+          {uniqueSupplierNames.map(s => (
+            <button
+              key={s}
+              onClick={() => setSelectedSuppliers(prev => {
+                const next = new Set(prev);
+                if (next.has(s)) next.delete(s); else next.add(s);
+                return next;
+              })}
+              className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                selectedSuppliers.has(s)
+                  ? "bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-gray-900 dark:border-white"
+                  : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500"
+              }`}
+            >{s}</button>
+          ))}
+          {selectedSuppliers.size > 0 && (
+            <button onClick={() => setSelectedSuppliers(new Set())} className="shrink-0 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-1">✕ Clear</button>
+          )}
+        </div>
+      )}
+
       {/* Options Manager */}
       {showOptionsFor && (
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
           <div className="flex gap-6">
             {(["unit", "storageType", "category", "origin"] as const).map(field => (
               <div key={field} className="flex-1">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider">{field}</p>
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">{field}</p>
                 </div>
                 <div className="flex flex-wrap gap-1 mb-2">
                   {(options[field] as string[]).map(val => (
-                    <span key={val} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 rounded text-xs">
+                    <span key={val} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs dark:text-gray-300">
                       {val}
                       <button onClick={() => removeOption(field, val)} className="text-gray-400 hover:text-red-500">×</button>
                     </span>
@@ -929,9 +982,9 @@ export default function AdminProductsPage() {
                     value={newOption[field] || ""}
                     onChange={e => setNewOption(prev => ({ ...prev, [field]: e.target.value }))}
                     onKeyDown={e => e.key === "Enter" && addOption(field)}
-                    className="flex-1 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none"
+                    className="flex-1 px-2 py-1 text-xs border border-gray-200 dark:border-gray-700 rounded focus:outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   />
-                  <button onClick={() => addOption(field)} className="px-2 py-1 bg-gray-900 text-white text-xs rounded">+</button>
+                  <button onClick={() => addOption(field)} className="px-2 py-1 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs rounded">+</button>
                 </div>
               </div>
             ))}
@@ -940,22 +993,84 @@ export default function AdminProductsPage() {
       )}
 
       <div className="max-w-7xl mx-auto px-6 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((product, index) => (
+        {viewMode === "list" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden mb-4">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
+                  <th className="text-left px-4 py-2 w-12"></th>
+                  <th className="text-left px-4 py-2">Name</th>
+                  <th className="text-left px-4 py-2">Supplier</th>
+                  <th className="text-right px-4 py-2">Stock / Min</th>
+                  <th className="text-left px-4 py-2">Status</th>
+                  <th className="text-right px-4 py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {filtered.map((product, index) => {
+                  const isLowStock = Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock);
+                  return (
+                    <tr
+                      key={product.id}
+                      className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 ${product.active === false ? "opacity-50" : ""} ${isLowStock ? "border-l-4 border-orange-400" : ""}`}
+                    >
+                      <td className="px-4 py-2">
+                        <div className="w-10 h-10 rounded overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
+                          <ProductImage src={product.productImage} alt={product.name} className="w-full h-full object-contain" />
+                          {!product.productImage && <span className="text-lg">📦</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <p className="font-semibold text-gray-900 dark:text-white capitalize">{product.name}</p>
+                        {product.productSubName && <p className="text-xs text-gray-400">{product.productSubName}</p>}
+                        {isLowStock && <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded mt-0.5">⚠ Low Stock</span>}
+                      </td>
+                      <td className="px-4 py-2">
+                        {product.supplier && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">🏭 {product.supplier}</span>}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <span className={`text-sm font-semibold ${isLowStock ? "text-orange-600 dark:text-orange-400" : "text-gray-900 dark:text-white"}`}>
+                          {formatQty(product.currentStock)}
+                        </span>
+                        <span className="text-xs text-gray-400"> / {product.minStock || "—"}</span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${product.active !== false ? "bg-blue-100 text-blue-700" : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"}`}>
+                          {product.active !== false ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => startEdit(product)} className="px-2 py-1 text-xs border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 font-medium dark:text-gray-300">Edit</button>
+                          <button onClick={() => { setStockInProduct(product); setStockInQty(""); setStockInNotes(""); setStockInExpiry(""); }} className="px-2 py-1 text-xs border border-green-300 text-green-700 rounded hover:bg-green-50 font-medium">+Stock</button>
+                          <button onClick={() => loadHistory(product)} className="px-2 py-1 text-xs border border-blue-300 text-blue-700 rounded hover:bg-blue-50 font-medium">History</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className={viewMode === "list" ? "hidden" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"}>
+          {filtered.map((product, index) => {
+            const isLowStock = Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock);
+            return (
             <div
               key={product.id}
               ref={index === inactiveStartIndex && inactiveStartIndex !== -1 ? inactiveStartRef : null}
-              className={`bg-white rounded-lg border transition-colors ${
-              editing === product.id ? "border-blue-300 bg-blue-50" : "border-gray-200 hover:border-gray-300"
+              className={`bg-white dark:bg-gray-800 rounded-lg border transition-colors ${isLowStock && editing !== product.id ? "border-l-4 border-l-orange-400" : ""} ${
+              editing === product.id ? "border-blue-300 bg-blue-50 dark:bg-blue-900/20" : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
             } ${product.active === false ? "opacity-50" : ""}`}>
 
               {editing === product.id ? (
                 /* EDIT MODE */
                 <div className="space-y-3">
-                  <div className="relative h-32 bg-white rounded-t-lg overflow-hidden group flex items-center justify-center">
+                  <div className="relative h-32 bg-white dark:bg-gray-800 rounded-t-lg overflow-hidden group flex items-center justify-center">
                     <ProductImage src={editData.productImage} alt={editData.name} className="max-w-full max-h-full object-contain" />
                     {!editData.productImage && (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400">📷 No image</div>
+                      <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">📷 No image</div>
                     )}
                     <input type="file" accept="image/*" ref={fileInputRef} className="hidden"
                       onChange={e => e.target.files && handleImageUpload(product.id, e.target.files[0])} />
@@ -967,27 +1082,27 @@ export default function AdminProductsPage() {
                   </div>
                   <div className="p-4 space-y-3">
                     <input value={editData.name || ""} onChange={e => setEditData((p: any) => ({ ...p, name: e.target.value }))}
-                      className="w-full border border-gray-200 rounded px-2 py-1 text-sm font-semibold" />
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm font-semibold bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
                   <input value={editData.productSubName || ""} onChange={e => setEditData((p: any) => ({ ...p, productSubName: e.target.value }))}
-                    placeholder="Sub name..." className="w-full border border-gray-200 rounded px-2 py-1 text-xs" />
+                    placeholder="Sub name..." className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
 
                   <select value={editData.supplierId || ""} onChange={e => {
                       const s = suppliers.find((s:any) => s.id === e.target.value);
                       setEditData((p: any) => ({ ...p, supplierId: e.target.value, supplier: s?.name || "" }));
-                    }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white">
+                    }} className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white">
                     <option value="">— Supplier —</option>
                     {suppliers.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
 
                   <div className="grid grid-cols-2 gap-2">
                     <select value={editData.category || ""} onChange={e => setEditData((p: any) => ({ ...p, category: e.target.value }))}
-                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white">
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white">
                       <option value="">Category</option>
                       {editData.category && !options.category.includes(editData.category) && <option value={editData.category}>{editData.category}</option>}
                       {options.category.map(o => <option key={o}>{o}</option>)}
                     </select>
                     <select value={editData.origin || ""} onChange={e => setEditData((p: any) => ({ ...p, origin: e.target.value }))}
-                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white">
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white">
                       <option value="">Origin</option>
                       {editData.origin && !options.origin.includes(editData.origin) && <option value={editData.origin}>{editData.origin}</option>}
                       {options.origin.map(o => <option key={o}>{o}</option>)}
@@ -996,13 +1111,13 @@ export default function AdminProductsPage() {
 
                   <div className="grid grid-cols-2 gap-2">
                     <select value={editData.unit || ""} onChange={e => setEditData((p: any) => ({ ...p, unit: e.target.value }))}
-                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white">
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white">
                       <option value="">Unit</option>
                       {editData.unit && !options.unit.includes(editData.unit) && <option value={editData.unit}>{editData.unit}</option>}
                       {options.unit.map(o => <option key={o}>{o}</option>)}
                     </select>
                     <select value={editData.storageType || ""} onChange={e => setEditData((p: any) => ({ ...p, storageType: e.target.value }))}
-                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white">
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white">
                       <option value="">Storage</option>
                       {editData.storageType && !options.storageType.includes(editData.storageType) && <option value={editData.storageType}>{editData.storageType}</option>}
                       {options.storageType.map(o => <option key={o}>{o}</option>)}
@@ -1011,15 +1126,15 @@ export default function AdminProductsPage() {
 
                   <div className="flex gap-2 items-end">
                     <div className="flex-1">
-                      <label className="text-xs text-gray-500 block mb-1">Barcode</label>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Barcode</label>
                       <input value={editData.barcodeNumber || ""} onChange={e => setEditData((p: any) => ({ ...p, barcodeNumber: e.target.value }))}
-                        placeholder="Enter or generate..." className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                        placeholder="Enter or generate..." className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
                     </div>
                     <button onClick={() => {
                       const newBarcode = generateBarcode();
                       setEditData((p: any) => ({ ...p, barcodeNumber: newBarcode }));
                     }}
-                      className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300 font-medium">
+                      className="px-2 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded hover:bg-gray-300 dark:hover:bg-gray-600 font-medium">
                       Generate
                     </button>
                   </div>
@@ -1027,17 +1142,17 @@ export default function AdminProductsPage() {
                   {editData.barcodeNumber && /^\d{13}$/.test(String(editData.barcodeNumber).trim()) && <BarcodeDisplay barcodeNumber={editData.barcodeNumber} size="md" showNumber={true} />}
                   {editData.barcodeNumber && !/^\d{13}$/.test(String(editData.barcodeNumber).trim()) && <div className="text-xs text-red-500 font-medium">⚠️ Invalid barcode (must be 13 digits). Click Generate for a valid EAN-13.</div>}
 
-                  <div className="border-t pt-3">
+                  <div className="border-t dark:border-gray-700 pt-3">
                     <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label className="text-xs text-gray-500 block mb-1">Cost</label>
+                        <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Cost</label>
                         <input type="number" value={editData.costPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, costPrice: e.target.value }))}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                          className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 block mb-1">B2B</label>
+                        <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">B2B</label>
                         <input type="number" value={editData.b2bPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, b2bPrice: e.target.value }))}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                          className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
                         {editData.costPrice > 0 && editData.b2bPrice > 0 && (
                           <div className={`text-xs mt-1 font-medium ${((editData.b2bPrice - editData.costPrice) / editData.b2bPrice * 100) < 10 ? "text-red-500" : "text-blue-600"}`}>
                             {((editData.b2bPrice - editData.costPrice) / editData.b2bPrice * 100).toFixed(0)}% margin
@@ -1045,9 +1160,9 @@ export default function AdminProductsPage() {
                         )}
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 block mb-1">B2C</label>
+                        <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">B2C</label>
                         <input type="number" value={editData.b2cPrice || ""} onChange={e => setEditData((p: any) => ({ ...p, b2cPrice: e.target.value }))}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                          className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
                         {editData.costPrice > 0 && editData.b2cPrice > 0 && (
                           <div className={`text-xs mt-1 font-medium ${((editData.b2cPrice - editData.costPrice) / editData.b2cPrice * 100) < 15 ? "text-red-500" : "text-green-600"}`}>
                             {((editData.b2cPrice - editData.costPrice) / editData.b2cPrice * 100).toFixed(0)}% margin
@@ -1056,18 +1171,18 @@ export default function AdminProductsPage() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs text-gray-500 block mb-1">VAT Rate (%)</label>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">VAT Rate (%)</label>
                       <input type="number" value={editData.vatRate || ""} onChange={e => setEditData((p: any) => ({ ...p, vatRate: e.target.value }))}
-                        placeholder="Empty = exempt" className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
-                      <p className="text-xs text-gray-400 mt-0.5">Leave empty for exempt</p>
+                        placeholder="Empty = exempt" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Leave empty for exempt</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-xs text-gray-500 block mb-1">Min Stock</label>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Min Stock</label>
                       <input type="number" value={editData.minStock || ""} onChange={e => setEditData((p: any) => ({ ...p, minStock: e.target.value }))}
-                        placeholder="0" className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                        placeholder="0" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
                     </div>
                     <div className="flex items-end">
                       <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -1078,14 +1193,14 @@ export default function AdminProductsPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 pt-1">
-                    <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-gray-200 hover:bg-gray-50">
+                    <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:text-gray-300">
                       <div onClick={() => setEditData((p: any) => ({ ...p, requiresWeighing: !p.requiresWeighing }))}
                         className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${editData.requiresWeighing ? "bg-blue-500" : "bg-gray-300"}`}>
                         <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${editData.requiresWeighing ? "translate-x-4" : "translate-x-0"}`} />
                       </div>
                       <span className="font-medium">⚖️ Requires Weighing</span>
                     </label>
-                    <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-gray-200 hover:bg-gray-50">
+                    <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:text-gray-300">
                       <div onClick={() => setEditData((p: any) => ({ ...p, trackExpiry: !p.trackExpiry }))}
                         className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${editData.trackExpiry ? "bg-orange-500" : "bg-gray-300"}`}>
                         <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${editData.trackExpiry ? "translate-x-4" : "translate-x-0"}`} />
@@ -1096,10 +1211,10 @@ export default function AdminProductsPage() {
 
                   <div className="flex gap-2 pt-2">
                     <button onClick={() => saveProduct(product.id)} disabled={saving === product.id}
-                      className="flex-1 px-3 py-1.5 bg-gray-900 text-white text-xs rounded hover:bg-gray-700 disabled:opacity-50 font-medium">
+                      className="flex-1 px-3 py-1.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs rounded hover:bg-gray-700 dark:hover:bg-gray-100 disabled:opacity-50 font-medium">
                       {saving === product.id ? "..." : "Save"}
                     </button>
-                    <button onClick={cancelEdit} className="flex-1 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs rounded hover:bg-gray-50 font-medium">
+                    <button onClick={cancelEdit} className="flex-1 px-3 py-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-xs rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 font-medium">
                       Cancel
                     </button>
                   </div>
@@ -1107,7 +1222,7 @@ export default function AdminProductsPage() {
                     <button
                       onClick={() => deleteProduct(product.id, product.name)}
                       disabled={saving === product.id}
-                      className="w-full mt-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded disabled:opacity-50 font-medium"
+                      className="w-full mt-1 text-xs text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-50 py-1"
                     >
                       🗑 Delete Product
                     </button>
@@ -1117,10 +1232,10 @@ export default function AdminProductsPage() {
               ) : (
                 /* VIEW MODE */
                 <div className="space-y-3">
-                  <div className="h-32 bg-white rounded-t-lg overflow-hidden flex items-center justify-center">
+                  <div className="h-32 bg-white dark:bg-gray-800 rounded-t-lg overflow-hidden flex items-center justify-center">
                     <ProductImage src={product.productImage} alt={product.name} className="max-w-full max-h-full object-contain" />
                     {!product.productImage && (
-                      <div className="text-gray-400 text-center">
+                      <div className="text-gray-400 dark:text-gray-500 text-center">
                         <div className="text-3xl mb-1">📦</div>
                         <div className="text-xs">No image</div>
                       </div>
@@ -1128,9 +1243,9 @@ export default function AdminProductsPage() {
                   </div>
                   <div className="p-4 space-y-3">
                     <div>
-                      <h3 className="font-semibold text-gray-900">{product.name}</h3>
-                      {product.productSubName && <p className="text-xs text-gray-500">{product.productSubName}</p>}
-                      <div className="mt-2 flex items-center gap-2">
+                      <h3 className="font-semibold text-gray-900 dark:text-white capitalize">{product.name}</h3>
+                      {product.productSubName && <p className="text-xs text-gray-500 dark:text-gray-400">{product.productSubName}</p>}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         <span className={`text-sm font-semibold px-2.5 py-1 rounded-full ${
                           (Number(product.currentStock || 0) === 0 || (Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock))) ? "bg-red-100 text-red-700" :
                           (Number(product.minStock) > 0 && Number(product.currentStock || 0) === Number(product.minStock)) ? "bg-yellow-100 text-yellow-700" :
@@ -1139,24 +1254,27 @@ export default function AdminProductsPage() {
                           {formatQty(product.currentStock)} {product.unit || ""}
                         </span>
                         <span className={`text-sm font-semibold px-2.5 py-1 rounded-full ${
-                          product.active !== false ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"
+                          product.active !== false ? "bg-blue-100 text-blue-700" : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
                         }`}>
                           {product.active !== false ? "✓ Active" : "○ Inactive"}
                         </span>
+                        {isLowStock && (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 rounded-full">⚠ Low Stock</span>
+                        )}
                       </div>
                     </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {product.supplier && <span className="text-xs bg-gray-100 px-2 py-1 rounded">🏭 {product.supplier}</span>}
-                    {product.category && <span className="text-xs bg-gray-100 px-2 py-1 rounded">{product.category}</span>}
-                    {product.origin && <span className="text-xs bg-gray-100 px-2 py-1 rounded">{product.origin}</span>}
+                    {product.supplier && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">🏭 {product.supplier}</span>}
+                    {product.category && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{product.category}</span>}
+                    {product.origin && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{product.origin}</span>}
                   </div>
 
                   {product.barcodeNumber && (
                     <>
                       <button
                         onClick={() => toggleSection(product.id, 'barcode')}
-                        className="w-full text-left py-2 text-sm font-medium text-gray-700 hover:text-gray-900 border-t flex items-center gap-2"
+                        className="w-full text-left py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border-t dark:border-gray-700 flex items-center gap-2"
                       >
                         {expandedSections.barcode.has(product.id) ? '▼' : '▶'} Barcode (ID: {product.barcodeNumber})
                       </button>
@@ -1185,26 +1303,26 @@ export default function AdminProductsPage() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-2 text-sm border-t pt-3">
+                  <div className="grid grid-cols-2 gap-2 text-sm border-t dark:border-gray-700 pt-3">
                     <div>
-                      <p className="text-xs text-gray-500">Stock</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Stock</p>
                       <p className={
                         (Number(product.currentStock || 0) === 0 || (Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock))) ? "text-red-600 font-semibold" :
                         (Number(product.minStock) > 0 && Number(product.currentStock || 0) === Number(product.minStock)) ? "text-yellow-600 font-semibold" :
-                        "text-gray-900"
+                        "text-gray-900 dark:text-white"
                       }>
                         {formatQty(product.currentStock)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Min</p>
-                      <p className="text-gray-900">{product.minStock || "—"}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Min</p>
+                      <p className="text-gray-900 dark:text-white">{product.minStock || "—"}</p>
                     </div>
                   </div>
 
                   <button
                     onClick={() => toggleSection(product.id, 'pricing')}
-                    className="w-full text-left py-2 text-sm font-medium text-gray-700 hover:text-gray-900 border-t flex items-center gap-2"
+                    className="w-full text-left py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border-t dark:border-gray-700 flex items-center gap-2"
                   >
                     {expandedSections.pricing.has(product.id) ? '▼' : '▶'} Pricing & Margins
                   </button>
@@ -1213,36 +1331,36 @@ export default function AdminProductsPage() {
                     <>
                       <div className="grid grid-cols-3 gap-2 py-2">
                         <div>
-                          <p className="text-xs text-gray-500 mb-1">Cost</p>
-                          <p className="font-semibold text-gray-900">${formatPrice(product.costPrice || 0)}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Cost</p>
+                          <p className="font-semibold text-gray-900 dark:text-white">${formatPrice(product.costPrice || 0)}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 mb-1">B2B</p>
-                          <p className="font-semibold text-gray-900">${formatPrice(product.b2bPrice || 0)}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2B</p>
+                          <p className="font-semibold text-gray-900 dark:text-white">${formatPrice(product.b2bPrice || 0)}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 mb-1">B2C</p>
-                          <p className="font-semibold text-gray-900">${formatPrice(product.b2cPrice || 0)}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2C</p>
+                          <p className="font-semibold text-gray-900 dark:text-white">${formatPrice(product.b2cPrice || 0)}</p>
                         </div>
                       </div>
 
                       {product.costPrice > 0 && (
-                        <div className="space-y-2 py-2 border-t">
+                        <div className="space-y-2 py-2 border-t dark:border-gray-700">
                           <div>
-                            <p className="text-xs text-gray-500 mb-1">B2B Margin</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2B Margin</p>
                             {product.b2bPrice > 0 ? (
                               <div className={`text-sm font-semibold ${((product.b2bPrice - product.costPrice) / product.b2bPrice * 100) < 10 ? "text-red-600" : "text-blue-600"}`}>
                                 {((product.b2bPrice - product.costPrice) / product.b2bPrice * 100).toFixed(1)}%
                               </div>
-                            ) : <p className="text-xs text-gray-400">No price set</p>}
+                            ) : <p className="text-xs text-gray-400 dark:text-gray-500">No price set</p>}
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 mb-1">B2C Margin</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2C Margin</p>
                             {product.b2cPrice > 0 ? (
                               <div className={`text-sm font-semibold ${((product.b2cPrice - product.costPrice) / product.b2cPrice * 100) < 15 ? "text-red-600" : "text-green-600"}`}>
                                 {((product.b2cPrice - product.costPrice) / product.b2cPrice * 100).toFixed(1)}%
                               </div>
-                            ) : <p className="text-xs text-gray-400">No price set</p>}
+                            ) : <p className="text-xs text-gray-400 dark:text-gray-500">No price set</p>}
                           </div>
                         </div>
                       )}
@@ -1250,7 +1368,7 @@ export default function AdminProductsPage() {
                   )}
 
                   <div className="flex gap-2">
-                    <button onClick={() => startEdit(product)} className="flex-1 px-2 py-2 text-xs border border-gray-200 rounded hover:bg-gray-50 font-medium">
+                    <button onClick={() => startEdit(product)} className="flex-1 px-2 py-2 text-xs border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 font-medium dark:text-gray-300">
                       Edit
                     </button>
                     <button onClick={() => { setStockInProduct(product); setStockInQty(""); setStockInNotes(""); setStockInExpiry(""); }}
@@ -1273,7 +1391,7 @@ export default function AdminProductsPage() {
                         className={`flex-1 px-2 py-2 text-xs rounded font-medium ${
                           selectedForPrint.has(product.id)
                             ? "bg-blue-600 text-white border border-blue-600"
-                            : "border border-gray-300 text-gray-600 hover:bg-gray-50"
+                            : "border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                         }`}>
                         {selectedForPrint.has(product.id) ? "✓ Selected" : "Select"}
                       </button>
@@ -1283,29 +1401,30 @@ export default function AdminProductsPage() {
               </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
       {/* Stock History Modal */}
       {historyProduct && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg mx-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-lg mx-4">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-base font-semibold text-gray-900">Stock History</h3>
-                <p className="text-sm text-gray-500">{historyProduct.name}</p>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">Stock History</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{historyProduct.name}</p>
               </div>
-              <button onClick={() => setHistoryProduct(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+              <button onClick={() => setHistoryProduct(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl">×</button>
             </div>
             {historyLoading ? (
-              <div className="text-center py-8 text-sm text-gray-400">Loading...</div>
+              <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">Loading...</div>
             ) : historyMovements.length === 0 ? (
-              <div className="text-center py-8 text-sm text-gray-400">No movements found</div>
+              <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">No movements found</div>
             ) : (
               <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
+                    <tr className="bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-400 uppercase">
                       <th className="text-left px-3 py-2">Type</th>
                       <th className="text-right px-3 py-2">Qty</th>
                       <th className="text-left px-3 py-2">Source</th>
@@ -1313,18 +1432,18 @@ export default function AdminProductsPage() {
                       <th className="text-left px-3 py-2">Date</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                     {historyMovements.map((m: any) => (
-                      <tr key={m.id}>
+                      <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <td className="px-3 py-2">
                           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${m.movementType === "In" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
                             {m.movementType === "In" ? "↑ In" : "↓ Out"}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-right font-medium">{formatQty(m.quantity)}</td>
-                        <td className="px-3 py-2 text-gray-500">{m.source || "—"}</td>
-                        <td className="px-3 py-2 text-gray-400">{m.notes || "—"}</td>
-                        <td className="px-3 py-2 text-gray-400 text-xs">
+                        <td className="px-3 py-2 text-right font-medium dark:text-gray-200">{formatQty(m.quantity)}</td>
+                        <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{m.source || "—"}</td>
+                        <td className="px-3 py-2 text-gray-400 dark:text-gray-500">{m.notes || "—"}</td>
+                        <td className="px-3 py-2 text-gray-400 dark:text-gray-500 text-xs">
                           {m.createdAt?.seconds ? new Date(m.createdAt.seconds * 1000).toLocaleDateString() : "—"}
                         </td>
                       </tr>
@@ -1333,9 +1452,9 @@ export default function AdminProductsPage() {
                 </table>
               </div>
             )}
-            <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
-              <span className="text-xs text-gray-500">Current stock: <span className="font-semibold text-gray-900">{formatQty(historyProduct.currentStock)}</span></span>
-              <button onClick={() => setHistoryProduct(null)} className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50">Close</button>
+            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
+              <span className="text-xs text-gray-500 dark:text-gray-400">Current stock: <span className="font-semibold text-gray-900 dark:text-white">{formatQty(historyProduct.currentStock)}</span></span>
+              <button onClick={() => setHistoryProduct(null)} className="px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">Close</button>
             </div>
           </div>
         </div>
@@ -1344,62 +1463,62 @@ export default function AdminProductsPage() {
       {/* Add Product Modal */}
       {showAddProduct && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-gray-900">Add New Product</h3>
-              <button onClick={() => setShowAddProduct(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Add New Product</h3>
+              <button onClick={() => setShowAddProduct(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl">×</button>
             </div>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
-                  <label className="text-xs text-gray-500 mb-1 block">Product Name *</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Product Name *</label>
                   <input value={newProduct.name} onChange={e => setNewProduct((p:any) => ({...p, name: e.target.value}))}
                     placeholder="e.g. Octopus Cooked Skin" autoFocus
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs text-gray-500 mb-1 block">Sub Name</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Sub Name</label>
                   <input value={newProduct.productSubName} onChange={e => setNewProduct((p:any) => ({...p, productSubName: e.target.value}))}
                     placeholder="e.g. Scientific name or French name"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs text-gray-500 mb-1 block">Supplier</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Supplier</label>
                   <select value={newProduct.supplierId} onChange={e => {
                     const s = suppliers.find((s:any) => s.id === e.target.value);
                     setNewProduct((p:any) => ({...p, supplierId: e.target.value, supplier: s?.name || ""}));
-                  }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                  }} className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white">
                     <option value="">— Select Supplier —</option>
                     {suppliers.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Category</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Category</label>
                   <select value={newProduct.category} onChange={e => setNewProduct((p:any) => ({...p, category: e.target.value}))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white">
                     <option value="">—</option>
                     {options.category.map(o => <option key={o}>{o}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Origin</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Origin</label>
                   <select value={newProduct.origin} onChange={e => setNewProduct((p:any) => ({...p, origin: e.target.value}))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white">
                     <option value="">—</option>
                     {options.origin.map(o => <option key={o}>{o}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Unit</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Unit</label>
                   <select value={newProduct.unit} onChange={e => setNewProduct((p:any) => ({...p, unit: e.target.value}))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white">
                     {options.unit.map(o => <option key={o}>{o}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Storage Type</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Storage Type</label>
                   <select value={newProduct.storageType} onChange={e => setNewProduct((p:any) => ({...p, storageType: e.target.value}))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white">
                     <option value="">—</option>
                     {options.storageType.map(o => <option key={o}>{o}</option>)}
                   </select>
@@ -1407,35 +1526,35 @@ export default function AdminProductsPage() {
                 <div className="col-span-2">
                   <div className="flex gap-2 items-end">
                     <div className="flex-1">
-                      <label className="text-xs text-gray-500 mb-1 block">Barcode</label>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Barcode</label>
                       <input value={newProduct.barcodeNumber} onChange={e => setNewProduct((p:any) => ({...p, barcodeNumber: e.target.value}))}
                         placeholder="Enter supplier barcode or leave empty to generate"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                        className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                     </div>
                     <button onClick={() => {
                       const newBarcode = generateBarcode();
                       setNewProduct((p:any) => ({...p, barcodeNumber: newBarcode}));
                     }}
-                      className="px-3 py-2 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 font-medium whitespace-nowrap">
+                      className="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 font-medium whitespace-nowrap">
                       Generate
                     </button>
                   </div>
                   {newProduct.barcodeNumber && !/^\d{13}$/.test(String(newProduct.barcodeNumber).trim()) && <div className="text-xs text-red-500 font-medium">⚠️ Invalid barcode (must be 13 digits)</div>}
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Cost Price ($)</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Cost Price ($)</label>
                   <input type="number" value={newProduct.costPrice} onChange={e => setNewProduct((p:any) => ({...p, costPrice: e.target.value}))}
-                    placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                    placeholder="0.00" className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Min Stock</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Min Stock</label>
                   <input type="number" value={newProduct.minStock} onChange={e => setNewProduct((p:any) => ({...p, minStock: e.target.value}))}
-                    placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                    placeholder="0" className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">B2B Price ($)</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">B2B Price ($)</label>
                   <input type="number" value={newProduct.b2bPrice} onChange={e => setNewProduct((p:any) => ({...p, b2bPrice: e.target.value}))}
-                    placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                    placeholder="0.00" className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                   {Number(newProduct.b2bPrice) > 0 && Number(newProduct.costPrice) > 0 && (
                     <p className={`text-xs mt-1 font-medium ${((Number(newProduct.b2bPrice) - Number(newProduct.costPrice)) / Number(newProduct.b2bPrice) * 100) < 10 ? "text-red-500" : "text-blue-600"}`}>
                       Margin: {((Number(newProduct.b2bPrice) - Number(newProduct.costPrice)) / Number(newProduct.b2bPrice) * 100).toFixed(1)}%
@@ -1443,9 +1562,9 @@ export default function AdminProductsPage() {
                   )}
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">B2C Price ($)</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">B2C Price ($)</label>
                   <input type="number" value={newProduct.b2cPrice} onChange={e => setNewProduct((p:any) => ({...p, b2cPrice: e.target.value}))}
-                    placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                    placeholder="0.00" className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                   {Number(newProduct.b2cPrice) > 0 && Number(newProduct.costPrice) > 0 && (
                     <p className={`text-xs mt-1 font-medium ${((Number(newProduct.b2cPrice) - Number(newProduct.costPrice)) / Number(newProduct.b2cPrice) * 100) < 15 ? "text-red-500" : "text-green-600"}`}>
                       Margin: {((Number(newProduct.b2cPrice) - Number(newProduct.costPrice)) / Number(newProduct.b2cPrice) * 100).toFixed(1)}%
@@ -1453,10 +1572,10 @@ export default function AdminProductsPage() {
                   )}
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">VAT Rate (%)</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">VAT Rate (%)</label>
                   <input type="number" value={newProduct.vatRate} onChange={e => setNewProduct((p:any) => ({...p, vatRate: e.target.value}))}
-                    placeholder="Leave empty for VAT-exempt" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-                  <p className="text-xs text-gray-400 mt-1">Leave empty for VAT-exempt items. E.g., 12 for 12% VAT</p>
+                    placeholder="Leave empty for VAT-exempt" className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Leave empty for VAT-exempt items. E.g., 12 for 12% VAT</p>
                 </div>
               </div>
               {(newProduct.unit === "KG" || newProduct.unit === "Piece") && (
@@ -1464,16 +1583,16 @@ export default function AdminProductsPage() {
                   <div className="flex items-center gap-4">
                     <span className="text-xs font-medium text-amber-700">Weight range (kg):</span>
                     <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-500">Min</label>
+                      <label className="text-xs text-gray-500 dark:text-gray-400">Min</label>
                       <input type="number" step="0.01" value={newProduct.minWeightPerUnit}
                         onChange={e => setNewProduct((p:any) => ({...p, minWeightPerUnit: e.target.value}))}
-                        className="w-20 border border-amber-200 rounded px-2 py-1 text-sm" placeholder="e.g. 0.9" />
+                        className="w-20 border border-amber-200 dark:border-amber-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="e.g. 0.9" />
                     </div>
                     <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-500">Max</label>
+                      <label className="text-xs text-gray-500 dark:text-gray-400">Max</label>
                       <input type="number" step="0.01" value={newProduct.maxWeightPerUnit}
                         onChange={e => setNewProduct((p:any) => ({...p, maxWeightPerUnit: e.target.value}))}
-                        className="w-20 border border-amber-200 rounded px-2 py-1 text-sm" placeholder="e.g. 1.4" />
+                        className="w-20 border border-amber-200 dark:border-amber-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="e.g. 1.4" />
                     </div>
                   </div>
                   <div className="flex items-center gap-6">
@@ -1492,7 +1611,7 @@ export default function AdminProductsPage() {
               )}
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowAddProduct(false)}
-                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50">Cancel</button>
+                  className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">Cancel</button>
                 <button onClick={saveNewProduct} disabled={addingSaving || !newProduct.name.trim()}
                   className="flex-1 px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-50"
                   style={{backgroundColor: "#1B2A5E"}}>
@@ -1507,33 +1626,33 @@ export default function AdminProductsPage() {
       {/* Stock In Modal */}
       {stockInProduct && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-1">Add Stock</h3>
-            <p className="text-sm text-gray-500 mb-4">{stockInProduct.name}</p>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">Add Stock</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{stockInProduct.name}</p>
             <div className="space-y-4">
               <div>
-                <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Quantity to Add</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 block">Quantity to Add</label>
                 <input type="number" min="0" step="0.001" value={stockInQty}
                   onChange={e => setStockInQty(e.target.value)}
                   placeholder="e.g. 10"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   autoFocus />
               </div>
               <div>
-                <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Notes (optional)</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 block">Notes (optional)</label>
                 <input type="text" value={stockInNotes}
                   onChange={e => setStockInNotes(e.target.value)}
                   placeholder="e.g. Purchase from supplier"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
               </div>
               {stockInProduct?.trackExpiry && (
                 <div>
-                  <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">
+                  <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 block">
                     📅 Expiry Date <span className="text-red-400">*</span>
                   </label>
                   <input type="date" value={stockInExpiry}
                     onChange={e => setStockInExpiry(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                   {stockInExpiry && (
                     <p className={`text-xs mt-1 font-medium ${
                       new Date(stockInExpiry) < new Date() ? "text-red-700 font-bold" :
@@ -1550,15 +1669,45 @@ export default function AdminProductsPage() {
                   )}
                 </div>
               )}
-              <div className="text-xs text-gray-400">Current stock: <span className="font-semibold text-gray-700">{formatQty(stockInProduct.currentStock)}</span> → After: <span className="font-semibold text-green-600">{formatQty(Number(stockInProduct.currentStock) + Number(stockInQty || 0))}</span></div>
+              <div className="text-xs text-gray-400 dark:text-gray-500">Current stock: <span className="font-semibold text-gray-700 dark:text-gray-300">{formatQty(stockInProduct.currentStock)}</span> → After: <span className="font-semibold text-green-600">{formatQty(Number(stockInProduct.currentStock) + Number(stockInQty || 0))}</span></div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setStockInProduct(null)}
-                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50">Cancel</button>
+                  className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">Cancel</button>
                 <button onClick={handleStockIn} disabled={stockInSaving || !stockInQty || Number(stockInQty) <= 0 || (stockInProduct?.trackExpiry && !stockInExpiry)}
                   className="flex-1 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50">
                   {stockInSaving ? "Saving..." : "Add Stock"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Product Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/60 dark:bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-sm mx-auto">
+            <div className="flex flex-col items-center text-center gap-3 mb-5">
+              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <span className="text-2xl">🗑</span>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">Delete Product?</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  <span className="font-medium text-gray-900 dark:text-white capitalize">{deleteTarget.name}</span> will be permanently deleted. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                autoFocus
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50"
+              >Keep Product</button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+              >{deleting ? "Deleting..." : "Delete"}</button>
             </div>
           </div>
         </div>
