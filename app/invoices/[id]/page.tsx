@@ -102,6 +102,14 @@ function money(val: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val || 0);
 }
 
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const s = typeof iso === "string" ? iso.split("T")[0] : "";
+  if (!s) return "—";
+  const [y, m, d] = s.split("-");
+  return `${d}-${m}-${y}`;
+}
+
 export default function InvoiceDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -177,7 +185,10 @@ export default function InvoiceDetailPage() {
       const data = { id: invoiceSnap.id, ...invoiceSnap.data() } as Invoice;
       setInvoice(data);
       setStatus(data.status || "draft");
-      setDueDate(data.dueDate || "");
+      const defaultDueDate = !data.dueDate && data.invoiceDate
+        ? new Date(new Date(data.invoiceDate).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        : "";
+      setDueDate(data.dueDate || defaultDueDate);
       setNotes(data.notes || "");
       setIncludeDelivery(data.includeDelivery !== false);
 
@@ -772,10 +783,10 @@ Please call/message the supplier(s): ${suppliers}`);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 transition-colors">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-500">Loading invoice...</p>
+          <div className="w-8 h-8 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">Loading invoice...</p>
         </div>
       </div>
     );
@@ -787,8 +798,8 @@ Please call/message the supplier(s): ${suppliers}`);
 
   return (
     <>
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
           {invoice.orderId && (
             <button onClick={() => router.push(`/admin/orders/${invoice.orderId}`)}
@@ -797,7 +808,7 @@ Please call/message the supplier(s): ${suppliers}`);
               ← Order
             </button>
           )}
-          <h1 className="text-sm font-semibold text-gray-900">
+          <h1 className="text-sm font-semibold text-gray-900 dark:text-white">
             {invoice.invoiceNumber || "Draft Invoice"}
           </h1>
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>
@@ -806,24 +817,17 @@ Please call/message the supplier(s): ${suppliers}`);
           </span>
         </div>
         <button
-          onClick={() => setShowAddPayment(true)}
-          disabled={balanceDue <= 0 || status === "cancelled"}
-          className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {status === "cancelled" ? "Invoice Cancelled" : balanceDue <= 0 ? "✓ Fully Paid" : "Add Payment"}
-        </button>
-        <button
           onClick={handleWhatsApp}
           disabled={invoice?.status !== "issued"}
           title={invoice?.status !== "issued" ? "Change status to Issued to enable WhatsApp" : ""}
-          className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 border border-green-600 dark:border-green-500 text-green-700 dark:text-green-400 text-sm font-medium rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           WhatsApp
         </button>
         {status !== "cancelled" && status !== "paid" && (
           <button
             onClick={() => setShowCancelModal(true)}
-            className="px-4 py-2 bg-red-600 border border-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 transition-colors"
+            className="px-4 py-2 border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 text-sm font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
           >
             Cancel Invoice
           </button>
@@ -831,7 +835,7 @@ Please call/message the supplier(s): ${suppliers}`);
         <button
           onClick={handlePDF}
           disabled={generatingPDF}
-          className="px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50 transition-colors"
         >
           {generatingPDF ? 'Generating...' : 'Download PDF'}
         </button>
@@ -849,34 +853,34 @@ Please call/message the supplier(s): ${suppliers}`);
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-start justify-between mb-6">
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Invoice</p>
-              <h2 className="text-2xl font-bold text-gray-900">{invoice.invoiceNumber || "—"}</h2>
-              <p className="text-sm text-gray-500 mt-1">Order: {invoice.sourceOrderName || invoice.orderId}</p>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{invoice.invoiceNumber || "—"}</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Order: {invoice.sourceOrderName || invoice.orderId}</p>
             </div>
             <div className="text-right">
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Final Total</p>
-              <p className="text-2xl font-bold text-gray-900">{money(invoice.finalTotal)}</p>
-              <p className="text-sm text-gray-500 mt-1">{invoice.currency}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{money(invoice.finalTotal)}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{invoice.currency}</p>
             </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-100">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Customer</p>
-              <p className="text-sm font-medium text-gray-900">{invoice.customerName || "—"}</p>
-              <p className="text-xs text-gray-500">{invoice.customerType || "—"}</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{invoice.customerName || "—"}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{invoice.customerType || "—"}</p>
               {invoice.customerPhone && <a href={"https://wa.me/" + String(invoice.customerPhone).replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" className="text-xs text-green-600 hover:underline block">📞 {String(invoice.customerPhone).startsWith("+") ? invoice.customerPhone : "+" + invoice.customerPhone}</a>}
-              {invoice.customerBuilding && <p className="text-xs text-gray-500">{invoice.customerBuilding}{invoice.customerApartment ? ", Apt " + invoice.customerApartment : ""}</p>}
-              {invoice.customerFloor && <p className="text-xs text-gray-500">Floor {invoice.customerFloor}</p>}
-              {(invoice.customerCity || invoice.customerCountry) && <p className="text-xs text-gray-500">{[invoice.customerCity, invoice.customerCountry].filter(Boolean).join(", ")}</p>}
+              {invoice.customerBuilding && <p className="text-xs text-gray-500 dark:text-gray-400">{invoice.customerBuilding}{invoice.customerApartment ? ", Apt " + invoice.customerApartment : ""}</p>}
+              {invoice.customerFloor && <p className="text-xs text-gray-500 dark:text-gray-400">Floor {invoice.customerFloor}</p>}
+              {(invoice.customerCity || invoice.customerCountry) && <p className="text-xs text-gray-500 dark:text-gray-400">{[invoice.customerCity, invoice.customerCountry].filter(Boolean).join(", ")}</p>}
               {invoice.customerAdditionalInstructions && <p className="text-xs text-gray-400 italic">{invoice.customerAdditionalInstructions}</p>}
               {invoice.customerMapsLink && <a href={invoice.customerMapsLink} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline">📍 View on Google Maps</a>}
             </div>
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Invoice Date</p>
-              <p className="text-sm font-medium text-gray-900">{invoice.invoiceDate || "—"}</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{formatDate(invoice.invoiceDate)}</p>
             </div>
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Due Date</p>
@@ -884,7 +888,7 @@ Please call/message the supplier(s): ${suppliers}`);
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="text-sm font-medium text-gray-900 border border-gray-200 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="text-sm font-medium text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-600 bg-white dark:bg-gray-800"
               />
             </div>
             <div>
@@ -892,7 +896,7 @@ Please call/message the supplier(s): ${suppliers}`);
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-                className="text-sm font-medium text-gray-900 border border-gray-200 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+                className="text-sm font-medium text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white dark:bg-gray-800"
               >
                 {STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
@@ -903,9 +907,9 @@ Please call/message the supplier(s): ${suppliers}`);
         </div>
 
         {invoice?.orderId && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900">Purchase Orders</h3>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Purchase Orders</h3>
               <div className="flex items-center gap-3">
                 {status !== "cancelled" && (
                   <button
@@ -926,10 +930,10 @@ Please call/message the supplier(s): ${suppliers}`);
                 No purchase orders yet. Click "Generate POs" to create them from order items.
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-100 dark:divide-gray-700">
                 {invoicePOs.map((po: any) => {
                   const statusColors: Record<string, string> = {
-                    Generated: "bg-gray-100 text-gray-600",
+                    Generated: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
                     Sent: "bg-blue-50 text-blue-600",
                     Delivered: "bg-green-50 text-green-600",
                     Paid: "bg-purple-50 text-purple-700",
@@ -938,17 +942,17 @@ Please call/message the supplier(s): ${suppliers}`);
                   return (
                     <div key={po.id} className="px-6 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium text-gray-900">{po.poNumber}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[po.status] || "bg-gray-100 text-gray-600"}`}>
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">{po.poNumber}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[po.status] || "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"}`}>
                           {po.status}
                         </span>
-                        <span className="text-xs text-gray-500">🏭 {po.supplierName}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">🏭 {po.supplierName}</span>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
                           Delivery: {po.deliveryDate ? po.deliveryDate.split("-").reverse().join("-") : "TBD"}
                         </span>
-                        <span className="text-sm font-semibold text-gray-900">${formatPrice(po.poTotal)}</span>
+                        <span className="text-sm font-semibold text-gray-900 dark:text-white">${formatPrice(po.poTotal)}</span>
                         <button onClick={() => setPreviewPO(po)}
                           className="text-xs px-2 py-1 rounded-lg text-white font-medium" style={{backgroundColor: "#1B2A5E"}}>
                           Preview
@@ -962,10 +966,10 @@ Please call/message the supplier(s): ${suppliers}`);
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
             <div className="flex items-center justify-between w-full">
-              <h3 className="text-sm font-semibold text-gray-900">Line Items</h3>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Line Items</h3>
               {invoice?.status === "draft" && (
                 <div className="flex gap-2">
 <button onClick={() => setShowAddLine(!showAddLine)}
@@ -982,21 +986,21 @@ Please call/message the supplier(s): ${suppliers}`);
           ) : (
             <table className="w-full">
               <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Unit Price</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">VAT</th>
-                  <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                <tr className="bg-gray-50 dark:bg-gray-900/50">
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Product</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Qty</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Unit Price</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Discount</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">VAT</th>
+                  <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {lines.map((line) => (
-                  <tr key={line.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={line.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                     <td className="px-6 py-4">
-                      <p className="text-sm font-medium text-gray-900">{line.productName || line.id}</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{line.productName || line.id}</p>
                       <div className="flex gap-2 mt-0.5 flex-wrap">
                         {line.preparation && <span className="text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-medium">🔪 {line.preparation}</span>}
                         {line.sample && <span className="text-xs text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">Sample</span>}
@@ -1008,20 +1012,20 @@ Please call/message the supplier(s): ${suppliers}`);
                       <>
                         <td className="px-4 py-3 text-right">
                           <input type="number" value={editLineQty} onChange={e => setEditLineQty(e.target.value)}
-                            className="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                            className="w-16 border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
                         </td>
                         <td className="px-4 py-3 text-right">
                           {(line.sample || line.gift) ? <span className="text-xs text-gray-400 italic">{line.sample ? "Sample" : "Gift"}</span> :
                           <input type="number" value={editLinePrice} onChange={e => setEditLinePrice(e.target.value)}
-                            className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />}
+                            className="w-20 border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />}
                         </td>
                         <td className="px-4 py-3 text-right">
                           {(line.sample || line.gift) ? <span className="text-gray-300">—</span> :
                           <input type="number" value={editLineDiscount} onChange={e => setEditLineDiscount(e.target.value)}
                             placeholder="0"
-                            className="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />}
+                            className="w-16 border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />}
                         </td>
-                        <td className="px-4 py-3 text-right text-sm text-gray-500">
+                        <td className="px-4 py-3 text-right text-sm text-gray-500 dark:text-gray-400">
                           {(line.sample || line.gift) ? (
                             <span className="text-gray-300">—</span>
                           ) : line.vatRate ? (
@@ -1035,29 +1039,29 @@ Please call/message the supplier(s): ${suppliers}`);
                         </td>
                         <td className="px-6 py-3 text-right text-sm font-medium">
                           {(line.sample || line.gift) ? <span className="text-green-600 font-semibold">$0.00</span> :
-                          <span className="text-gray-900">${formatPrice(Number(editLineQty || line.quantity) * Number(editLinePrice || line.unitPrice))}</span>}
+                          <span className="text-gray-900 dark:text-white">${formatPrice(Number(editLineQty || line.quantity) * Number(editLinePrice || line.unitPrice))}</span>}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1 justify-end">
                             <button onClick={() => handleSaveLine(line)} disabled={savingLine}
-                              className="text-xs px-2 py-1 bg-gray-900 text-white rounded hover:bg-gray-700 disabled:opacity-50">
+                              className="text-xs px-2 py-1 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded hover:bg-gray-700 dark:hover:bg-gray-100 disabled:opacity-50">
                               {savingLine ? "..." : "Save"}
                             </button>
                             <button onClick={() => setEditingLineId(null)}
-                              className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-50">✕</button>
+                              className="text-xs px-2 py-1 border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:text-gray-300">✕</button>
                           </div>
                         </td>
                       </>
                     ) : (
                       <>
-                        <td className="px-4 py-4 text-right text-sm text-gray-700">{line.quantity}</td>
-                        <td className="px-4 py-4 text-right text-sm text-gray-700">
+                        <td className="px-4 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{line.quantity}</td>
+                        <td className="px-4 py-4 text-right text-sm text-gray-700 dark:text-gray-300">
                           {(line.sample || line.gift) ? <span className="text-xs text-gray-400 italic">{line.sample ? "Sample" : "Gift"}</span> : money(line.unitPrice)}
                         </td>
-                        <td className="px-4 py-4 text-right text-sm text-gray-500">
+                        <td className="px-4 py-4 text-right text-sm text-gray-500 dark:text-gray-400">
                           {(line.sample || line.gift) ? "—" : line.itemDiscountPercent > 0 ? `-${line.itemDiscountPercent}%` : "—"}
                         </td>
-                        <td className="px-4 py-4 text-right text-sm text-gray-500">
+                        <td className="px-4 py-4 text-right text-sm text-gray-500 dark:text-gray-400">
                           {(line.sample || line.gift) ? (
                             <span className="text-gray-300">—</span>
                           ) : line.vatRate ? (
@@ -1189,10 +1193,10 @@ Please call/message the supplier(s): ${suppliers}`);
         </div>
 
         {/* Payments Section */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <h3 className="text-sm font-semibold text-gray-900">Payments</h3>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Payments</h3>
               {walletBalance > 0 && (
                 <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                   💰 Wallet: ${formatPrice(walletBalance)}
@@ -1200,7 +1204,7 @@ Please call/message the supplier(s): ${suppliers}`);
               )}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Balance Due: <span className={balanceDue <= 0 ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>${formatPrice(balanceDue)}</span></span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Balance Due: <span className={balanceDue <= 0 ? "text-green-600 dark:text-green-400 font-semibold" : "text-red-600 dark:text-red-400 font-semibold"}>${formatPrice(balanceDue)}</span></span>
               {walletBalance > 0 && balanceDue > 0 && (
                 <button onClick={handlePayFromWallet} disabled={applyingWallet || status === "cancelled"}
                   className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors font-medium">
@@ -1215,42 +1219,42 @@ Please call/message the supplier(s): ${suppliers}`);
           ) : (
             <table className="w-full">
               <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Ref / Notes</th>
-                  <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <tr className="bg-gray-50 dark:bg-gray-900/50">
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Method</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Ref / Notes</th>
+                  <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Amount</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {payments.map((p) => (
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-3 text-sm text-gray-700">{p.paymentDate}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{p.method}</td>
-                    <td className="px-4 py-3 text-sm text-gray-400">
-                      {p.reference && <span className="text-xs font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded mr-1">#{p.reference}</span>}
+                  <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    <td className="px-6 py-3 text-sm text-gray-700 dark:text-gray-300">{p.paymentDate}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{p.method}</td>
+                    <td className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500">
+                      {p.reference && <span className="text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded mr-1">#{p.reference}</span>}
                       {p.notes || "—"}
                     </td>
-                    <td className="px-6 py-3 text-right text-sm font-semibold text-green-600">${formatPrice(p.amount)}</td>
+                    <td className="px-6 py-3 text-right text-sm font-semibold text-green-600 dark:text-green-400">${formatPrice(p.amount)}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1 justify-end">
                         <button onClick={() => { setEditingPayment(p); setEditPayAmount(String(p.amount)); setEditPayMethod(p.method); setEditPayDate(p.paymentDate); setEditPayNotes(p.notes || ""); setEditPayReference(p.reference || ""); }}
-                          className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-100">✏️</button>
+                          className="text-xs px-2 py-1 border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300">✏️</button>
                         <button onClick={() => handleDeletePayment(p.id)}
-                          className="text-xs px-2 py-1 border border-red-200 text-red-500 rounded hover:bg-red-50">🗑️</button>
+                          className="text-xs px-2 py-1 border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/20">🗑️</button>
                       </div>
                     </td>
                   </tr>
                 ))}
-                <tr className="bg-gray-50">
-                  <td colSpan={4} className="px-6 py-3 text-sm font-semibold text-gray-900">Total Paid</td>
-                  <td className="px-6 py-3 text-right text-sm font-bold text-green-600">${formatPrice(totalPaid)}</td>
+                <tr className="bg-gray-50 dark:bg-gray-900/50">
+                  <td colSpan={4} className="px-6 py-3 text-sm font-semibold text-gray-900 dark:text-white">Total Paid</td>
+                  <td className="px-6 py-3 text-right text-sm font-bold text-green-600 dark:text-green-400">${formatPrice(totalPaid)}</td>
                 </tr>
                 {balanceDue < 0 && (
-                  <tr className="bg-blue-50">
-                    <td colSpan={4} className="px-6 py-3 text-sm font-semibold text-blue-700">💰 Overpaid — credited to wallet</td>
-                    <td className="px-6 py-3 text-right text-sm font-bold text-blue-600">+${formatPrice(Math.abs(balanceDue))}</td>
+                  <tr className="bg-blue-50 dark:bg-blue-900/20">
+                    <td colSpan={4} className="px-6 py-3 text-sm font-semibold text-blue-700 dark:text-blue-400">💰 Overpaid — credited to wallet</td>
+                    <td className="px-6 py-3 text-right text-sm font-bold text-blue-600 dark:text-blue-400">+${formatPrice(Math.abs(balanceDue))}</td>
                   </tr>
                 )}
               </tbody>
@@ -1259,111 +1263,124 @@ Please call/message the supplier(s): ${suppliers}`);
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Notes</h3>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
               placeholder="Add notes to this invoice..."
-              className="w-full text-sm text-gray-700 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+              className="w-full text-sm text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-600 resize-none placeholder:text-gray-400"
             />
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h3 className="text-sm font-semibold text-gray-900 mb-4">Summary</h3>
-            <div className="space-y-2.5">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Gross Subtotal</span>
-                <span className="text-gray-900">{money(invoice.subtotalGross)}</span>
-              </div>
-              {invoice.itemDiscountTotal > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Item Discounts</span>
-                  <span className="text-red-600">-{money(invoice.itemDiscountTotal)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Net Subtotal</span>
-                <span className="text-gray-900">{money(invoice.subtotalNet)}</span>
-              </div>
-              {invoice.orderDiscountAmount > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Order Discount ({invoice.orderDiscountPercent}%)</span>
-                  <span className="text-red-600">-{money(invoice.orderDiscountAmount)}</span>
-                </div>
-              )}
-              {invoice.deliveryFee > 0 && (
-                <div className="flex justify-between text-sm items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">Delivery Fee</span>
-                    <button
-                      onClick={() => setIncludeDelivery(!includeDelivery)}
-                      className={`text-xs px-1.5 py-0.5 rounded font-medium transition-colors ${includeDelivery ? "bg-gray-100 text-gray-600" : "bg-red-50 text-red-500"}`}
-                    >
-                      {includeDelivery ? "included" : "excluded"}
-                    </button>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Summary</h3>
+            {(() => {
+              const showSubtotals =
+                invoice.subtotalGross !== invoice.finalTotal ||
+                invoice.subtotalNet !== invoice.finalTotal ||
+                (invoice.itemDiscountTotal ?? 0) > 0 ||
+                (invoice.orderDiscountAmount ?? 0) > 0;
+              return (
+              <div className="space-y-2.5">
+                {showSubtotals && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Gross Subtotal</span>
+                    <span className="text-gray-900 dark:text-white">{money(invoice.subtotalGross)}</span>
                   </div>
-                  <span className={includeDelivery ? "text-gray-900" : "text-gray-400 line-through"}>{money(invoice.deliveryFee)}</span>
-                </div>
-              )}
-              {(() => {
-                const vatGroups: Record<number, { net: number; vat: number }> = {};
-                lines.forEach(line => {
-                  if (!line.sample && !line.gift) {
-                    const rate = line.vatRate || 0;
-                    if (!vatGroups[rate]) vatGroups[rate] = { net: 0, vat: 0 };
-                    vatGroups[rate].net += Number(line.lineNet || 0);
-                    if (rate > 0) {
-                      vatGroups[rate].vat += Math.round((Number(line.lineNet || 0) * rate / 100) * 100) / 100;
+                )}
+                {invoice.itemDiscountTotal > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Item Discounts</span>
+                    <span className="text-red-600 dark:text-red-400">-{money(invoice.itemDiscountTotal)}</span>
+                  </div>
+                )}
+                {showSubtotals && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Net Subtotal</span>
+                    <span className="text-gray-900 dark:text-white">{money(invoice.subtotalNet)}</span>
+                  </div>
+                )}
+                {invoice.orderDiscountAmount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Order Discount ({invoice.orderDiscountPercent}%)</span>
+                    <span className="text-red-600 dark:text-red-400">-{money(invoice.orderDiscountAmount)}</span>
+                  </div>
+                )}
+                {invoice.deliveryFee > 0 && (
+                  <div className="flex justify-between text-sm items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500 dark:text-gray-400">Delivery Fee</span>
+                      <button
+                        onClick={() => setIncludeDelivery(!includeDelivery)}
+                        className={`text-xs px-1.5 py-0.5 rounded font-medium transition-colors ${includeDelivery ? "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300" : "bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400"}`}
+                      >
+                        {includeDelivery ? "included" : "excluded"}
+                      </button>
+                    </div>
+                    <span className={includeDelivery ? "text-gray-900 dark:text-white" : "text-gray-400 line-through"}>{money(invoice.deliveryFee)}</span>
+                  </div>
+                )}
+                {(() => {
+                  const vatGroups: Record<number, { net: number; vat: number }> = {};
+                  lines.forEach(line => {
+                    if (!line.sample && !line.gift) {
+                      const rate = line.vatRate || 0;
+                      if (!vatGroups[rate]) vatGroups[rate] = { net: 0, vat: 0 };
+                      vatGroups[rate].net += Number(line.lineNet || 0);
+                      if (rate > 0) {
+                        vatGroups[rate].vat += Math.round((Number(line.lineNet || 0) * rate / 100) * 100) / 100;
+                      }
                     }
-                  }
-                });
-                const sortedRates = Object.keys(vatGroups).map(Number).sort((a, b) => b - a);
-                return sortedRates.length > 0 ? (
-                  <>
-                    {sortedRates.map(rate => (
-                      <div key={rate} className="space-y-1 border-l-2 border-blue-100 pl-3">
-                        <div className="flex justify-between text-sm font-medium text-gray-700">
-                          {rate === 0 ? "Exempt Items" : `Items with ${rate}% VAT`}
-                        </div>
-                        <div className="flex justify-between text-xs text-gray-500 pl-1">
-                          <span>Net</span>
-                          <span>{money(vatGroups[rate].net)}</span>
-                        </div>
-                        {rate > 0 && (
-                          <div className="flex justify-between text-xs text-gray-500 pl-1">
-                            <span>VAT ({rate}%)</span>
-                            <span>{money(vatGroups[rate].vat)}</span>
+                  });
+                  const sortedRates = Object.keys(vatGroups).map(Number).sort((a, b) => b - a);
+                  return sortedRates.length > 0 ? (
+                    <>
+                      {sortedRates.map(rate => (
+                        <div key={rate} className="space-y-1 border-l-2 border-blue-100 dark:border-blue-800 pl-3">
+                          <div className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {rate === 0 ? "Exempt Items" : `Items with ${rate}% VAT`}
                           </div>
-                        )}
-                        <div className="flex justify-between text-sm font-medium text-gray-900 pl-1 pt-0.5">
-                          <span>Subtotal</span>
-                          <span>{money(vatGroups[rate].net + vatGroups[rate].vat)}</span>
+                          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 pl-1">
+                            <span>Net</span>
+                            <span>{money(vatGroups[rate].net)}</span>
+                          </div>
+                          {rate > 0 && (
+                            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 pl-1">
+                              <span>VAT ({rate}%)</span>
+                              <span>{money(vatGroups[rate].vat)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-sm font-medium text-gray-900 dark:text-white pl-1 pt-0.5">
+                            <span>Subtotal</span>
+                            <span>{money(vatGroups[rate].net + vatGroups[rate].vat)}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </>
-                ) : null;
-              })()}
-              {(invoice.taxAmount ?? 0) > 0 && (
-                <div className="flex justify-between text-sm font-medium text-gray-900 py-1">
-                  <span>Total VAT</span>
-                  <span>{money(invoice.taxAmount ?? 0)}</span>
+                      ))}
+                    </>
+                  ) : null;
+                })()}
+                {(invoice.taxAmount ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm font-medium text-gray-900 dark:text-white py-1">
+                    <span>Total VAT</span>
+                    <span>{money(invoice.taxAmount ?? 0)}</span>
+                  </div>
+                )}
+                {invoice.roundingAdjustment !== 0 && invoice.roundingAdjustment !== undefined && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Rounding</span>
+                    <span className={invoice.roundingAdjustment > 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}>
+                      {invoice.roundingAdjustment > 0 ? "+" : ""}{money(invoice.roundingAdjustment)}
+                    </span>
+                  </div>
+                )}
+                <div className="pt-2.5 mt-2.5 border-t border-gray-200 dark:border-gray-700 flex justify-between">
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">{showSubtotals ? "Final Total" : "Total"}</span>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white">{money(invoice.finalTotal)}</span>
                 </div>
-              )}
-              {invoice.roundingAdjustment !== 0 && invoice.roundingAdjustment !== undefined && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Rounding</span>
-                  <span className={invoice.roundingAdjustment > 0 ? "text-green-600" : "text-red-500"}>
-                    {invoice.roundingAdjustment > 0 ? "+" : ""}{money(invoice.roundingAdjustment)}
-                  </span>
-                </div>
-              )}
-              <div className="pt-2.5 mt-2.5 border-t border-gray-200 flex justify-between">
-                <span className="text-sm font-semibold text-gray-900">Final Total</span>
-                <span className="text-sm font-bold text-gray-900">{money(invoice.finalTotal)}</span>
               </div>
-            </div>
+              );
+            })()}
           </div>
         </div>
       </div>
