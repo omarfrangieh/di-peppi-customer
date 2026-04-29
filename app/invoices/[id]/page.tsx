@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import {
   doc,
@@ -156,6 +156,7 @@ export default function InvoiceDetailPage() {
   const [payReference, setPayReference] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [generatingPOs, setGeneratingPOs] = useState(false);
+  const [poWarning, setPoWarning] = useState<{ type: "missing-suppliers" | "no-pos-created" | "error"; products?: string[]; message?: string } | null>(null);
   const [walletBalance, setWalletBalance] = useState(0);
   const [applyingWallet, setApplyingWallet] = useState(false);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
@@ -756,39 +757,48 @@ Please call/message the supplier(s): ${suppliers}`);
   const handleGeneratePOs = async () => {
     if (!invoice?.orderId) { alert("No order linked to this invoice."); return; }
     if (lines.length === 0) { alert("Add line items to the invoice first."); return; }
+
+    setPoWarning(null);
+
+    // Pre-flight: batch-fetch supplier assignment for all products on this invoice
+    const productIds = [...new Set(lines.map((l: any) => l.productId).filter(Boolean))] as string[];
+    const productDataMap: Record<string, { supplierId: string; unitCostPrice: number; name: string }> = {};
+    if (productIds.length > 0) {
+      await Promise.all(
+        productIds.map(async (pid) => {
+          try {
+            const snap = await getDoc(doc(db, "products", pid));
+            if (snap.exists()) {
+              const d = snap.data();
+              productDataMap[pid] = { supplierId: d.supplierId || "", unitCostPrice: d.unitCostPrice || 0, name: d.name || pid };
+            }
+          } catch { /* ignore individual failures */ }
+        })
+      );
+    }
+
+    // Find lines missing a supplier (skip samples/gifts — they don't need POs)
+    const missingSupplier = lines.filter((l: any) => !l.sample && !l.gift && l.productId && !productDataMap[l.productId]?.supplierId);
+    if (missingSupplier.length > 0) {
+      setPoWarning({ type: "missing-suppliers", products: missingSupplier.map((l: any) => l.productName || l.productId) });
+      return;
+    }
+
     if (invoicePOs.some(p => ["Sent", "Delivered", "Paid"].includes(p.status))) {
       if (!confirm("Some POs have already been sent or delivered. Regenerating will only replace 'Generated' POs. Continue?")) return;
     } else if (!confirm("Generate Purchase Orders from this invoice's line items?")) return;
 
     setGeneratingPOs(true);
     try {
-      // Enrich invoice lines with supplier & cost info from products
-      const invoiceItems = await Promise.all(
-        lines.map(async (line: any) => {
-          let supplierId = "";
-          let unitCostPrice = line.unitCostPrice || 0;
-          if (line.productId) {
-            try {
-              const snap = await getDoc(doc(db, "products", line.productId));
-              if (snap.exists()) {
-                const productData = snap.data();
-                supplierId = productData.supplierId || "";
-                unitCostPrice = productData.unitCostPrice || 0;
-              }
-            } catch (e) {
-              console.warn("Product not found:", line.productId);
-            }
-          }
-          return {
-            ...line,
-            supplierId,
-            unitCostPrice,
-            preparation: line.preparation || "",
-            sample: Boolean(line.sample),
-            gift: Boolean(line.gift),
-          };
-        })
-      );
+      // Enrich invoice lines using the already-fetched product data
+      const invoiceItems = lines.map((line: any) => ({
+        ...line,
+        supplierId: productDataMap[line.productId]?.supplierId || "",
+        unitCostPrice: productDataMap[line.productId]?.unitCostPrice || line.unitCostPrice || 0,
+        preparation: line.preparation || "",
+        sample: Boolean(line.sample),
+        gift: Boolean(line.gift),
+      }));
 
       const orderSnap = await getDoc(doc(db, "orders", invoice.orderId));
       const order = orderSnap.exists() ? orderSnap.data() : {};
@@ -808,10 +818,10 @@ Please call/message the supplier(s): ${suppliers}`);
       const newPOs = poSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       setInvoicePOs(newPOs);
       if (newPOs.length === 0) {
-        alert("No POs created — make sure products have suppliers assigned in the Products master data.");
+        setPoWarning({ type: "no-pos-created" });
       }
     } catch (e: any) {
-      alert("Failed to generate POs: " + e.message);
+      setPoWarning({ type: "error", message: e.message });
     } finally {
       setGeneratingPOs(false);
     }
@@ -961,8 +971,60 @@ Please call/message the supplier(s): ${suppliers}`);
                 </a>
               </div>
             </div>
+            {/* PO inline warnings */}
+            {poWarning && (
+              <div className={`mx-6 mt-4 rounded-lg border px-4 py-3 ${
+                poWarning.type === "missing-suppliers"
+                  ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700"
+                  : poWarning.type === "no-pos-created"
+                  ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700"
+                  : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700"
+              }`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <AlertTriangle size={16} className={`mt-0.5 flex-shrink-0 ${
+                      poWarning.type === "error" ? "text-red-500 dark:text-red-400" : "text-amber-500 dark:text-amber-400"
+                    }`} />
+                    <div>
+                      {poWarning.type === "missing-suppliers" && (
+                        <>
+                          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1">
+                            These products need a supplier before POs can be generated:
+                          </p>
+                          <ul className="space-y-0.5 mb-2">
+                            {poWarning.products?.map((name) => (
+                              <li key={name} className="text-sm text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                                <span className="text-amber-400">•</span> {name}
+                              </li>
+                            ))}
+                          </ul>
+                          <a href="/admin/products" className="text-xs font-medium text-amber-700 dark:text-amber-300 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200">
+                            Go to Products →
+                          </a>
+                        </>
+                      )}
+                      {poWarning.type === "no-pos-created" && (
+                        <>
+                          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-0.5">No Purchase Orders Created</p>
+                          <p className="text-sm text-amber-700 dark:text-amber-400 mb-1.5">Products are missing supplier assignments. Assign suppliers in Products master data, then try again.</p>
+                          <a href="/admin/products" className="text-xs font-medium text-amber-700 dark:text-amber-300 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200">
+                            Go to Products →
+                          </a>
+                        </>
+                      )}
+                      {poWarning.type === "error" && (
+                        <p className="text-sm text-red-700 dark:text-red-400">Failed to generate POs: {poWarning.message}</p>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={() => setPoWarning(null)} className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
             {invoicePOs.length === 0 ? (
-              <div className="px-6 py-6 text-center text-sm text-gray-400">
+              <div className={`px-6 py-6 text-center text-sm text-gray-400 ${poWarning ? "pt-3" : ""}`}>
                 No purchase orders yet. Click "Generate POs" to create them from order items.
               </div>
             ) : (
