@@ -32,6 +32,14 @@ function money(val: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val || 0);
 }
 
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const s = typeof iso === "string" ? iso.split("T")[0] : "";
+  if (!s) return "—";
+  const [y, m, d] = s.split("-");
+  return `${d}-${m}-${y}`;
+}
+
 const DATE_RANGES = [
   { label: "All time",    value: "all" },
   { label: "This month",  value: "this_month" },
@@ -124,6 +132,16 @@ export default function InvoicesListPage() {
     }
   };
 
+  const handleQuickIssue = async (e: React.MouseEvent, invId: string) => {
+    e.stopPropagation();
+    try {
+      await updateDoc(doc(db, "invoices", invId), { status: "issued" });
+      await loadInvoices();
+    } catch {
+      alert("Error issuing invoice");
+    }
+  };
+
   const dateFiltered = useMemo(() => filterByDateRange(invoices, dateRange), [invoices, dateRange]);
 
   const countByStatus = (s: string) => dateFiltered.filter((i) => i.status === s).length;
@@ -148,6 +166,8 @@ export default function InvoicesListPage() {
   });
 
   const hasActiveFilter = statusFilter !== "all" || search || dateRange !== "all";
+
+  const today = new Date().toISOString().slice(0, 10);
 
   // Full empty state — no invoices exist at all
   if (!loading && invoices.length === 0) {
@@ -195,21 +215,33 @@ export default function InvoicesListPage() {
               <option key={r.value} value={r.value}>{r.label}</option>
             ))}
           </select>
-          {/* Search — kept compact */}
-          <SearchInput
-            placeholder="Search invoices..."
-            value={search}
-            onChange={setSearch}
-            className="w-44"
-          />
+          {/* Search */}
+          <div className="relative w-44">
+            <input
+              type="text"
+              placeholder="Search invoices..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-600"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                type="button"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-6 py-8">
 
-        {/* KPI cards — these ARE the filter */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {(["draft", "issued", "paid", "overdue"] as const).map((s) => {
+        {/* KPI cards — 5 cards, all statuses */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+          {(["draft", "issued", "paid", "overdue", "cancelled"] as const).map((s) => {
             const style = STATUS_COLORS[s];
             const count = countByStatus(s);
             const total = totalByStatus(s);
@@ -233,12 +265,10 @@ export default function InvoicesListPage() {
                     <span className="ml-auto text-gray-300 dark:text-gray-600 text-xs leading-none">✕</span>
                   )}
                 </div>
-                <p className={`text-2xl font-bold tabular-nums ${count === 0 ? "text-gray-200 dark:text-gray-700" : "text-gray-900 dark:text-white"}`}>
+                <p className="text-2xl font-bold tabular-nums text-gray-400 dark:text-gray-500">
                   {count}
                 </p>
-                {total > 0 && (
-                  <p className="text-xs text-gray-400 mt-0.5 tabular-nums">{money(total)}</p>
-                )}
+                <p className="text-xs text-gray-400 mt-0.5 tabular-nums">{money(total)}</p>
               </button>
             );
           })}
@@ -265,28 +295,17 @@ export default function InvoicesListPage() {
           </div>
         )}
 
-        {/* Secondary filters row: Cancelled pill + clear */}
-        <div className="flex items-center gap-2 mb-4">
-          <button
-            onClick={() => setStatusFilter(statusFilter === "cancelled" ? "all" : "cancelled")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              statusFilter === "cancelled"
-                ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900"
-                : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-            }`}
-          >
-            Cancelled
-            <span className="ml-1.5 opacity-60">{countByStatus("cancelled")}</span>
-          </button>
-          {hasActiveFilter && (
+        {/* Clear filters */}
+        {hasActiveFilter && (
+          <div className="flex justify-end mb-4">
             <button
               onClick={() => { setStatusFilter("all"); setSearch(""); setDateRange("all"); }}
-              className="ml-auto text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline underline-offset-2"
+              className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline underline-offset-2"
             >
               Clear filters
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* List */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -311,6 +330,7 @@ export default function InvoicesListPage() {
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Invoice</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Customer</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Due Date</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
                   <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total</th>
                 </tr>
@@ -318,11 +338,17 @@ export default function InvoicesListPage() {
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {filtered.map((inv) => {
                   const style = STATUS_COLORS[inv.status] || STATUS_COLORS.draft;
+                  const isOverdue = inv.status === "overdue";
+                  const duePast = inv.dueDate && inv.dueDate < today && inv.status !== "paid" && inv.status !== "cancelled";
                   return (
                     <tr
                       key={inv.id}
                       onClick={() => router.push("/invoices/" + inv.id)}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
+                      className={`cursor-pointer transition-colors ${
+                        isOverdue
+                          ? "bg-red-50/50 dark:bg-red-900/10 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          : "hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                      }`}
                     >
                       <td className="px-6 py-4">
                         <p className="text-sm font-semibold text-gray-900 dark:text-white">{inv.invoiceNumber || "—"}</p>
@@ -332,7 +358,10 @@ export default function InvoicesListPage() {
                         <p className="text-sm text-gray-900 dark:text-white">{inv.customerName || "—"}</p>
                         <p className="text-xs text-gray-400">{inv.customerType}</p>
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">{inv.invoiceDate || "—"}</td>
+                      <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">{formatDate(inv.invoiceDate)}</td>
+                      <td className={`px-4 py-4 text-sm ${duePast ? "text-red-600 dark:text-red-400 font-medium" : "text-gray-500 dark:text-gray-400"}`}>
+                        {inv.dueDate ? formatDate(inv.dueDate) : "—"}
+                      </td>
                       <td className="px-4 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${style.bg} ${style.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
@@ -342,10 +371,26 @@ export default function InvoicesListPage() {
                       <td className="px-6 py-4 text-right text-sm font-semibold text-gray-900 dark:text-white">
                         <div className="flex items-center justify-end gap-3">
                           <span className="tabular-nums">{money(inv.finalTotal)}</span>
-                          {inv.status !== "paid" && inv.status !== "cancelled" && (
+                          {inv.status === "draft" && (
+                            <button
+                              onClick={(e) => handleQuickIssue(e, inv.id)}
+                              className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors font-medium"
+                            >
+                              Issue
+                            </button>
+                          )}
+                          {inv.status === "issued" && (
                             <button
                               onClick={(e) => handleQuickPay(e, inv.id)}
                               className="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-md hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors font-medium"
+                            >
+                              Pay
+                            </button>
+                          )}
+                          {inv.status === "overdue" && (
+                            <button
+                              onClick={(e) => handleQuickPay(e, inv.id)}
+                              className="text-xs px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-md hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors font-medium"
                             >
                               Pay
                             </button>
