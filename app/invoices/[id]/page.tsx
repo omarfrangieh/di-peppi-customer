@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import {
   doc,
@@ -1211,7 +1212,7 @@ Please call/message the supplier(s): ${suppliers}`);
                   {applyingWallet ? "Applying..." : `Use Wallet (${formatPrice(Math.min(walletBalance, balanceDue))})`}
                 </button>
               )}
-              <button onClick={() => setShowAddPayment(true)} disabled={balanceDue <= 0 || status === "cancelled"} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 transition-colors font-medium">+ Add Payment</button>
+              <button onClick={() => { setPayAmount(balanceDue > 0 ? String(Math.round(balanceDue * 100) / 100) : ""); setShowAddPayment(true); }} disabled={balanceDue <= 0 || status === "cancelled"} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 transition-colors font-medium">+ Add Payment</button>
             </div>
           </div>
           {payments.length === 0 ? (
@@ -1437,17 +1438,22 @@ Please call/message the supplier(s): ${suppliers}`);
 
       {/* Cancel Modal */}
       {showCancelModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Cancel Invoice</h3>
-            <p className="text-sm text-gray-500 mb-6">Are you sure you want to cancel <span className="font-semibold">{invoice.invoiceNumber}</span>? This action cannot be undone.</p>
+        <div className="fixed inset-0 bg-black/60 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+            <div className="flex flex-col items-center mb-4">
+              <AlertTriangle className="text-red-500 dark:text-red-400 mb-3" size={32} strokeWidth={2} />
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Cancel Invoice</h3>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">Are you sure you want to cancel <span className="font-semibold text-gray-700 dark:text-gray-200">{invoice.invoiceNumber}</span>? This action cannot be undone.</p>
             <div className="flex gap-3">
-              <button onClick={() => setShowCancelModal(false)}
-                className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50">
+              <button
+                autoFocus
+                onClick={() => setShowCancelModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                 Keep Invoice
               </button>
               <button onClick={handleCancel} disabled={cancelling}
-                className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50">
+                className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">
                 {cancelling ? "Cancelling..." : "Yes, Cancel"}
               </button>
             </div>
@@ -1457,20 +1463,38 @@ Please call/message the supplier(s): ${suppliers}`);
 
       {/* Add Payment Modal */}
       {showAddPayment && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-4">Add Payment</h3>
+        <div className="fixed inset-0 bg-black/60 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Add Payment</h3>
             <div className="space-y-4">
               <div>
-                <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Amount (USD)</label>
-                <input type="number" value={payAmount} onChange={(e) => setPayAmount(e.target.value)}
-                  placeholder={`Max: ${formatPrice(balanceDue)}`}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 block">Amount (USD)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 dark:text-gray-500 pointer-events-none">$</span>
+                  <input
+                    type="number"
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(e.target.value)}
+                    className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-500 placeholder:text-gray-400"
+                  />
+                </div>
+                {(() => {
+                  const entered = Number(payAmount);
+                  if (!payAmount || entered <= 0) return null;
+                  const remaining = Math.round((balanceDue - entered) * 100) / 100;
+                  if (entered === balanceDue || remaining === 0) {
+                    return <p className="text-xs text-green-600 dark:text-green-400 mt-1">Invoice will be fully paid</p>;
+                  }
+                  if (entered > balanceDue) {
+                    return <p className="text-xs text-red-600 dark:text-red-400 mt-1">Amount exceeds balance due</p>;
+                  }
+                  return <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Remaining after payment: ${formatPrice(remaining)}</p>;
+                })()}
               </div>
               <div>
-                <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Method</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 block">Method</label>
                 <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                  className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-500">
                   <option>Cash</option>
                   <option>Card</option>
                   <option>Transfer</option>
@@ -1479,25 +1503,25 @@ Please call/message the supplier(s): ${suppliers}`);
                 </select>
               </div>
               <div>
-                <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Payment Date</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 block">Payment Date</label>
                 <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-500" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Reference # (optional)</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 block">Reference # (optional)</label>
                 <input type="text" value={payReference} onChange={(e) => setPayReference(e.target.value)}
                   placeholder="e.g. Cheque #1234, Transfer ref"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-500 placeholder:text-gray-400" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Notes (optional)</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 block">Notes (optional)</label>
                 <input type="text" value={payNotes} onChange={(e) => setPayNotes(e.target.value)}
                   placeholder="Additional notes"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-500 placeholder:text-gray-400" />
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowAddPayment(false)}
-                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                  className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancel
                 </button>
                 <button onClick={handleAddPayment} disabled={savingPayment}
