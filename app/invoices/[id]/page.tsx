@@ -198,10 +198,45 @@ export default function InvoiceDetailPage() {
         where("invoiceId", "==", invoiceId)
       );
       const linesSnap = await getDocs(linesQuery);
-      const linesData = linesSnap.docs.map((d) => ({
+      let linesData = linesSnap.docs.map((d) => ({
         id: d.id,
         ...d.data(),
       })) as InvoiceLine[];
+
+      // Fallback: if no invoiceLines exist yet (e.g. invoice created manually),
+      // derive lines from the linked order's orderItems via the existing Cloud Function.
+      if (linesData.length === 0 && data.orderId) {
+        try {
+          const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
+          const base = isLocal
+            ? "http://localhost:5001/di-peppi/us-central1"
+            : "https://us-central1-di-peppi.cloudfunctions.net";
+          const res = await fetch(`${base}/getOrderItems?orderId=${encodeURIComponent(data.orderId)}`);
+          if (res.ok) {
+            const orderItems: any[] = await res.json();
+            linesData = orderItems.map((item) => ({
+              id: item.id,
+              productName: item.productName || "",
+              quantity: Number(item.quantity || 0),
+              unitPrice: Number(item.unitPrice || 0),
+              unitCostPrice: Number(item.unitCostPrice || 0),
+              itemDiscountPercent: Number(item.itemDiscountPercent || 0),
+              itemDiscountAmount: Number(item.itemDiscountAmount || 0),
+              lineGross: Number(item.grossLineTotal || item.totalPrice || 0),
+              lineNet: Number(item.netLineTotal || item.totalPrice || 0),
+              profit: Number(item.profit || 0),
+              notes: item.notes || "",
+              preparation: item.preparation || "",
+              sample: Boolean(item.sample),
+              gift: Boolean(item.gift),
+              vatRate: item.vatRate ?? undefined,
+            }));
+          }
+        } catch (e) {
+          console.warn("Could not load order items as fallback for invoice lines:", e);
+        }
+      }
+
       setLines(linesData);
       // Load products for add line
       const prodSnap = await getDocs(collection(db, "products"));
