@@ -840,6 +840,7 @@ Please call/message the supplier(s): ${suppliers}`);
 
   if (!invoice) return null;
 
+  const isLocked = status !== "draft";
   const statusStyle = STATUS_COLORS[status] || STATUS_COLORS.draft;
 
   return (
@@ -899,6 +900,17 @@ Please call/message the supplier(s): ${suppliers}`);
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+        {/* Locked banner — shown for any non-Draft invoice */}
+        {isLocked && (
+          <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-400">
+            <span>🔒</span>
+            <span>
+              This invoice is locked for editing. Status:{" "}
+              <span className="font-semibold text-gray-800 dark:text-gray-200 capitalize">{status}</span>.{" "}
+              <span className="text-gray-500 dark:text-gray-500">To make changes, set status back to Draft and save.</span>
+            </span>
+          </div>
+        )}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-start justify-between mb-6">
             <div>
@@ -1068,7 +1080,7 @@ Please call/message the supplier(s): ${suppliers}`);
           <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
             <div className="flex items-center justify-between w-full">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Line Items</h3>
-              {invoice?.status === "draft" && (
+              {!isLocked && (
                 <div className="flex gap-2">
 <button onClick={() => setShowAddLine(!showAddLine)}
                     className="text-xs px-3 py-1.5 text-white rounded-lg font-medium"
@@ -1106,7 +1118,7 @@ Please call/message the supplier(s): ${suppliers}`);
                         {line.notes && <span className="text-xs text-gray-400">{line.notes}</span>}
                       </div>
                     </td>
-                    {editingLineId === line.id ? (
+                    {!isLocked && editingLineId === line.id ? (
                       <>
                         <td className="px-4 py-3 text-right">
                           <input type="number" value={editLineQty} onChange={e => setEditLineQty(e.target.value)}
@@ -1175,12 +1187,14 @@ Please call/message the supplier(s): ${suppliers}`);
                           {(line.sample || line.gift) ? <span className="text-green-600 font-semibold">$0.00</span> : money(line.lineGross)}
                         </td>
                         <td className="px-4 py-4">
-                          <div className="flex gap-1 justify-end">
-                            <button onClick={() => { setEditingLineId(line.id); setEditLineQty(String(line.quantity)); setEditLinePrice(String(line.unitPrice)); setEditLineDiscount(String(line.itemDiscountPercent || 0)); }}
-                              className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-100">✏️</button>
-                            <button onClick={() => handleDeleteLine(line.id)}
-                              className="text-xs px-2 py-1 border border-red-200 text-red-500 rounded hover:bg-red-50">🗑️</button>
-                          </div>
+                          {!isLocked && (
+                            <div className="flex gap-1 justify-end">
+                              <button onClick={() => { setEditingLineId(line.id); setEditLineQty(String(line.quantity)); setEditLinePrice(String(line.unitPrice)); setEditLineDiscount(String(line.itemDiscountPercent || 0)); }}
+                                className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-100">✏️</button>
+                              <button onClick={() => handleDeleteLine(line.id)}
+                                className="text-xs px-2 py-1 border border-red-200 text-red-500 rounded hover:bg-red-50">🗑️</button>
+                            </div>
+                          )}
                         </td>
                       </>
                     )}
