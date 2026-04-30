@@ -13,9 +13,9 @@ const CUSTOMER_TYPES = ["B2B", "B2C", "Blogger", "Owner"];
 function Field({ label, value, onChange, type = "text" }: { label: string; value: any; onChange: (v: string) => void; type?: string }) {
   return (
     <div>
-      <label className="text-xs text-gray-500 block mb-0.5">{label}</label>
+      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">{label}</label>
       <input type={type} value={value || ""} onChange={e => onChange(e.target.value)}
-        autoComplete="off" className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900" />
+        autoComplete="off" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 bg-white dark:bg-gray-800 dark:text-white" />
     </div>
   );
 }
@@ -39,6 +39,9 @@ export default function AdminCustomersPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [docPreview, setDocPreview] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"cards" | "list">(() => {
+    try { return (localStorage.getItem("dp-customers-view") as "cards" | "list") || "cards"; } catch { return "cards"; }
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
@@ -193,11 +196,17 @@ export default function AdminCustomersPage() {
     (p.name || "").toLowerCase().includes(priceSearch.toLowerCase())
   );
 
+  const b2bCount = customers.filter(c => c.customerType === "B2B").length;
+  const b2cCount = customers.filter(c => c.customerType === "B2C").length;
 
+  const setView = (mode: "cards" | "list") => {
+    setViewMode(mode);
+    try { localStorage.setItem("dp-customers-view", mode); } catch {}
+  };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+    <div className="min-h-screen flex items-center justify-center dark:bg-gray-900">
+      <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent dark:border-white rounded-full animate-spin" />
     </div>
   );
 
@@ -211,21 +220,71 @@ export default function AdminCustomersPage() {
     </div>
   );
 
+  const TypeBadge = ({ type }: { type: string }) => (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+      type === "B2B" ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" :
+      type === "B2C" ? "bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" :
+      "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"}`}>
+      {type || "—"}
+    </span>
+  );
+
+  const Avatar = ({ customer, size }: { customer: any; size: number }) => (
+    customer.logoUrl ? (
+      <img src={customer.logoUrl} alt={customer.name}
+        className={`rounded-lg object-contain border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 p-0.5 flex-shrink-0`}
+        style={{ width: size, height: size }} />
+    ) : (
+      <div className={`rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-700 flex items-center justify-center flex-shrink-0`}
+        style={{ width: size, height: size }}>
+        <span className="font-bold text-gray-400" style={{ fontSize: size * 0.4 }}>
+          {(customer.name || "?").charAt(0).toUpperCase()}
+        </span>
+      </div>
+    )
+  );
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+      <div className="bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          
-          <div className="h-4 w-px bg-gray-200" />
+          <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
           <h1 className="text-xl font-bold" style={{color: "#B5535A"}}>Customers</h1>
-          <span className="text-xs text-gray-400">{customers.length} customers</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">{customers.length} customers</span>
         </div>
         <div className="flex items-center gap-3">
-          <select value={filterType} onChange={e => setFilterType(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none bg-white">
-            <option value="all">All Types</option>
-            {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
-          </select>
+          {/* Type tab pills */}
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+            {([["all", "All", customers.length], ["B2B", "B2B", b2bCount], ["B2C", "B2C", b2cCount]] as const).map(([val, label, count]) => (
+              <button
+                key={val}
+                onClick={() => setFilterType(val)}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                  filterType === val
+                    ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                }`}
+              >
+                {label}
+                <span className={`text-xs ${filterType === val ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"}`}>{count}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* View toggle */}
+          <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <button
+              onClick={() => setView("cards")}
+              title="Cards view"
+              className={`px-2 py-1 text-xs font-medium transition-colors ${viewMode === "cards" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
+            >⊞</button>
+            <button
+              onClick={() => setView("list")}
+              title="List view"
+              className={`px-2 py-1 text-xs font-medium transition-colors ${viewMode === "list" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
+            >☰</button>
+          </div>
+
           <button onClick={() => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(p => !p); }}
             disabled={editing !== null}
             className="px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -233,7 +292,7 @@ export default function AdminCustomersPage() {
             + Add Customer
           </button>
           <button onClick={() => router.push("/admin/customers/import")}
-            className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 font-medium text-gray-700">
+            className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 font-medium text-gray-700 dark:text-gray-300">
             ↑ Import CSV
           </button>
           {holdFiltered.length > 0 && (
@@ -243,7 +302,6 @@ export default function AdminCustomersPage() {
               ⚠️ On Hold <span className="bg-red-200 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded-full">{holdFiltered.length}</span>
             </button>
           )}
-
           <SearchInput
             placeholder="Search customers..."
             value={search}
@@ -255,86 +313,86 @@ export default function AdminCustomersPage() {
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-3">
         {showAdd && (
-          <div className="bg-white rounded-xl border border-blue-200 p-5">
-            <p className="text-sm font-semibold text-gray-900 mb-4">New Customer</p>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-blue-200 dark:border-blue-800 p-5">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white mb-4">New Customer</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Name *</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Name *</label>
                 <input value={newCustomer.name || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, name: e.target.value }))}
-                  placeholder="Customer name" className={`w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 ${!newCustomer.name?.trim() ? "border-red-300" : "border-gray-200"}`} />
+                  placeholder="Customer name" className={`w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 bg-white dark:bg-gray-800 dark:text-white ${!newCustomer.name?.trim() ? "border-red-300" : "border-gray-200 dark:border-gray-700"}`} />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Company Name</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Company Name</label>
                 <input value={newCustomer.companyName || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, companyName: e.target.value }))}
-                  placeholder="e.g. ABC Trading SAL" className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="e.g. ABC Trading SAL" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Customer Type *</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Customer Type *</label>
                 <select value={newCustomer.customerType} onChange={e => setNewCustomer((p: any) => ({ ...p, customerType: e.target.value }))}
-                  className={`w-full border rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-gray-900 ${!newCustomer.customerType ? "border-red-300" : "border-gray-200"}`}>
+                  className={`w-full border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-900 ${!newCustomer.customerType ? "border-red-300" : "border-gray-200 dark:border-gray-700"}`}>
                   <option value="">— Select —</option>
                   {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Phone *</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Phone *</label>
                 <input value={newCustomer.phoneNumber || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, phoneNumber: e.target.value }))}
-                  placeholder="+961..." className={`w-full border rounded px-2 py-1.5 text-sm focus:outline-none ${!newCustomer.phoneNumber?.trim() ? "border-red-300" : "border-gray-200"}`} />
+                  placeholder="+961..." className={`w-full border rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white ${!newCustomer.phoneNumber?.trim() ? "border-red-300" : "border-gray-200 dark:border-gray-700"}`} />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">City</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">City</label>
                 <input value={newCustomer.city || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, city: e.target.value }))}
-                  placeholder="Beirut" className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="Beirut" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Country</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Country</label>
                 <input value={newCustomer.country || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, country: e.target.value }))}
-                  placeholder="Lebanon" className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="Lebanon" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Street</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Street</label>
                 <input value={newCustomer.street || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, street: e.target.value }))}
-                  placeholder="Street" className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="Street" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Building</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Building</label>
                 <input value={newCustomer.building || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, building: e.target.value }))}
-                  placeholder="Building" className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="Building" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Floor</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Floor</label>
                 <input value={newCustomer.floor || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, floor: e.target.value }))}
-                  placeholder="Floor" className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="Floor" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Apartment</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Apartment</label>
                 <input value={newCustomer.apartment || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, apartment: e.target.value }))}
-                  placeholder="Apt" className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="Apt" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Google Maps Link</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Google Maps Link</label>
                 <input value={newCustomer.mapsLink || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, mapsLink: e.target.value }))}
-                  placeholder="https://maps.app.goo.gl/..." className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="https://maps.app.goo.gl/..." className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Delivery Fee $</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Delivery Fee $</label>
                 <input type="number" value={newCustomer.deliveryFee || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, deliveryFee: e.target.value }))}
-                  placeholder="0" className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="0" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Client Margin %</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Client Margin %</label>
                 <input type="number" value={newCustomer.clientMargin || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, clientMargin: e.target.value }))}
-                  placeholder="0" className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="0" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-0.5">Client Discount %</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Client Discount %</label>
                 <input type="number" value={newCustomer.clientDiscount || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, clientDiscount: e.target.value }))}
-                  placeholder="0" className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="0" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
               <div className="md:col-span-2">
-                <label className="text-xs text-gray-500 block mb-0.5">Additional Instructions</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Additional Instructions</label>
                 <input value={newCustomer.additionalInstructions || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, additionalInstructions: e.target.value }))}
-                  placeholder="Delivery notes..." className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none" />
+                  placeholder="Delivery notes..." className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
               </div>
             </div>
             <div className="flex gap-2">
@@ -344,13 +402,78 @@ export default function AdminCustomersPage() {
                 Add Customer
               </button>
               <button onClick={() => { setShowAdd(false); setNewCustomer({ customerType: "", country: "Lebanon" }); }}
-                className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50">
+                className="px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 Cancel
               </button>
             </div>
           </div>
         )}
-        {[...activeFiltered, ...(holdFiltered.length > 0 ? [{ __divider: true } as any] : []), ...holdFiltered].map((customer, idx) => {
+
+        {/* ── LIST VIEW ── */}
+        {viewMode === "list" && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-100 dark:border-gray-700">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-10" />
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Company</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">City</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Phone</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {filtered.map(customer => {
+                  const isHold = customer.manualHold;
+                  return (
+                    <tr key={customer.id}
+                      className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors ${isHold ? "border-l-4 border-amber-400" : ""} ${customer.active === false ? "opacity-50" : ""}`}>
+                      <td className="px-4 py-2.5">
+                        <Avatar customer={customer} size={36} />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">{customer.name || "—"}</span>
+                          <TypeBadge type={customer.customerType} />
+                          {isHold && <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">⚠️ On Hold</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400">{customer.companyName || "—"}</td>
+                      <td className="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400">{customer.city || "—"}</td>
+                      <td className="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400">
+                        {(customer.phoneNumber || customer.phone) ? (
+                          <a href={"https://wa.me/" + String(customer.phoneNumber || customer.phone).replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">
+                            {customer.phoneNumber || customer.phone}
+                          </a>
+                        ) : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => router.push(`/admin/orders/new?customer=${customer.id}`)}
+                            className="px-2.5 py-1 text-xs font-medium border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            + Order
+                          </button>
+                          <button onClick={() => { setShowAdd(false); startEdit(customer); }}
+                            className="px-2.5 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300">
+                            Edit
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {filtered.length === 0 && (
+              <div className="text-center py-12 text-sm text-gray-400 dark:text-gray-500">No customers match your search.</div>
+            )}
+          </div>
+        )}
+
+        {/* ── CARDS VIEW ── */}
+        {viewMode === "cards" && [...activeFiltered, ...(holdFiltered.length > 0 ? [{ __divider: true } as any] : []), ...holdFiltered].map((customer, idx) => {
           if (customer.__divider) return (
             <div key="hold-divider" id="hold-section" className="flex items-center gap-3 pt-4">
               <div className="flex-1 h-px bg-red-100" />
@@ -364,17 +487,17 @@ export default function AdminCustomersPage() {
           const isHold = customer.manualHold;
           return (
             <div key={customer.id} className={isHold ? "opacity-70 hover:opacity-100 transition-opacity" : ""}>
-              <div className={`bg-white rounded-xl overflow-hidden ${isHold ? "border border-red-100" : "border border-gray-200"} ${customer.active === false ? "opacity-50" : ""}`}>
+              <div className={`bg-white dark:bg-gray-800 rounded-xl overflow-hidden ${isHold ? "border-l-4 border-amber-400 border border-gray-200 dark:border-gray-700" : "border border-gray-200 dark:border-gray-700"} ${customer.active === false ? "opacity-50" : ""}`}>
               {editing === customer.id ? (
                 <div className="p-5">
                   {/* Logo */}
-                  <div className="flex items-center gap-5 mb-5 pb-5 border-b border-gray-100">
+                  <div className="flex items-center gap-5 mb-5 pb-5 border-b border-gray-100 dark:border-gray-700">
                     <div className="relative flex-shrink-0">
                       {editData.logoUrl ? (
                         <img src={editData.logoUrl} alt={editData.name}
-                          className="w-24 h-24 rounded-xl object-contain border border-gray-200 bg-white p-1" />
+                          className="w-24 h-24 rounded-xl object-contain border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 p-1" />
                       ) : (
-                        <div className="w-24 h-24 rounded-xl bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center">
+                        <div className="w-24 h-24 rounded-xl bg-gray-100 dark:bg-gray-700 border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
                           <span className="text-3xl font-bold text-gray-300">
                             {(editData.name || "?").charAt(0).toUpperCase()}
                           </span>
@@ -382,13 +505,13 @@ export default function AdminCustomersPage() {
                       )}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-gray-700 mb-1">Customer Photo / Logo</p>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Customer Photo / Logo</p>
                       <p className="text-xs text-gray-400 mb-2">JPG, PNG, HEIC accepted</p>
                       <input ref={logoInputRef} type="file" accept="image/*,.heic"
                         className="hidden"
                         onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f, customer.id); }} />
                       <button onClick={() => logoInputRef.current?.click()} disabled={uploadingLogo}
-                        className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5">
+                        className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50 flex items-center gap-1.5 dark:text-gray-300">
                         {uploadingLogo
                           ? <><span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin inline-block" /> Uploading...</>
                           : <><span>⬆</span> {editData.logoUrl ? "Change Photo" : "Upload Photo"}</>}
@@ -397,14 +520,14 @@ export default function AdminCustomersPage() {
                   </div>
 
                   {/* Basic Info */}
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Basic Info</p>
+                  <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Basic Info</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <Field label="Name" value={editData.name} onChange={(v: string) => setEditData((p: any) => ({ ...p, name: v }))} />
                     <Field label="Company Name" value={editData.companyName} onChange={(v: string) => setEditData((p: any) => ({ ...p, companyName: v }))} />
                     <div>
-                      <label className="text-xs text-gray-500 block mb-0.5">Customer Type</label>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Customer Type</label>
                       <select value={editData.customerType || ""} onChange={e => setEditData((p: any) => ({ ...p, customerType: e.target.value }))}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none bg-white">
+                        className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white">
                         {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
                       </select>
                     </div>
@@ -413,7 +536,7 @@ export default function AdminCustomersPage() {
                   </div>
 
                   {/* Address */}
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Address</p>
+                  <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Address</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <Field label="Building" value={editData.building} onChange={(v: string) => setEditData((p: any) => ({ ...p, building: v }))} />
                     <Field label="Apartment" value={editData.apartment} onChange={(v: string) => setEditData((p: any) => ({ ...p, apartment: v }))} />
@@ -426,19 +549,19 @@ export default function AdminCustomersPage() {
                   </div>
 
                   {/* Pricing */}
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Pricing & Settings</p>
+                  <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Pricing & Settings</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <Field label="Client Margin %" value={editData.clientMargin} onChange={(v: string) => setEditData((p: any) => ({ ...p, clientMargin: v }))} type="number" />
                     <Field label="Client Discount %" value={editData.clientDiscount} onChange={(v: string) => setEditData((p: any) => ({ ...p, clientDiscount: v }))} type="number" />
                     <div className="flex items-center gap-4 pt-4">
-                      <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                      <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                         <input type="checkbox"
                           checked={editData.active !== false && !editData.manualHold}
                           onChange={e => setEditData((p: any) => ({ ...p, active: e.target.checked, manualHold: e.target.checked ? false : p.manualHold }))}
                           className="w-4 h-4" />
                         Active
                       </label>
-                      <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                      <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                         <input type="checkbox"
                           checked={Boolean(editData.manualHold)}
                           onChange={e => setEditData((p: any) => ({ ...p, manualHold: e.target.checked, active: e.target.checked ? false : p.active }))}
@@ -449,14 +572,14 @@ export default function AdminCustomersPage() {
                   </div>
 
                   {/* Special Prices */}
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Special Prices</p>
+                  <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Special Prices</p>
                   <SearchInput
                     placeholder="Search products..."
                     value={priceSearch}
                     onChange={setPriceSearch}
                     className="mb-3 w-64"
                   />
-                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto border border-gray-100 rounded-lg p-3">
+                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-lg p-3 dark:bg-gray-900/30">
                     {filteredProducts.map(product => {
                       const sp = Number(editPrices[product.id] || 0);
                       const cost = Number(product.costPrice || 0);
@@ -464,7 +587,7 @@ export default function AdminCustomersPage() {
                       return (
                         <div key={product.id} className="flex items-center gap-2">
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs text-gray-700 truncate">{product.name}</p>
+                            <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{product.name}</p>
                             <p className="text-xs text-gray-400">Selling: ${formatPrice(editData.customerType === "B2B" ? product.b2bPrice : product.b2cPrice || 0)} · Cost: ${formatPrice(cost)}</p>
                           </div>
                           <div className="flex items-center gap-3 justify-end">
@@ -478,7 +601,7 @@ export default function AdminCustomersPage() {
                               placeholder="—"
                               value={editPrices[product.id] || ""}
                               onChange={e => setEditPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
-                              className={`w-24 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-gray-900 ${editPrices[product.id] ? "border-blue-300 bg-blue-50" : "border-gray-200"}`}
+                              className={`w-24 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-gray-900 dark:bg-gray-800 dark:text-white ${editPrices[product.id] ? "border-blue-300 bg-blue-50 dark:bg-blue-900/20" : "border-gray-200 dark:border-gray-700"}`}
                             />
                           </div>
                         </div>
@@ -490,10 +613,10 @@ export default function AdminCustomersPage() {
                   {/* Official Document — B2B only */}
                   {editData.customerType === "B2B" && (
                     <div className="mt-5">
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Official Document</p>
+                      <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Official Document</p>
                       <div className="flex items-center gap-4 flex-wrap">
                         {editData.documentUrl ? (
-                          <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                          <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 rounded-lg">
                             {editData.documentType?.startsWith("image/") ? (
                               <img src={editData.documentUrl} alt="Document" className="w-16 h-16 object-cover rounded cursor-pointer border border-gray-200"
                                 onClick={() => setDocPreview(editData.documentUrl)} />
@@ -504,7 +627,7 @@ export default function AdminCustomersPage() {
                               </div>
                             )}
                             <div>
-                              <p className="text-xs font-medium text-gray-700">Current document</p>
+                              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Current document</p>
                               <p className="text-xs text-gray-400">{editData.documentType || "PDF"}</p>
                               <button onClick={() => window.open(editData.documentUrl, "_blank")}
                                 className="text-xs text-blue-600 hover:underline mt-0.5">Open ↗</button>
@@ -518,7 +641,7 @@ export default function AdminCustomersPage() {
                             className="hidden"
                             onChange={e => { const f = e.target.files?.[0]; if (f) handleDocUpload(f, customer.id); }} />
                           <button onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}
-                            className="px-3 py-2 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5">
+                            className="px-3 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50 flex items-center gap-1.5 dark:text-gray-300">
                             {uploadingDoc
                               ? <><span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin inline-block" /> Uploading...</>
                               : <><span>⬆</span> {editData.documentUrl ? "Replace Document" : "Upload Document"}</>}
@@ -530,13 +653,13 @@ export default function AdminCustomersPage() {
                   )}
 
                   {/* Actions */}
-                  <div className="flex gap-2 pt-4 border-t border-gray-100 mt-4">
+                  <div className="flex gap-2 pt-4 border-t border-gray-100 dark:border-gray-700 mt-4">
                     <button onClick={() => saveCustomer(customer.id)} disabled={saving === customer.id}
                       className="px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-50"
                       style={{backgroundColor: "#1B2A5E"}}>
                       {saving === customer.id ? "Saving..." : "Save Changes"}
                     </button>
-                    <button onClick={cancelEdit} className="px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button onClick={cancelEdit} className="px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">Cancel</button>
                   </div>
                 </div>
               ) : (
@@ -546,9 +669,9 @@ export default function AdminCustomersPage() {
                       {/* Logo */}
                       {customer.logoUrl ? (
                         <img src={customer.logoUrl} alt={customer.name}
-                          className="w-20 h-20 rounded-xl object-contain border border-gray-200 flex-shrink-0 bg-white p-1" />
+                          className="w-20 h-20 rounded-xl object-contain border border-gray-200 dark:border-gray-700 flex-shrink-0 bg-white dark:bg-gray-700 p-1" />
                       ) : (
-                        <div className="w-20 h-20 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center flex-shrink-0">
+                        <div className="w-20 h-20 rounded-xl bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-700 flex items-center justify-center flex-shrink-0">
                           <span className="text-2xl font-bold text-gray-400">
                             {(customer.name || "?").charAt(0).toUpperCase()}
                           </span>
@@ -556,36 +679,41 @@ export default function AdminCustomersPage() {
                       )}
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium text-gray-900">{customer.name || "—"}</p>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            customer.customerType === "B2B" ? "bg-blue-50 text-blue-700" :
-                            customer.customerType === "B2C" ? "bg-purple-50 text-purple-700" :
-                            "bg-gray-100 text-gray-600"}`}>
-                            {customer.customerType || "—"}
-                          </span>
-                          {customer.manualHold && <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">⚠️ Hold</span>}
-                          {customer.active === false && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Inactive</span>}
+                          <p className="font-medium text-gray-900 dark:text-white">{customer.name || "—"}</p>
+                          <TypeBadge type={customer.customerType} />
+                          {isHold && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">⚠️ On Hold</span>}
+                          {customer.active === false && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">Inactive</span>}
                         </div>
-                        {customer.companyName && <p className="text-sm text-gray-500 font-medium mt-0.5">{customer.companyName}</p>}
+                        {customer.companyName && <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mt-0.5">{customer.companyName}</p>}
                         <p className="text-xs text-gray-400 mt-0.5">
                           {[customer.building, customer.street, customer.city, customer.country].filter(Boolean).join(", ") || "No address"}
                         </p>
                       </div>
-                      <div className="hidden md:flex items-center gap-4 text-sm text-gray-600 flex-wrap">
+                      <div className="hidden md:flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 flex-wrap">
                         {(customer.phoneNumber || customer.phone) && <a href={"https://wa.me/" + String(customer.phoneNumber || customer.phone).replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">📞 {customer.phoneNumber || customer.phone}</a>}
-                        {customer.deliveryFee > 0 && <span>🚚 ${customer.deliveryFee}</span>}
+                        {customer.deliveryFee > 0 && <span className="text-xs text-gray-500 dark:text-gray-400">🚚 Delivery: ${customer.deliveryFee}</span>}
                         {customer.walletBalance > 0 && <span className="text-blue-600 font-medium">💰 Wallet: ${formatPrice(customer.walletBalance)}</span>}
                         {customer.clientMargin > 0 && <span>📊 {customer.clientMargin}% margin</span>}
                         {customer.clientDiscount > 0 && <span>🏷️ {customer.clientDiscount}% disc</span>}
                         {customer.mapsLink && <a href={customer.mapsLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs">📍 Maps</a>}
                       </div>
                     </div>
-                    <button onClick={() => { setShowAdd(false); startEdit(customer); }} className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-100 ml-4 flex-shrink-0">Edit</button>
+                    <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                      <button
+                        onClick={() => router.push(`/admin/orders/new?customer=${customer.id}`)}
+                        className="px-3 py-1.5 text-xs font-medium border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        + Order
+                      </button>
+                      <button onClick={() => { setShowAdd(false); startEdit(customer); }}
+                        className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300">
+                        Edit
+                      </button>
+                    </div>
                   </div>
 
                   {/* Footer row: special prices + document */}
                   {(specialCount > 0 || customer.documentUrl) && (
-                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-4 flex-wrap">
+                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center gap-4 flex-wrap">
                       {specialCount > 0 && showPricesFor !== customer.id && (
                         <button
                           onClick={() => setShowPricesFor(customer.id)}
@@ -597,7 +725,7 @@ export default function AdminCustomersPage() {
                       {customer.documentUrl && customer.customerType === "B2B" && (
                         <button
                           onClick={() => customer.documentType?.startsWith("image/") ? setDocPreview(customer.documentUrl) : window.open(customer.documentUrl, "_blank")}
-                          className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 transition-colors border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50">
+                          className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                           {customer.documentType?.startsWith("image/") ? "🖼" : "📄"} View Document
                         </button>
                       )}
@@ -609,9 +737,9 @@ export default function AdminCustomersPage() {
 
               {/* Special Prices Panel - Outside Card */}
               {specialCount > 0 && showPricesFor === customer.id && (
-                <div className="border border-t-0 border-gray-200 rounded-b-xl bg-blue-50 px-5 py-4">
+                <div className="border border-t-0 border-gray-200 dark:border-gray-700 rounded-b-xl bg-blue-50 dark:bg-blue-900/20 px-5 py-4">
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Special Prices</p>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Special Prices</p>
                     <button
                       onClick={() => setShowPricesFor(null)}
                       className="text-gray-400 hover:text-gray-600">
@@ -625,11 +753,11 @@ export default function AdminCustomersPage() {
                       const sp = Number(price);
                       const margin = sp > 0 ? ((sp - cost) / sp) * 100 : 0;
                       return (
-                        <div key={pid} className="flex items-center justify-between rounded-lg px-3 py-2 border border-blue-200 bg-white">
+                        <div key={pid} className="flex items-center justify-between rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800">
                           <div className="flex items-center gap-3">
                             <div>
-                              <p className="text-sm font-medium text-gray-900">{product?.name || pid}</p>
-                              <p className="text-xs text-gray-500">Price: ${formatPrice(sp)} · Cost: ${formatPrice(cost)}</p>
+                              <p className="text-sm font-medium text-gray-900 dark:text-white">{product?.name || pid}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">Price: ${formatPrice(sp)} · Cost: ${formatPrice(cost)}</p>
                             </div>
                           </div>
                           <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${margin < 0 ? "bg-red-100 text-red-700" : margin < 15 ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700"}`}>
@@ -657,7 +785,7 @@ export default function AdminCustomersPage() {
             <img src={docPreview} alt="Official Document" className="w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
             <div className="flex justify-center mt-3">
               <a href={docPreview} target="_blank" rel="noopener noreferrer"
-                className="px-4 py-2 bg-white text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-100">
+                className="px-4 py-2 bg-white text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
                 Open Full Size ↗
               </a>
             </div>

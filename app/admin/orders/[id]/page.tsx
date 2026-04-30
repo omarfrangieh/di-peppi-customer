@@ -22,7 +22,7 @@ import { getPricing } from "@/lib/pricing";
 import { createDraftInvoice } from "@/lib/createDraftInvoice";
 import { syncOrderToInvoice } from "@/lib/syncOrderToInvoice";
 import { formatQty, formatPrice } from "@/lib/formatters";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 
 type Product = {
   id: string;
@@ -195,6 +195,7 @@ function SummaryRow({
 export default function Page() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const urlOrderId = params?.id as string | undefined;
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -229,7 +230,7 @@ export default function Page() {
   const [editingUnitPrice, setEditingUnitPrice] = useState("");
   const [priceSource, setPriceSource] = useState<PriceSource>("auto");
 
-  const [customerId, setCustomerId] = useState("");
+  const [customerId, setCustomerId] = useState(() => searchParams?.get("customer") ?? "");
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [orderDate, setOrderDate] = useState(new Date().toISOString().slice(0, 10));
@@ -1029,19 +1030,19 @@ export default function Page() {
     const order = orders.find(o => o.id === selectedOrderId);
     const customer = customers.find(c => c.id === customerId);
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-4">
-            
+
             <div>
-              <p className="text-sm font-semibold text-gray-900">{order?.name || selectedOrderId}</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{order?.name || selectedOrderId}</p>
               <p className="text-xs text-gray-400">{customer?.name} · {order?.customerType}</p>
             </div>
             <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
               order?.status === "Delivered" ? "bg-green-100 text-green-800 border border-green-300" :
               order?.status === "Preparing" ? "bg-yellow-100 text-yellow-800 border border-yellow-300" :
               order?.status === "To Deliver" ? "bg-orange-100 text-orange-700 border border-orange-300" :
-              "bg-gray-100 text-gray-600"
+              "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
             }`}>{order?.status}</span>
           </div>
           <div className="flex items-center gap-2">
@@ -1080,22 +1081,22 @@ export default function Page() {
         </div>
         <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
           {/* Order Info */}
-          <div className="bg-white rounded-xl border border-gray-200 px-6 py-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-4">
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
                 <p className="text-xs text-gray-400 mb-1">Customer</p>
-                <p className="font-medium text-gray-900">{customer?.name || "—"}</p>
-                <p className="text-xs text-gray-500">{customer?.customerType}</p>
+                <p className="font-medium text-gray-900 dark:text-white">{customer?.name || "—"}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{customer?.customerType}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-400 mb-1">Order Date</p>
-                <p className="font-medium text-gray-900">{orderDate ? orderDate.split("-").reverse().join("-") : "—"}</p>
+                <p className="font-medium text-gray-900 dark:text-white">{orderDate ? orderDate.split("-").reverse().join("-") : "—"}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-400 mb-1">Delivery Date</p>
                 <p className="font-medium" style={{color: "#B5535A"}}>{deliveryDate ? deliveryDate.split("-").reverse().join("-") : "—"}</p>
               </div>
-              {orderNotes && <div className="col-span-3"><p className="text-xs text-gray-400 mb-1">Notes</p><p className="text-gray-700">{orderNotes}</p></div>}
+              {orderNotes && <div className="col-span-3"><p className="text-xs text-gray-400 mb-1">Notes</p><p className="text-gray-700 dark:text-gray-300">{orderNotes}</p></div>}
             </div>
           </div>
           {/* Invoice banner */}
@@ -1105,14 +1106,14 @@ export default function Page() {
             </p>
           </div>
           {/* Items */}
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-3 border-b border-gray-100 bg-gray-50">
-              <h3 className="text-sm font-semibold text-gray-900">Order Items</h3>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="px-6 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Order Items</h3>
             </div>
             {orderItems.length === 0 ? (
               <div className="px-6 py-8 text-center text-sm text-gray-400">No items</div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-100 dark:divide-gray-700">
                 {orderItems.map((item) => {
                   const qtyXPrice = Number(item.quantity) * Number(item.unitPrice);
                   const displayGross = Number(item.grossLineTotal || 0) || qtyXPrice;
@@ -1121,24 +1122,24 @@ export default function Page() {
                   return (
                     <div key={item.id} className="px-6 py-3 flex items-center justify-between">
                       <div>
-                        <p className="font-medium text-gray-900 text-sm">{item.productName}</p>
+                        <p className="font-medium text-gray-900 dark:text-white text-sm">{item.productName}</p>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs text-gray-500">Qty: <span className="font-medium">{formatQty(item.quantity)}</span> × ${formatPrice(item.unitPrice)}</span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">Qty: <span className="font-medium">{formatQty(item.quantity)}</span> × ${formatPrice(item.unitPrice)}</span>
                           {discount > 0 && <span className="text-xs text-red-500">-${formatPrice(discount)}</span>}
                           {item.preparation && <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">🔪 {item.preparation}</span>}
                           {(item as any).sample && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-medium">🧪 Sample</span>}
                           {(item as any).gift && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">🎁 Gift</span>}
                         </div>
                       </div>
-                      <p className="font-semibold text-gray-900">${formatPrice(displayNet)}</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">${formatPrice(displayNet)}</p>
                     </div>
                   );
                 })}
               </div>
             )}
-            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 space-y-1 text-sm">
-              {deliveryFeeNumber > 0 && <div className="flex justify-between text-gray-500"><span>Delivery</span><span>${formatPrice(deliveryFeeNumber)}</span></div>}
-              <div className="flex justify-between font-bold text-base pt-1 border-t border-gray-200">
+            <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 space-y-1 text-sm">
+              {deliveryFeeNumber > 0 && <div className="flex justify-between text-gray-500 dark:text-gray-400"><span>Delivery</span><span>${formatPrice(deliveryFeeNumber)}</span></div>}
+              <div className="flex justify-between font-bold text-base pt-1 border-t border-gray-200 dark:border-gray-700">
                 <span>Total</span><span style={{color: "#1B2A5E"}}>${formatPrice(finalTotal)}</span>
               </div>
             </div>
@@ -1152,19 +1153,19 @@ export default function Page() {
   const isNewPage = urlOrderId === "new";
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Sticky Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          
+
           {selectedOrderId && (
             <>
-              <div className="h-4 w-px bg-gray-200" />
-              <p className="text-sm font-semibold text-gray-900">
+              <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">
                 {orders.find(o => o.id === selectedOrderId)?.name || "New Order"}
               </p>
               <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                orderStatus === "Draft" ? "bg-gray-200 text-gray-700 border border-gray-300" :
+                orderStatus === "Draft" ? "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600" :
                 orderStatus === "Preparing" ? "bg-yellow-100 text-yellow-800 border border-yellow-300" :
                 orderStatus === "To Deliver" ? "bg-orange-100 text-orange-700 border border-orange-300" :
                 orderStatus === "Delivered" ? "bg-green-100 text-green-800 border border-green-300" :
@@ -1213,22 +1214,22 @@ export default function Page() {
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
 
         {/* Step 1: Customer + New Order */}
-        <div className="bg-white rounded-xl border border-gray-200 px-6 py-5 space-y-3">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-5 space-y-3">
           <div>
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Customer</label>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Customer</label>
             {!isNewPage ? (
-              <div className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-gray-50 text-gray-500">
+              <div className="mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400">
                 {customers.find(c => c.id === customerId)?.name || "—"}
               </div>
             ) : (
               <div className="relative mt-1">
                 {/* Selected display / search input */}
                 <div
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white flex items-center gap-2 cursor-pointer"
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-800 flex items-center gap-2 cursor-pointer"
                   onClick={() => { setCustomerDropdownOpen(o => !o); setCustomerSearch(""); }}
                 >
                   {customerId ? (
-                    <span className="flex-1 text-gray-900">{customers.find(c => c.id === customerId)?.name || "—"}</span>
+                    <span className="flex-1 text-gray-900 dark:text-white">{customers.find(c => c.id === customerId)?.name || "—"}</span>
                   ) : (
                     <span className="flex-1 text-gray-400">Select Customer</span>
                   )}
@@ -1240,9 +1241,9 @@ export default function Page() {
                   <>
                     {/* Backdrop — catches outside clicks without event propagation conflicts */}
                     <div className="fixed inset-0 z-40" onClick={() => { setCustomerDropdownOpen(false); setCustomerSearch(""); }} />
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                    <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden">
                       {/* Search */}
-                      <div className="p-2 border-b border-gray-100">
+                      <div className="p-2 border-b border-gray-100 dark:border-gray-700">
                         <div className="relative">
                           <input
                             autoFocus
@@ -1250,7 +1251,7 @@ export default function Page() {
                             placeholder="Search customers..."
                             value={customerSearch}
                             onChange={e => setCustomerSearch(e.target.value)}
-                            className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                            className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 dark:bg-gray-800 dark:text-white"
                           />
                           {customerSearch && (
                             <button
@@ -1272,7 +1273,7 @@ export default function Page() {
                             <div
                               key={c.id}
                               onClick={() => { setCustomerId(c.id); setSelectedOrderId(""); setCustomerDropdownOpen(false); setCustomerSearch(""); }}
-                              className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-gray-50 flex items-center justify-between ${c.id === customerId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-800"}`}
+                              className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center justify-between ${c.id === customerId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-800 dark:text-gray-200"}`}
                             >
                               <span>{c.name}</span>
                               {c.customerType && <span className="text-xs text-gray-400">{c.customerType}</span>}
@@ -1288,10 +1289,10 @@ export default function Page() {
               </div>
             )}
             {selectedCustomer && (
-              <div className="mt-2 flex gap-4 text-xs text-gray-500">
-                <span><span className="font-bold text-gray-700">Type:</span> {selectedCustomer.customerType || "B2C"}</span>
-                <span><span className="font-bold text-gray-700">Margin:</span> {selectedCustomer.clientMargin || 0}</span>
-                <span><span className="font-bold text-gray-700">Delivery:</span> ${formatPrice(selectedCustomer.deliveryFee || 0)}</span>
+              <div className="mt-2 flex gap-4 text-xs text-gray-500 dark:text-gray-400">
+                <span><span className="font-bold text-gray-700 dark:text-gray-300">Type:</span> {selectedCustomer.customerType || "B2C"}</span>
+                <span><span className="font-bold text-gray-700 dark:text-gray-300">Margin:</span> {selectedCustomer.clientMargin || 0}</span>
+                <span><span className="font-bold text-gray-700 dark:text-gray-300">Delivery:</span> ${formatPrice(selectedCustomer.deliveryFee || 0)}</span>
               </div>
             )}
           </div>
@@ -1347,23 +1348,23 @@ export default function Page() {
             )}
 
             {/* Dates & Status */}
-            <div className="bg-white rounded-xl border border-gray-200 px-6 py-5">
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">📅 Dates & Status</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-5">
+              <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">📅 Dates & Status</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Order Date</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Order Date</label>
                   <Input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Delivery Date *</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Delivery Date *</label>
                   <Input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)}
                     min={new Date().toISOString().slice(0, 10)}
                     className={!deliveryDate ? "border-red-300" : ""} />
                 </div>
               </div>
               <div className="mt-3 flex items-center gap-3">
-                <label className="text-xs text-gray-500">Status</label>
-                <select className="flex-1 rounded-lg border px-3 py-1.5 text-sm" value={orderStatus}
+                <label className="text-xs text-gray-500 dark:text-gray-400">Status</label>
+                <select className="flex-1 rounded-lg border px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" value={orderStatus}
                   onChange={(e) => setOrderStatus(e.target.value)}>
                   <option value="Draft">📝 Draft</option>
                   <option value="Preparing">🟡 Preparing</option>
@@ -1371,22 +1372,22 @@ export default function Page() {
                 </select>
               </div>
               <div className="mt-3">
-                <label className="text-xs text-gray-500 mb-1 block">Notes</label>
-                <textarea className="w-full rounded-lg border px-3 py-2 text-sm min-h-[70px]"
+                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Notes</label>
+                <textarea className="w-full rounded-lg border px-3 py-2 text-sm min-h-[70px] dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                   placeholder="Order notes..." value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} />
               </div>
             </div>
 
             {/* Add Product */}
-            <div className="bg-white rounded-xl border border-gray-200 px-6 py-5 space-y-3">
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">➕ Add Product</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-5 space-y-3">
+              <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">➕ Add Product</h3>
               <div className="relative">
                 <div
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white flex items-center gap-2 cursor-pointer"
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-800 flex items-center gap-2 cursor-pointer"
                   onClick={() => { setProductDropdownOpen(o => !o); setProductSearch(""); }}
                 >
                   {selectedProductId ? (
-                    <span className="flex-1 text-gray-900">{products.find(p => p.id === selectedProductId)?.name || "—"}</span>
+                    <span className="flex-1 text-gray-900 dark:text-white">{products.find(p => p.id === selectedProductId)?.name || "—"}</span>
                   ) : (
                     <span className="flex-1 text-gray-400">Select Product</span>
                   )}
@@ -1402,15 +1403,15 @@ export default function Page() {
                 {productDropdownOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => { setProductDropdownOpen(false); setProductSearch(""); }} />
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
-                      <div className="p-2 border-b border-gray-100">
+                    <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden">
+                      <div className="p-2 border-b border-gray-100 dark:border-gray-700">
                         <input
                           autoFocus
                           type="text"
                           placeholder="Search products..."
                           value={productSearch}
                           onChange={e => setProductSearch(e.target.value)}
-                          className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                          className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
                         />
                       </div>
                       <div className="max-h-64 overflow-y-auto">
@@ -1421,7 +1422,7 @@ export default function Page() {
                             <div
                               key={p.id}
                               onClick={() => { setSelectedProductId(p.id); setProductDropdownOpen(false); setProductSearch(""); }}
-                              className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-gray-50 flex items-center justify-between ${p.id === selectedProductId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-800"}`}
+                              className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center justify-between ${p.id === selectedProductId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-800 dark:text-gray-200"}`}
                             >
                               <span>{p.name}</span>
                               <span className="text-xs text-gray-400 shrink-0 ml-2">{formatQty(p.currentStock)}</span>
@@ -1437,28 +1438,28 @@ export default function Page() {
               </div>
 
               {selectedProduct && (
-                <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-xs space-y-1">
+                <div className="rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 px-4 py-3 text-xs space-y-1">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Stock</span>
+                    <span className="text-gray-500 dark:text-gray-400">Stock</span>
                     <span className="font-medium">{formatQty(selectedProduct.currentStock)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Cost</span>
+                    <span className="text-gray-500 dark:text-gray-400">Cost</span>
                     <span className="font-medium">{money(productCardUnitCost)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">{manualPrice ? "Manual Price" : "Auto Price"}</span>
+                    <span className="text-gray-500 dark:text-gray-400">{manualPrice ? "Manual Price" : "Auto Price"}</span>
                     <span className="font-medium">{money(productCardUnitPrice)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Margin</span>
+                    <span className="text-gray-500 dark:text-gray-400">Margin</span>
                     <span className={`font-semibold ${productCardMargin < 0 ? "text-red-600" : productCardMargin < 15 ? "text-yellow-600" : "text-green-600"}`}>
                       {productCardMargin.toFixed(1)}%
                     </span>
                   </div>
                   {productCardQty > 0 && (
-                    <div className="flex justify-between border-t border-gray-200 pt-1 mt-1">
-                      <span className="text-gray-500">Line Total</span>
+                    <div className="flex justify-between border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
+                      <span className="text-gray-500 dark:text-gray-400">Line Total</span>
                       <span className="font-semibold">{money(createNetLineTotal)}</span>
                     </div>
                   )}
@@ -1468,7 +1469,7 @@ export default function Page() {
                       if (e.target.checked) setManualUnitPrice(String(pricing.unitPrice));
                       else setManualUnitPrice("");
                     }} />
-                    <span className="text-gray-600">Override price manually</span>
+                    <span className="text-gray-600 dark:text-gray-400">Override price manually</span>
                   </label>
                   {manualPrice && (
                     <div className="space-y-1">
@@ -1476,10 +1477,10 @@ export default function Page() {
                         onChange={(e) => setManualUnitPrice(e.target.value)} className="text-sm" />
                       <div className="flex gap-2">
                         <button onClick={() => setManualUnitPrice(String(pricing.unitPrice))}
-                          className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100">Auto</button>
+                          className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">Auto</button>
                         {selectedCustomer?.specialPrices?.[selectedProduct.id] !== undefined && (
                           <button onClick={() => setManualUnitPrice(String(selectedCustomer.specialPrices![selectedProduct.id]))}
-                            className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100">VIP</button>
+                            className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">VIP</button>
                         )}
                       </div>
                     </div>
@@ -1489,15 +1490,15 @@ export default function Page() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Quantity</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Quantity</label>
                   <Input type="number" placeholder="0" value={quantity}
                     max={selectedProduct?.currentStock || undefined}
                     onChange={(e) => setQuantity(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Preparation</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Preparation</label>
                   <select value={preparation} onChange={e => setPreparation(e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2 text-sm bg-white">
+                    className="w-full rounded-lg border px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-white">
                     <option value="">— None —</option>
                     {prepOptions.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
@@ -1505,11 +1506,11 @@ export default function Page() {
               </div>
 
               <div className="mb-1">
-                <label className="text-xs text-gray-500 mb-1 block">Item Type</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Item Type</label>
                 <div className="flex gap-1">
                   {([["regular","Regular","⚪"],["sample","Sample","🧪"],["gift","Gift","🎁"]] as const).map(([val,label,icon]) => (
                     <button key={val} type="button" onClick={() => setItemType(val)}
-                      className={"flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors " + (itemType === val ? "text-white border-transparent" : "text-gray-500 border-gray-200 hover:bg-gray-50")}
+                      className={"flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors " + (itemType === val ? "text-white border-transparent" : "text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50")}
                       style={itemType === val ? {backgroundColor: val === "regular" ? "#1B2A5E" : val === "sample" ? "#7C3AED" : "#D97706"} : {}}>
                       {icon} {label}
                     </button>
@@ -1519,14 +1520,14 @@ export default function Page() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Item Discount %</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Item Discount %</label>
                   <Input type="number" placeholder="0" value={itemDiscountPercent}
                     disabled={Number(itemDiscountAmount) > 0}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setItemDiscountPercent(cleanNumberInput(e.target.value))} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Item Discount $</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Item Discount $</label>
                   <Input type="number" placeholder="0" value={itemDiscountAmount}
                     disabled={Number(itemDiscountPercent) > 0}
                     onFocus={(e) => e.target.select()}
@@ -1539,20 +1540,20 @@ export default function Page() {
                 style={{backgroundColor: "#1B2A5E"}}>
                 {loading ? "Adding..." : "➕ Add to Order"}
               </button>
-              {result && <p className="text-xs text-center text-gray-600">{result}</p>}
+              {result && <p className="text-xs text-center text-gray-600 dark:text-gray-400">{result}</p>}
             </div>
 
             {/* Order Items List */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-6 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Order Items</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="px-6 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-between">
+                <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Order Items</h3>
                 <span className="text-xs text-gray-400">{orderItems.length} item{orderItems.length !== 1 ? "s" : ""}</span>
               </div>
 
               {orderItems.length === 0 ? (
                 <div className="px-6 py-8 text-center text-sm text-gray-400">No items yet — add a product above</div>
               ) : (
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
                   {orderItems.map((item) => {
                     const isEditing = editingItemId === item.id;
                     const displayGrossLine = Number(item.grossLineTotal || 0) || Number(item.quantity || 0) * Number(item.unitPrice || 0);
@@ -1566,34 +1567,34 @@ export default function Page() {
                       <div key={item.id} className="px-6 py-4">
                         {isEditing ? (
                           <div className="space-y-3">
-                            <p className="font-semibold text-sm text-gray-900">{item.productName}</p>
+                            <p className="font-semibold text-sm text-gray-900 dark:text-white">{item.productName}</p>
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">Qty (max: {getEditableMaxQty(item)})</label>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Qty (max: {getEditableMaxQty(item)})</label>
                                 <Input type="number" value={editingQuantity} onChange={(e) => setEditingQuantity(e.target.value)} />
                               </div>
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">Unit Price ($)</label>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Unit Price ($)</label>
                                 <Input type="number" value={editingUnitPrice}
                                   onChange={(e) => { setEditingUnitPrice(e.target.value); setPriceSource("manual"); }} />
                               </div>
                             </div>
                             <div>
-                              <label className="text-xs text-gray-500 mb-1 block">Preparation</label>
+                              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Preparation</label>
                               <select value={editingPreparation} onChange={e => setEditingPreparation(e.target.value)}
-                                className="w-full rounded-lg border px-3 py-2 text-sm bg-white">
+                                className="w-full rounded-lg border px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-white">
                                 <option value="">— None —</option>
                                 {prepOptions.map(o => <option key={o} value={o}>{o}</option>)}
                               </select>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">Discount %</label>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Discount %</label>
                                 <Input type="number" value={editingItemDiscountPercent}
                                   onChange={(e) => setEditingItemDiscountPercent(e.target.value)} />
                               </div>
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">Discount $</label>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Discount $</label>
                                 <Input type="number" value={editingItemDiscountAmount}
                                   onChange={(e) => setEditingItemDiscountAmount(e.target.value)} />
                               </div>
@@ -1602,15 +1603,15 @@ export default function Page() {
                               <button onClick={() => {
                                 const ap = getPricing({ product: products.find(p => p.id === item.productId) || null, customer: selectedCustomer, quantity: Number(editingQuantity || item.quantity || 0), isSample: false, ownerAtCost: false }) as Partial<PricingResult>;
                                 setEditingUnitPrice(String(Number(ap?.unitPrice || 0))); setPriceSource("auto");
-                              }} className="text-xs px-3 py-1 rounded border border-gray-300 hover:bg-gray-100">Auto Price</button>
+                              }} className="text-xs px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">Auto Price</button>
                               {selectedCustomer?.specialPrices?.[item.productId] !== undefined && (
                                 <button onClick={() => { setEditingUnitPrice(String(selectedCustomer.specialPrices![item.productId])); setPriceSource("vip"); }}
-                                  className="text-xs px-3 py-1 rounded border border-gray-300 hover:bg-gray-100">VIP Price</button>
+                                  className="text-xs px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">VIP Price</button>
                               )}
                               <button onClick={() => { setEditingUnitPrice(String(item.unitCostPrice || 0)); setPriceSource("cost"); }}
-                                className="text-xs px-3 py-1 rounded border border-gray-300 hover:bg-gray-100">Cost Price</button>
+                                className="text-xs px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">Cost Price</button>
                             </div>
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
                               Net: {money(editNetLineTotal)} · Margin: <span className={currentEditMargin < 0 ? "text-red-500" : currentEditMargin < 15 ? "text-yellow-600" : "text-green-600"}>{currentEditMargin.toFixed(1)}%</span>
                             </div>
                             <div className="flex gap-2">
@@ -1621,8 +1622,8 @@ export default function Page() {
                         ) : (
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1">
-                              <p className="font-semibold text-sm text-gray-900">{item.productName}</p>
-                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                              <p className="font-semibold text-sm text-gray-900 dark:text-white">{item.productName}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                                 <span className={`font-semibold ${Number(item.quantity) % 1 === 0 ? "text-orange-500" : "text-green-600"}`}>
                                   {item.quantity}
                                 </span>
@@ -1632,12 +1633,12 @@ export default function Page() {
                                 {(item as any).sample && <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-medium">🧪 Sample</span>}
                                 {(item as any).gift && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">🎁 Gift</span>}
                               </div>
-                              <div className="mt-0.5 text-xs text-gray-400">
+                              <div className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
                                 Cost: {money(item.unitCostPrice)} · Profit: {money(Math.max(displayNetLine - Number(item.quantity || 0) * Number(item.unitCostPrice || 0), 0))} · Margin: {displayNetLine > 0 ? (((displayNetLine - Number(item.quantity || 0) * Number(item.unitCostPrice || 0)) / displayNetLine) * 100).toFixed(1) : "0.0"}%
                               </div>
                             </div>
                             <div className="text-right space-y-1 shrink-0">
-                              <p className="font-bold text-gray-900">{money(displayNetLine)}</p>
+                              <p className="font-bold text-gray-900 dark:text-white">{money(displayNetLine)}</p>
                               {products.find(p => p.id === item.productId)?.requiresWeighing && weighingItemId === item.id ? (
                                 <div className="flex items-center gap-1">
                                   <input type="number" step="0.001" placeholder="kg..." value={weighedQuantity}
@@ -1682,33 +1683,33 @@ export default function Page() {
               )}
 
               {/* Totals */}
-              <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 space-y-2">
+              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 space-y-2">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Order Discount %</label>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Order Discount %</label>
                     <Input type="number" placeholder="0" value={discountPercent} disabled={hasDiscountAmount}
                       onFocus={(e) => e.target.select()} onChange={(e) => setDiscountPercent(cleanNumberInput(e.target.value))} />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Order Discount $</label>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Order Discount $</label>
                     <Input type="number" placeholder="0" value={discountAmount} disabled={hasDiscountPercent}
                       onFocus={(e) => e.target.select()} onChange={(e) => setDiscountAmount(cleanNumberInput(e.target.value))} />
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Delivery Fee $</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Delivery Fee $</label>
                   <Input type="number" placeholder="0" value={deliveryFee}
                     onFocus={(e) => e.target.select()} onChange={(e) => setDeliveryFee(cleanNumberInput(e.target.value))} />
                 </div>
-                <div className="space-y-1 pt-2 text-sm border-t border-gray-200">
-                  {grossSubtotal !== netSubtotal && <div className="flex justify-between text-gray-500"><span>Gross</span><span>{money(grossSubtotal)}</span></div>}
+                <div className="space-y-1 pt-2 text-sm border-t border-gray-200 dark:border-gray-700">
+                  {grossSubtotal !== netSubtotal && <div className="flex justify-between text-gray-500 dark:text-gray-400"><span>Gross</span><span>{money(grossSubtotal)}</span></div>}
                   {itemDiscountTotal > 0 && <div className="flex justify-between text-red-500"><span>Item Discounts</span><span>-{money(itemDiscountTotal)}</span></div>}
-                  <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>{money(netSubtotal)}</span></div>
+                  <div className="flex justify-between text-gray-500 dark:text-gray-400"><span>Subtotal</span><span>{money(netSubtotal)}</span></div>
                   {orderDiscountValue > 0 && <div className="flex justify-between text-red-500"><span>Order Discount</span><span>-{money(orderDiscountValue)}</span></div>}
-                  {deliveryFeeNumber > 0 && <div className="flex justify-between text-gray-500"><span>Delivery</span><span>{money(deliveryFeeNumber)}</span></div>}
+                  {deliveryFeeNumber > 0 && <div className="flex justify-between text-gray-500 dark:text-gray-400"><span>Delivery</span><span>{money(deliveryFeeNumber)}</span></div>}
                   {roundingAdjustment !== 0 && <div className={`flex justify-between ${roundingAdjustment > 0 ? "text-green-600" : "text-red-500"}`}><span>Rounding</span><span>{(roundingAdjustment > 0 ? "+" : "") + money(Math.abs(roundingAdjustment))}</span></div>}
                   <div className="flex justify-between text-green-600 text-xs"><span>Profit</span><span>{money(totalProfit)}</span></div>
-                  <div className="flex justify-between font-bold text-base pt-1 border-t border-gray-300">
+                  <div className="flex justify-between font-bold text-base pt-1 border-t border-gray-300 dark:border-gray-600">
                     <span>Total</span><span style={{color: "#1B2A5E"}}>{money(finalTotal)}</span>
                   </div>
                 </div>
