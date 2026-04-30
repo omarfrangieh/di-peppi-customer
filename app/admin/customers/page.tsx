@@ -15,7 +15,7 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
     <div>
       <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">{label}</label>
       <input type={type} value={value || ""} onChange={e => onChange(e.target.value)}
-        autoComplete="off" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 bg-white dark:bg-gray-800 dark:text-white" />
+        autoComplete="off" className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 bg-white dark:bg-gray-700 dark:text-white" />
     </div>
   );
 }
@@ -29,21 +29,27 @@ export default function AdminCustomersPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [editData, setEditData] = useState<any>({});
   const [editPrices, setEditPrices] = useState<Record<string, string>>({});
+  const [pendingHold, setPendingHold] = useState(false);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [priceSearch, setPriceSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const [phonePrefix, setPhonePrefix] = useState("+961");
+  const [pricingOpen, setPricingOpen] = useState(false);
   const [showPricesFor, setShowPricesFor] = useState<string | null>(null);
   const [newCustomer, setNewCustomer] = useState<any>({ customerType: "", country: "Lebanon" });
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [docPreview, setDocPreview] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [newDocFile, setNewDocFile] = useState<File | null>(null);
   const [viewMode, setViewMode] = useState<"cards" | "list">(() => {
     try { return (localStorage.getItem("dp-customers-view") as "cards" | "list") || "cards"; } catch { return "cards"; }
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const newDocInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { void load(); }, []);
 
@@ -84,14 +90,25 @@ export default function AdminCustomersPage() {
     setPriceSearch("");
   };
 
-  const cancelEdit = () => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(false); };
+  const cancelEdit = () => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(false); setPendingHold(false); };
+
+  const closeAddDrawer = () => {
+    setShowAdd(false);
+    setHasAttemptedSubmit(false);
+    setPricingOpen(false);
+    setNewDocFile(null);
+    setNewCustomer({ customerType: "", country: "Lebanon" });
+  };
 
   const addCustomer = async () => {
-    if (!newCustomer.name?.trim()) { alert("Customer name is required."); return; }
-    if (!newCustomer.customerType) { alert("Customer type is required."); return; }
-    if (!newCustomer.phoneNumber?.trim()) { alert("Phone number is required."); return; }
-    const ref = await addDoc(collection(db, "customers"), {
+    setHasAttemptedSubmit(true);
+    if (!newCustomer.name?.trim()) return;
+    if (!newCustomer.customerType) return;
+    if (!newCustomer.phoneNumber?.trim()) return;
+    const fullPhone = phonePrefix + (newCustomer.phoneNumber || "").replace(/^\+?[0-9]{1,4}/, "");
+    const docRef = await addDoc(collection(db, "customers"), {
       ...newCustomer,
+      phoneNumber: fullPhone,
       active: true,
       manualHold: false,
       deliveryFee: Number(newCustomer.deliveryFee || 0),
@@ -101,14 +118,17 @@ export default function AdminCustomersPage() {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    const added = { id: ref.id, ...newCustomer, active: true, manualHold: false, specialPrices: {} };
+    const added: any = { id: docRef.id, ...newCustomer, phoneNumber: fullPhone, active: true, manualHold: false, specialPrices: {} };
+    if (newDocFile) {
+      await handleDocUpload(newDocFile, docRef.id);
+      added.documentUrl = true; // will be refreshed; optimistic placeholder
+    }
     setCustomers(prev => [...prev, added].sort((a, b) => {
       if (a.manualHold && !b.manualHold) return 1;
       if (!a.manualHold && b.manualHold) return -1;
       return (a.name || "").localeCompare(b.name || "");
     }));
-    setNewCustomer({ customerType: "", country: "Lebanon" });
-    setShowAdd(false);
+    closeAddDrawer();
   };
 
   const saveCustomer = async (id: string) => {
@@ -192,9 +212,11 @@ export default function AdminCustomersPage() {
   const activeFiltered = filtered.filter(c => !c.manualHold);
   const holdFiltered = filtered.filter(c => c.manualHold);
 
-  const filteredProducts = products.filter(p =>
-    (p.name || "").toLowerCase().includes(priceSearch.toLowerCase())
-  );
+  const filteredProducts = products.filter(p => {
+    const sellingPrice = Number(p.b2bPrice || p.b2cPrice || 0);
+    if (sellingPrice <= 0) return false;
+    return (p.name || "").toLowerCase().includes(priceSearch.toLowerCase());
+  });
 
   const b2bCount = customers.filter(c => c.customerType === "B2B").length;
   const b2cCount = customers.filter(c => c.customerType === "B2C").length;
@@ -285,7 +307,7 @@ export default function AdminCustomersPage() {
             >☰</button>
           </div>
 
-          <button onClick={() => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(p => !p); }}
+          <button onClick={() => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(true); }}
             disabled={editing !== null}
             className="px-4 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             style={{backgroundColor: "#1B2A5E"}}>
@@ -311,103 +333,237 @@ export default function AdminCustomersPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-3">
-        {showAdd && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-blue-200 dark:border-blue-800 p-5">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white mb-4">New Customer</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Name *</label>
-                <input value={newCustomer.name || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, name: e.target.value }))}
-                  placeholder="Customer name" className={`w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 bg-white dark:bg-gray-800 dark:text-white ${!newCustomer.name?.trim() ? "border-red-300" : "border-gray-200 dark:border-gray-700"}`} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Company Name</label>
-                <input value={newCustomer.companyName || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, companyName: e.target.value }))}
-                  placeholder="e.g. ABC Trading SAL" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Customer Type *</label>
-                <select value={newCustomer.customerType} onChange={e => setNewCustomer((p: any) => ({ ...p, customerType: e.target.value }))}
-                  className={`w-full border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-900 ${!newCustomer.customerType ? "border-red-300" : "border-gray-200 dark:border-gray-700"}`}>
-                  <option value="">— Select —</option>
-                  {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Phone *</label>
-                <input value={newCustomer.phoneNumber || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, phoneNumber: e.target.value }))}
-                  placeholder="+961..." className={`w-full border rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white ${!newCustomer.phoneNumber?.trim() ? "border-red-300" : "border-gray-200 dark:border-gray-700"}`} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">City</label>
-                <input value={newCustomer.city || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, city: e.target.value }))}
-                  placeholder="Beirut" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Country</label>
-                <input value={newCustomer.country || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, country: e.target.value }))}
-                  placeholder="Lebanon" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Street</label>
-                <input value={newCustomer.street || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, street: e.target.value }))}
-                  placeholder="Street" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Building</label>
-                <input value={newCustomer.building || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, building: e.target.value }))}
-                  placeholder="Building" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Floor</label>
-                <input value={newCustomer.floor || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, floor: e.target.value }))}
-                  placeholder="Floor" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Apartment</label>
-                <input value={newCustomer.apartment || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, apartment: e.target.value }))}
-                  placeholder="Apt" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Google Maps Link</label>
-                <input value={newCustomer.mapsLink || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, mapsLink: e.target.value }))}
-                  placeholder="https://maps.app.goo.gl/..." className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Delivery Fee $</label>
-                <input type="number" value={newCustomer.deliveryFee || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, deliveryFee: e.target.value }))}
-                  placeholder="0" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Client Margin %</label>
-                <input type="number" value={newCustomer.clientMargin || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, clientMargin: e.target.value }))}
-                  placeholder="0" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Client Discount %</label>
-                <input type="number" value={newCustomer.clientDiscount || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, clientDiscount: e.target.value }))}
-                  placeholder="0" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Additional Instructions</label>
-                <input value={newCustomer.additionalInstructions || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, additionalInstructions: e.target.value }))}
-                  placeholder="Delivery notes..." className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white" />
-              </div>
+      {/* ── NEW CUSTOMER DRAWER ── */}
+      {showAdd && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/40 dark:bg-black/60 z-40"
+            onClick={closeAddDrawer}
+          />
+          {/* Drawer panel */}
+          <div className="fixed top-0 right-0 h-full w-[420px] max-w-full bg-white dark:bg-gray-800 shadow-2xl z-50 flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+              <p className="text-base font-semibold text-gray-900 dark:text-white">New Customer</p>
+              <button onClick={closeAddDrawer} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
             </div>
-            <div className="flex gap-2">
-              <button onClick={addCustomer}
-                className="px-4 py-2 text-white text-sm font-medium rounded-lg"
-                style={{backgroundColor: "#1B2A5E"}}>
+
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+              {/* SECTION 1 — Basic Info */}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Name *</label>
+                  <input
+                    value={newCustomer.name || ""}
+                    onChange={e => setNewCustomer((p: any) => ({ ...p, name: e.target.value }))}
+                    placeholder="Customer name"
+                    className={`w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 ${hasAttemptedSubmit && !newCustomer.name?.trim() ? "border-red-400 dark:border-red-500" : "border-gray-200 dark:border-gray-600"}`}
+                  />
+                  {hasAttemptedSubmit && !newCustomer.name?.trim() && <p className="text-xs text-red-500 mt-0.5">Name is required</p>}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Company Name</label>
+                  <input
+                    value={newCustomer.companyName || ""}
+                    onChange={e => setNewCustomer((p: any) => ({ ...p, companyName: e.target.value }))}
+                    placeholder="e.g. ABC Trading SAL"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Customer Type *</label>
+                  <select
+                    value={newCustomer.customerType}
+                    onChange={e => setNewCustomer((p: any) => ({ ...p, customerType: e.target.value }))}
+                    className={`w-full border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-900 ${hasAttemptedSubmit && !newCustomer.customerType ? "border-red-400 dark:border-red-500" : "border-gray-200 dark:border-gray-600"}`}
+                  >
+                    <option value="">— Select —</option>
+                    {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                  {hasAttemptedSubmit && !newCustomer.customerType && <p className="text-xs text-red-500 mt-0.5">Type is required</p>}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Phone *</label>
+                  <div className={`flex rounded border overflow-hidden ${hasAttemptedSubmit && !newCustomer.phoneNumber?.trim() ? "border-red-400 dark:border-red-500" : "border-gray-200 dark:border-gray-600"}`}>
+                    <select
+                      value={phonePrefix}
+                      onChange={e => setPhonePrefix(e.target.value)}
+                      className="border-r border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm px-2 py-1.5 focus:outline-none flex-shrink-0"
+                    >
+                      <option value="+961">+961</option>
+                      <option value="+971">+971</option>
+                      <option value="+966">+966</option>
+                      <option value="+1">+1</option>
+                      <option value="+44">+44</option>
+                    </select>
+                    <input
+                      value={newCustomer.phoneNumber || ""}
+                      onChange={e => setNewCustomer((p: any) => ({ ...p, phoneNumber: e.target.value }))}
+                      placeholder="70 123 456"
+                      className="flex-1 px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none"
+                    />
+                  </div>
+                  {hasAttemptedSubmit && !newCustomer.phoneNumber?.trim() && <p className="text-xs text-red-500 mt-0.5">Phone is required</p>}
+                </div>
+              </div>
+
+              {/* SECTION 2 — Address */}
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex-1 h-px bg-gray-100 dark:bg-gray-700" />
+                  <span className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">Address</span>
+                  <div className="flex-1 h-px bg-gray-100 dark:bg-gray-700" />
+                </div>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">City</label>
+                      <input value={newCustomer.city || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, city: e.target.value }))}
+                        placeholder="Beirut" className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Country</label>
+                      <input value={newCustomer.country || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, country: e.target.value }))}
+                        placeholder="Lebanon" className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Street</label>
+                    <input value={newCustomer.street || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, street: e.target.value }))}
+                      placeholder="Street" className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Building</label>
+                      <input value={newCustomer.building || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, building: e.target.value }))}
+                        placeholder="Building" className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Floor</label>
+                      <input value={newCustomer.floor || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, floor: e.target.value }))}
+                        placeholder="Floor" className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Apt</label>
+                      <input value={newCustomer.apartment || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, apartment: e.target.value }))}
+                        placeholder="Apt" className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Google Maps Link</label>
+                    <input value={newCustomer.mapsLink || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, mapsLink: e.target.value }))}
+                      placeholder="https://maps.app.goo.gl/..." className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400" />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3 — Pricing & Settings (collapsible) */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setPricingOpen(p => !p)}
+                  className="flex items-center gap-3 w-full text-left mb-3"
+                >
+                  <div className="flex-1 h-px bg-gray-100 dark:bg-gray-700" />
+                  <span className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                    Pricing &amp; Settings
+                    <span className={`transition-transform duration-200 inline-block ${pricingOpen ? "rotate-180" : ""}`}>▾</span>
+                  </span>
+                  <div className="flex-1 h-px bg-gray-100 dark:bg-gray-700" />
+                </button>
+                {pricingOpen && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Delivery Fee $</label>
+                        <input type="number" value={newCustomer.deliveryFee || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, deliveryFee: e.target.value }))}
+                          placeholder="0" className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Margin %</label>
+                        <input type="number" value={newCustomer.clientMargin || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, clientMargin: e.target.value }))}
+                          placeholder="0" className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Discount %</label>
+                        <input type="number" value={newCustomer.clientDiscount || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, clientDiscount: e.target.value }))}
+                          placeholder="0" className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Additional Instructions</label>
+                      <input value={newCustomer.additionalInstructions || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, additionalInstructions: e.target.value }))}
+                        placeholder="Delivery notes..." className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION 4 — Official Document (B2B only) */}
+              {newCustomer.customerType === "B2B" && (
+                <div>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex-1 h-px bg-gray-100 dark:bg-gray-700" />
+                    <span className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">Official Document</span>
+                    <div className="flex-1 h-px bg-gray-100 dark:bg-gray-700" />
+                  </div>
+                  <input
+                    ref={newDocInputRef}
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.heic"
+                    className="hidden"
+                    onChange={e => setNewDocFile(e.target.files?.[0] ?? null)}
+                  />
+                  {newDocFile ? (
+                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
+                      <span className="text-2xl">{newDocFile.type.startsWith("image/") ? "🖼" : "📄"}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{newDocFile.name}</p>
+                        <p className="text-xs text-gray-400">{(newDocFile.size / 1024).toFixed(0)} KB</p>
+                      </div>
+                      <button
+                        onClick={() => { setNewDocFile(null); if (newDocInputRef.current) newDocInputRef.current.value = ""; }}
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm"
+                      >✕</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => newDocInputRef.current?.click()}
+                      className="w-full px-3 py-2.5 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <span>⬆</span> Upload Document (PDF, JPG, PNG)
+                    </button>
+                  )}
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Uploaded after customer is created.</p>
+                </div>
+              )}
+
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-700 flex-shrink-0">
+              <button
+                onClick={addCustomer}
+                className="flex-1 px-4 py-2 text-white text-sm font-medium rounded-lg"
+                style={{backgroundColor: "#1B2A5E"}}
+              >
                 Add Customer
               </button>
-              <button onClick={() => { setShowAdd(false); setNewCustomer({ customerType: "", country: "Lebanon" }); }}
-                className="px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
+              <button
+                onClick={closeAddDrawer}
+                className="px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50"
+              >
                 Cancel
               </button>
             </div>
           </div>
-        )}
+        </>
+      )}
+
+      <div className="max-w-7xl mx-auto px-6 py-6 space-y-3">
 
         {/* ── LIST VIEW ── */}
         {viewMode === "list" && (
@@ -489,7 +645,7 @@ export default function AdminCustomersPage() {
             <div key={customer.id} className={isHold ? "opacity-70 hover:opacity-100 transition-opacity" : ""}>
               <div className={`bg-white dark:bg-gray-800 rounded-xl overflow-hidden ${isHold ? "border-l-4 border-amber-400 border border-gray-200 dark:border-gray-700" : "border border-gray-200 dark:border-gray-700"} ${customer.active === false ? "opacity-50" : ""}`}>
               {editing === customer.id ? (
-                <div className="p-5">
+                <div className="p-5 bg-white dark:bg-gray-800">
                   {/* Logo */}
                   <div className="flex items-center gap-5 mb-5 pb-5 border-b border-gray-100 dark:border-gray-700">
                     <div className="relative flex-shrink-0">
@@ -506,12 +662,12 @@ export default function AdminCustomersPage() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Customer Photo / Logo</p>
-                      <p className="text-xs text-gray-400 mb-2">JPG, PNG, HEIC accepted</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">JPG, PNG, HEIC accepted</p>
                       <input ref={logoInputRef} type="file" accept="image/*,.heic"
                         className="hidden"
                         onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f, customer.id); }} />
                       <button onClick={() => logoInputRef.current?.click()} disabled={uploadingLogo}
-                        className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50 flex items-center gap-1.5 dark:text-gray-300">
+                        className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50 flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
                         {uploadingLogo
                           ? <><span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin inline-block" /> Uploading...</>
                           : <><span>⬆</span> {editData.logoUrl ? "Change Photo" : "Upload Photo"}</>}
@@ -527,7 +683,7 @@ export default function AdminCustomersPage() {
                     <div>
                       <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Customer Type</label>
                       <select value={editData.customerType || ""} onChange={e => setEditData((p: any) => ({ ...p, customerType: e.target.value }))}
-                        className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm focus:outline-none bg-white dark:bg-gray-800 dark:text-white">
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white">
                         {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
                       </select>
                     </div>
@@ -553,7 +709,7 @@ export default function AdminCustomersPage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <Field label="Client Margin %" value={editData.clientMargin} onChange={(v: string) => setEditData((p: any) => ({ ...p, clientMargin: v }))} type="number" />
                     <Field label="Client Discount %" value={editData.clientDiscount} onChange={(v: string) => setEditData((p: any) => ({ ...p, clientDiscount: v }))} type="number" />
-                    <div className="flex items-center gap-4 pt-4">
+                    <div className="flex flex-col gap-2 pt-4">
                       <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                         <input type="checkbox"
                           checked={editData.active !== false && !editData.manualHold}
@@ -561,34 +717,69 @@ export default function AdminCustomersPage() {
                           className="w-4 h-4" />
                         Active
                       </label>
-                      <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                        <input type="checkbox"
-                          checked={Boolean(editData.manualHold)}
-                          onChange={e => setEditData((p: any) => ({ ...p, manualHold: e.target.checked, active: e.target.checked ? false : p.active }))}
-                          className="w-4 h-4" />
-                        Manual Hold
-                      </label>
+                      <div>
+                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                          <input type="checkbox"
+                            checked={Boolean(editData.manualHold)}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setPendingHold(true);
+                              } else {
+                                setPendingHold(false);
+                                setEditData((p: any) => ({ ...p, manualHold: false, active: p.active }));
+                              }
+                            }}
+                            className="w-4 h-4" />
+                          Manual Hold
+                        </label>
+                        {pendingHold && !editData.manualHold && (
+                          <div className="mt-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs text-amber-800 dark:text-amber-300">
+                            <p className="mb-2">Put this customer on hold? They won't be able to receive new orders.</p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => { setEditData((p: any) => ({ ...p, manualHold: true, active: false })); setPendingHold(false); }}
+                                className="px-2.5 py-1 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700">
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => setPendingHold(false)}
+                                className="px-2.5 py-1 border border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-400 rounded text-xs hover:bg-amber-100 dark:hover:bg-amber-900/30">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   {/* Special Prices */}
-                  <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Special Prices</p>
+                  <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Special Prices</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Set a custom selling price for this customer. Overrides the standard B2B/B2C price.</p>
                   <SearchInput
                     placeholder="Search products..."
                     value={priceSearch}
                     onChange={setPriceSearch}
                     className="mb-3 w-64"
                   />
-                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-lg p-3 dark:bg-gray-900/30">
+                  {/* Column header */}
+                  <div className="flex items-center gap-2 px-3 mb-1">
+                    <span className="flex-1 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">Product</span>
+                    <span className="w-20 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider text-left hidden">Margin</span>
+                    <span className="w-32 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider text-right">Special Price (override)</span>
+                  </div>
+                  <div className="flex flex-col gap-1 max-h-64 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-lg dark:bg-gray-900/30">
                     {filteredProducts.map(product => {
                       const sp = Number(editPrices[product.id] || 0);
                       const cost = Number(product.costPrice || 0);
                       const margin = sp > 0 ? ((sp - cost) / sp) * 100 : null;
+                      const hasOverride = Boolean(editPrices[product.id]);
                       return (
-                        <div key={product.id} className="flex items-center gap-2">
+                        <div key={product.id}
+                          className={`flex items-center gap-2 px-3 py-2 ${hasOverride ? "border-l-2 border-green-400 bg-green-50/50 dark:bg-green-900/10" : "border-l-2 border-transparent"}`}>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{product.name}</p>
-                            <p className="text-xs text-gray-400">Selling: ${formatPrice(editData.customerType === "B2B" ? product.b2bPrice : product.b2cPrice || 0)} · Cost: ${formatPrice(cost)}</p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500">Selling: ${formatPrice(editData.customerType === "B2B" ? product.b2bPrice : product.b2cPrice || 0)} · Cost: ${formatPrice(cost)}</p>
                           </div>
                           <div className="flex items-center gap-3 justify-end">
                             {margin !== null && (
@@ -598,17 +789,20 @@ export default function AdminCustomersPage() {
                             )}
                             <input
                               type="number"
-                              placeholder="—"
+                              placeholder="e.g. 12.00"
                               value={editPrices[product.id] || ""}
                               onChange={e => setEditPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
-                              className={`w-24 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-gray-900 dark:bg-gray-800 dark:text-white ${editPrices[product.id] ? "border-blue-300 bg-blue-50 dark:bg-blue-900/20" : "border-gray-200 dark:border-gray-700"}`}
+                              className={`w-28 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-gray-900 dark:text-white ${editPrices[product.id] ? "border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-600" : "border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700"}`}
                             />
                           </div>
                         </div>
                       );
                     })}
+                    {filteredProducts.length === 0 && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 p-3">No products match your search.</p>
+                    )}
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">{Object.values(editPrices).filter(v => v !== "").length} special prices set</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{Object.values(editPrices).filter(v => v !== "").length} special prices set</p>
 
                   {/* Official Document — B2B only */}
                   {editData.customerType === "B2B" && (
@@ -616,37 +810,37 @@ export default function AdminCustomersPage() {
                       <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Official Document</p>
                       <div className="flex items-center gap-4 flex-wrap">
                         {editData.documentUrl ? (
-                          <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 rounded-lg">
+                          <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
                             {editData.documentType?.startsWith("image/") ? (
-                              <img src={editData.documentUrl} alt="Document" className="w-16 h-16 object-cover rounded cursor-pointer border border-gray-200"
+                              <img src={editData.documentUrl} alt="Document" className="w-16 h-16 object-cover rounded cursor-pointer border border-gray-200 dark:border-gray-600"
                                 onClick={() => setDocPreview(editData.documentUrl)} />
                             ) : (
-                              <div className="w-16 h-16 flex items-center justify-center bg-red-50 rounded border border-red-100 cursor-pointer"
+                              <div className="w-16 h-16 flex items-center justify-center bg-red-50 dark:bg-red-900/20 rounded border border-red-100 dark:border-red-800 cursor-pointer"
                                 onClick={() => window.open(editData.documentUrl, "_blank")}>
                                 <span className="text-2xl">📄</span>
                               </div>
                             )}
                             <div>
                               <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Current document</p>
-                              <p className="text-xs text-gray-400">{editData.documentType || "PDF"}</p>
+                              <p className="text-xs text-gray-400 dark:text-gray-500">{editData.documentType || "PDF"}</p>
                               <button onClick={() => window.open(editData.documentUrl, "_blank")}
                                 className="text-xs text-blue-600 hover:underline mt-0.5">Open ↗</button>
                             </div>
                           </div>
                         ) : (
-                          <p className="text-xs text-gray-400 italic">No document on file</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 italic">No document on file</p>
                         )}
                         <div>
                           <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
                             className="hidden"
                             onChange={e => { const f = e.target.files?.[0]; if (f) handleDocUpload(f, customer.id); }} />
                           <button onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}
-                            className="px-3 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50 flex items-center gap-1.5 dark:text-gray-300">
+                            className="px-3 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50 flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
                             {uploadingDoc
                               ? <><span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin inline-block" /> Uploading...</>
                               : <><span>⬆</span> {editData.documentUrl ? "Replace Document" : "Upload Document"}</>}
                           </button>
-                          <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG accepted</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">PDF, JPG, PNG accepted</p>
                         </div>
                       </div>
                     </div>
