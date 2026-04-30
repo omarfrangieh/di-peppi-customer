@@ -7,7 +7,7 @@ import SearchInput from "@/components/SearchInput";
 
 function AdjustModal({ product, onClose, onSave }: { product: any; onClose: () => void; onSave: (newQty: number, delta: number, reason: string, notes: string) => Promise<void> }) {
   const [qty, setQty] = useState(String(product.currentStock || 0));
-  const [reason, setReason] = useState("error");
+  const [reason, setReason] = useState("correction");
   const [otherReason, setOtherReason] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -28,46 +28,45 @@ function AdjustModal({ product, onClose, onSave }: { product: any; onClose: () =
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
-        <h3 className="text-base font-bold text-gray-900 mb-1">Adjust Stock</h3>
-        <p className="text-sm text-gray-500 mb-4">{product.name}</p>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+        <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Adjust Stock</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{product.name}</p>
         <div className="space-y-3">
-          <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 flex justify-between">
+          <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg px-3 py-2 text-xs text-gray-500 dark:text-gray-400 flex justify-between">
             <span>Current stock</span>
-            <span className="font-semibold text-gray-700">{formatQty(product.currentStock)} {product.unit || ""}</span>
+            <span className="font-semibold text-gray-700 dark:text-gray-300">{formatQty(product.currentStock)} {product.unit ?? "units"}</span>
           </div>
           <div>
-            <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Corrected Quantity ({product.unit || "units"})</label>
+            <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">{`CORRECTED QUANTITY (${(product.unit ?? "units").toUpperCase()})`}</label>
             <input type="number" value={qty} onChange={e => setQty(e.target.value)} autoFocus
               placeholder={String(product.currentStock || 0)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900" />
           </div>
           {qty !== "" && !isNaN(parsedQty) && parsedQty !== current && (
-            <div className={`rounded-lg px-3 py-2 text-xs flex justify-between ${delta > 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-              <span>Variance</span>
-              <span className="font-semibold">{delta > 0 ? "+" : ""}{formatQty(delta)} {product.unit || ""}</span>
-            </div>
+            <p className={`text-sm font-medium ${delta > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+              Change: {delta > 0 ? "+" : ""}{delta.toFixed(3)} {product.unit ?? "units"}
+            </p>
           )}
           <div>
-            <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Reason</label>
+            <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">Reason</label>
             <select value={reason} onChange={e => setReason(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
-              {["error", "damaged", "theft", "shrinkage", "expired", "found", "other"].map(r => (
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900">
+              {["correction", "error", "damaged", "theft", "shrinkage", "expired", "found", "other"].map(r => (
                 <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
               ))}
             </select>
           </div>
           {reason === "other" && (
             <input type="text" placeholder="Specify reason..." value={otherReason} onChange={e => setOtherReason(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900" />
           )}
           <div>
-            <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Notes (optional)</label>
+            <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">Notes (optional)</label>
             <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional notes..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900" />
           </div>
           <div className="flex gap-2 pt-1">
-            <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50">Cancel</button>
+            <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">Cancel</button>
             <button onClick={handleConfirm} disabled={!canConfirm}
               className="flex-1 px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-40" style={{ backgroundColor: "#B5535A" }}>
               {saving ? "Saving..." : "Confirm Adjustment"}
@@ -142,6 +141,8 @@ export default function StockPage() {
   const [editNotes, setEditNotes] = useState("");
   const [editExpiredDate, setEditExpiredDate] = useState("");
   const [adjustProduct, setAdjustProduct] = useState<any | null>(null);
+  const [supplierFilter, setSupplierFilter] = useState("");
+  const [showCountConfirm, setShowCountConfirm] = useState(false);
 
   useEffect(() => { void load(); }, []);
 
@@ -163,13 +164,14 @@ export default function StockPage() {
     let list = products.filter(p => p.active !== false);
     if (search) list = list.filter(p => (p.name || "").toLowerCase().includes(search.toLowerCase()));
     if (filterStatus !== "all") list = list.filter(p => stockStatus(p) === filterStatus);
+    if (supplierFilter) list = list.filter(p => p.supplier === supplierFilter);
     list.sort((a, b) => {
       if (sortBy === "stock") return Number(a.currentStock || 0) - Number(b.currentStock || 0);
       if (sortBy === "value") return (Number(b.currentStock || 0) * Number(b.costPrice || 0)) - (Number(a.currentStock || 0) * Number(a.costPrice || 0));
       return (a.name || "").localeCompare(b.name || "");
     });
     return list;
-  }, [products, search, filterStatus, sortBy]);
+  }, [products, search, filterStatus, supplierFilter, sortBy]);
 
   const stats = useMemo(() => ({
     ok: products.filter(p => p.active !== false && stockStatus(p) === "ok").length,
@@ -177,6 +179,10 @@ export default function StockPage() {
     out: products.filter(p => p.active !== false && stockStatus(p) === "out").length,
     totalValue: products.filter(p => p.active !== false).reduce((s, p) => s + Number(p.currentStock || 0) * Number(p.costPrice || 0), 0),
   }), [products]);
+
+  const suppliers = useMemo(() => [...new Set(products.map(p => p.supplier).filter(Boolean))].sort(), [products]);
+
+  const hasExpiry = useMemo(() => products.some(p => p.expiryDate != null), [products]);
 
   const expiryMap = useMemo(() => {
     const map: Record<string, { date: string; qty: number; days: number }[]> = {};
@@ -407,18 +413,22 @@ export default function StockPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+      <div className="bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700 px-6 py-4 sticky top-0 z-10">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold" style={{ color: "#B5535A" }}>Stock</h1>
-            <span className="text-sm text-gray-400">{filtered.length} products</span>
+            <span className="text-sm text-gray-400 dark:text-gray-400">{filtered.length} products</span>
           </div>
           <div className="flex items-center gap-2">
-            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white">
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-500">
               <option value="name">Sort: Name</option>
               <option value="stock">Sort: Stock Level</option>
               <option value="value">Sort: Stock Value</option>
+            </select>
+            <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white">
+              <option value="">Supplier: All</option>
+              {suppliers.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <SearchInput
               placeholder="Search products..."
@@ -430,19 +440,19 @@ export default function StockPage() {
         </div>
         <div className="flex items-center gap-2">
           {[
-            { key: "all",  label: "All (" + products.filter(p => p.active !== false).length + ")" },
-            { key: "ok",   label: "✅ In Stock (" + stats.ok + ")" },
-            { key: "low",  label: "⚠️ Low Stock (" + stats.low + ")" },
-            { key: "out",  label: "❌ Out of Stock (" + stats.out + ")" },
+            { key: "all",  label: "All (" + products.filter(p => p.active !== false).length + ")", inactiveCls: "text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" },
+            { key: "ok",   label: "✅ In Stock (" + stats.ok + ")",                                inactiveCls: "text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" },
+            { key: "low",  label: "⚠️ Low Stock (" + stats.low + ")",                              inactiveCls: "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/30" },
+            { key: "out",  label: "❌ Out of Stock (" + stats.out + ")",                           inactiveCls: "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-700 hover:bg-red-100 dark:hover:bg-red-900/30" },
           ].map(f => (
             <button key={f.key} onClick={() => setFilterStatus(f.key)}
-              className={"px-4 py-2 text-sm font-medium rounded-lg transition-colors " + (filterStatus === f.key ? "text-white" : "text-gray-500 bg-gray-100 hover:bg-gray-200")}
+              className={"px-4 py-2 text-sm font-medium rounded-lg transition-colors " + (filterStatus === f.key ? "text-white" : f.inactiveCls)}
               style={filterStatus === f.key ? { backgroundColor: "#1B2A5E" } : {}}>
               {f.label}
             </button>
           ))}
-          <div className="ml-auto text-sm text-gray-600">
-            Stock Value: <span className="font-semibold text-gray-900">${formatPrice(stats.totalValue)}</span>
+          <div className="ml-auto text-sm text-gray-600 dark:text-gray-400">
+            Stock Value: <span className="font-semibold text-gray-900 dark:text-white">${formatPrice(stats.totalValue)}</span>
           </div>
         </div>
       </div>
@@ -450,13 +460,13 @@ export default function StockPage() {
       <div className="max-w-7xl mx-auto px-6 pt-4 space-y-4">
         <div className="grid grid-cols-4 gap-4">
           {[
-            { label: "In Stock",          value: stats.ok,                            color: "text-green-600",  bg: "bg-green-50 border-green-200" },
-            { label: "Low Stock",         value: stats.low,                           color: "text-yellow-600", bg: "bg-yellow-50 border-yellow-200" },
-            { label: "Out of Stock",      value: stats.out,                           color: "text-red-500",    bg: "bg-red-50 border-red-200" },
-            { label: "Total Stock Value", value: "$" + formatPrice(stats.totalValue),   color: "text-gray-900",   bg: "bg-white border-gray-200" },
+            { label: "In Stock",          value: stats.ok,                           color: "text-green-600 dark:text-green-400",  bg: "bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800" },
+            { label: "Low Stock",         value: stats.low,                          color: "text-amber-600 dark:text-amber-400",  bg: "bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800" },
+            { label: "Out of Stock",      value: stats.out,                          color: "text-red-600 dark:text-red-400",      bg: "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800" },
+            { label: "Total Stock Value", value: "$" + formatPrice(stats.totalValue), color: "text-gray-900 dark:text-white",       bg: "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700" },
           ].map(c => (
-            <div key={c.label} className={"rounded-xl border p-4 " + c.bg}>
-              <p className="text-xs text-gray-500 mb-1">{c.label}</p>
+            <div key={c.label} className={"rounded-xl p-4 " + c.bg}>
+              <p className="text-xs text-gray-500 dark:text-muted mb-1">{c.label}</p>
               <p className={"text-2xl font-bold " + c.color}>{c.value}</p>
             </div>
           ))}
@@ -464,25 +474,25 @@ export default function StockPage() {
 
         {/* Physical Count Section */}
         {currentCountId ? (
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-900 p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">📋 Physical Count In Progress</h2>
-              <button onClick={handleCloseCount} className="text-xs px-3 py-1 border border-gray-300 rounded hover:bg-gray-100">Close</button>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">📋 Physical Count In Progress</h2>
+              <button onClick={handleCloseCount} className="text-xs px-3 py-1 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300">Close</button>
             </div>
 
             {/* Variance Summary */}
             {countItems.length > 0 && (
-              <div className="grid grid-cols-3 gap-2 text-xs bg-white rounded-lg p-2">
+              <div className="grid grid-cols-3 gap-2 text-xs bg-white dark:bg-gray-800 rounded-lg p-2">
                 <div className="text-center">
-                  <p className="text-gray-600">Counted</p>
-                  <p className="font-semibold text-gray-900">{countItems.length}</p>
+                  <p className="text-gray-600 dark:text-gray-400">Counted</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">{countItems.length}</p>
                 </div>
-                <div className="text-center border-l border-r border-gray-200">
-                  <p className="text-gray-600">+Units</p>
+                <div className="text-center border-l border-r border-gray-200 dark:border-gray-700">
+                  <p className="text-gray-600 dark:text-gray-400">+Units</p>
                   <p className="font-semibold text-green-600">+{countVarianceSummary.plus}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-gray-600">-Units</p>
+                  <p className="text-gray-600 dark:text-gray-400">-Units</p>
                   <p className="font-semibold text-red-600">-{countVarianceSummary.minus}</p>
                 </div>
               </div>
@@ -490,7 +500,7 @@ export default function StockPage() {
 
             {/* Counted Items List */}
             {countItems.length > 0 && (
-              <div className="space-y-1 max-h-48 overflow-y-auto bg-white rounded-lg p-2">
+              <div className="space-y-1 max-h-48 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg p-2">
                 {countItems.map(item => (
                   <div key={item.id} className="flex items-center justify-between text-xs p-2 border border-blue-100 rounded bg-blue-50">
                     <div className="flex-1 min-w-0">
@@ -537,14 +547,28 @@ export default function StockPage() {
             </div>
           </div>
         ) : (
-          <div className="flex gap-2">
-            <button onClick={() => setShowNewCountModal(true)} className="flex-1 px-4 py-2 text-sm text-white rounded-lg font-medium" style={{backgroundColor: "#1B2A5E"}}>
-              📋 Start Physical Count
-            </button>
-            {inventoryCounts.length > 0 && (
-              <button onClick={() => setShowCountHistory(true)} className="flex-1 px-4 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">
-                📜 History
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCountConfirm(true)}
+                className="flex-1 px-4 py-2 text-sm text-white rounded-lg font-medium"
+                style={{backgroundColor: "#1B2A5E"}}>
+                📋 Start Physical Count
               </button>
+              {inventoryCounts.length > 0 && (
+                <button onClick={() => setShowCountHistory(true)} className="flex-1 px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  📜 History
+                </button>
+              )}
+            </div>
+            {showCountConfirm && (
+              <div className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <p className="text-sm text-amber-800 dark:text-amber-300 flex-1">⚠️ Starting a physical count will lock stock adjustments. Continue?</p>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => { setShowCountConfirm(false); setShowNewCountModal(true); }} className="px-3 py-1.5 text-sm text-white rounded-lg font-medium" style={{backgroundColor: "#1B2A5E"}}>Confirm Count</button>
+                  <button onClick={() => setShowCountConfirm(false)} className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Cancel</button>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -814,16 +838,16 @@ export default function StockPage() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+        <div className="bg-white dark:bg-gray-800 dark:border-gray-700 rounded-xl border border-gray-200 overflow-hidden mb-6">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
               <tr>
-                {["Product", "Supplier", "Unit", "Current Stock", "Min Stock", "Cost", "Stock Value", "Status", "Expiry", ""].map((h, i) => (
-                  <th key={h + i} className={"px-4 py-3 text-xs font-medium text-gray-500 uppercase " + (i === 0 || i === 1 ? "text-left" : i >= 7 ? "text-center" : "text-right")}>{h}</th>
+                {["Product", "Supplier", "Unit", "Current Stock", "Min Stock", "Cost", "Stock Value", "Status", ...(hasExpiry ? ["Expiry"] : []), ""].map((h, i) => (
+                  <th key={h + i} className={"px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase " + (i === 0 || i === 1 ? "text-left" : i >= 7 ? "text-center" : "text-right")}>{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {filtered.map(p => {
                 const status = stockStatus(p);
                 const value = Number(p.currentStock || 0) * Number(p.costPrice || 0);
@@ -831,50 +855,58 @@ export default function StockPage() {
                 const soonest = expiries[0];
                 const isExpanded = expandedId === p.id;
                 const pMovements = movements.filter(m => m.productId === p.id).sort((a, b) => String(b.movementDate || "").localeCompare(String(a.movementDate || "")));
+                const statusBorderCls = filterStatus === "all"
+                  ? status === "ok"  ? "border-l-4 border-green-400 dark:border-green-600"
+                  : status === "low" ? "border-l-4 border-amber-400 dark:border-amber-500"
+                  :                    "border-l-4 border-red-400 dark:border-red-600"
+                  : "";
                 return (
                   <React.Fragment key={p.id}>
-                    <tr className={"hover:bg-gray-50 transition-colors " + (isExpanded ? "bg-blue-50/30" : "")}>
+                    <tr className={"hover:bg-gray-50 dark:hover:bg-gray-700/40 dark:border-gray-700 transition-colors " + statusBorderCls + (isExpanded ? " bg-blue-50/30 dark:bg-blue-950/20" : "")}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <button onClick={() => setExpandedId(isExpanded ? null : p.id)} className="text-gray-400 hover:text-gray-600">
+                          <button onClick={() => setExpandedId(isExpanded ? null : p.id)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600">
                             <span className={"inline-block transition-transform " + (isExpanded ? "rotate-90" : "")}>▶</span>
                           </button>
                           <div>
-                            <p className="font-medium text-gray-900">{p.name}</p>
-                            {p.category && <p className="text-xs text-gray-400">{p.category}</p>}
+                            <p className="font-medium text-gray-900 dark:text-white">{p.name}</p>
+                            {p.category && <p className="text-xs text-gray-400 dark:text-gray-500">{p.category}</p>}
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{p.supplier || "—"}</td>
-                      <td className="px-4 py-3 text-center text-gray-500 text-xs">{p.unit || "—"}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatQty(p.currentStock)}</td>
-                      <td className="px-4 py-3 text-right text-gray-400">{p.minStock || "—"}</td>
-                      <td className="px-4 py-3 text-right text-gray-500">${formatPrice(p.costPrice)}</td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-700">${formatPrice(value)}</td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{p.supplier || "—"}</td>
+                      <td className="px-4 py-3 text-center text-gray-500 dark:text-gray-400 text-xs">{p.unit || "—"}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{formatQty(p.currentStock)}</td>
+                      <td className="px-4 py-3 text-right text-gray-400 dark:text-gray-500">{p.minStock || "—"}</td>
+                      <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">${formatPrice(p.costPrice)}</td>
+                      <td className="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300">${formatPrice(value)}</td>
                       <td className="px-4 py-3 text-center">
-                        {status === "ok"  && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">✓ OK</span>}
-                        {status === "low" && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">⚠️ Low</span>}
-                        {status === "out" && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">❌ Out</span>}
+                        {status === "ok"  && <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-transparent dark:border-green-700 px-2 py-0.5 rounded-full font-medium">✓ OK</span>}
+                        {status === "low" && <span className="text-xs bg-yellow-100 dark:bg-amber-900/30 text-yellow-700 dark:text-amber-400 border border-transparent dark:border-amber-700 px-2 py-0.5 rounded-full font-medium">⚠️ Low</span>}
+                        {status === "out" && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-transparent dark:border-red-700 px-2 py-0.5 rounded-full font-medium">❌ Out</span>}
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        {soonest ? (() => {
-                          const { badge, dot } = expiryColor(soonest.days);
-                          return (
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + badge}>
-                                {dot} {soonest.date.split("-").reverse().join("/")}
-                              </span>
-                              <span className="text-xs text-gray-400">{soonest.days < 0 ? "Expired" : `${soonest.days}d left`}</span>
-                            </div>
-                          );
-                        })() : <span className="text-gray-300">—</span>}
-                      </td>
+                      {hasExpiry && (
+                        <td className="px-4 py-3 text-center">
+                          {soonest ? (() => {
+                            const { badge, dot } = expiryColor(soonest.days);
+                            return (
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + badge}>
+                                  {dot} {soonest.date.split("-").reverse().join("/")}
+                                </span>
+                                <span className="text-xs text-gray-400">{soonest.days < 0 ? "Expired" : `${soonest.days}d left`}</span>
+                              </div>
+                            );
+                          })() : <span className="text-gray-300">—</span>}
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <button onClick={() => setStockInProduct(p)} className="px-3 py-2 text-sm text-white rounded-lg font-medium whitespace-nowrap" style={{ backgroundColor: "#22863a" }}>
-                            + Stock
+                            Receive
                           </button>
                           <button onClick={() => setAdjustProduct(p)}
+                            title="Manual stock count correction"
                             className="px-3 py-2 text-sm text-white rounded-lg font-medium" style={{ backgroundColor: "#1B2A5E" }}>
                             Adjust
                           </button>
@@ -883,7 +915,7 @@ export default function StockPage() {
                     </tr>
                     {isExpanded && (
                       <tr key={p.id + "-exp"}>
-                        <td colSpan={10} className="px-8 py-4 bg-blue-50/40 border-t border-blue-100">
+                        <td colSpan={hasExpiry ? 10 : 9} className="px-8 py-4 bg-blue-50/40 dark:bg-blue-950/20 border-t border-blue-100 dark:border-blue-900">
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Movement History</p>
                           {pMovements.length === 0 ? <p className="text-xs text-gray-400">No movements recorded</p> : (
                             <div className="space-y-1.5 max-h-48 overflow-y-auto">
@@ -917,7 +949,7 @@ export default function StockPage() {
                   </React.Fragment>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">No products match your filters</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={hasExpiry ? 10 : 9} className="px-4 py-12 text-center text-gray-400">No products match your filters</td></tr>}
             </tbody>
           </table>
         </div>
@@ -934,12 +966,12 @@ export default function StockPage() {
       {stockInProduct && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
-            <h3 className="text-base font-bold text-gray-900 mb-1">+ Add Stock</h3>
+            <h3 className="text-base font-bold text-gray-900 mb-1">Receive Stock</h3>
             <p className="text-sm text-gray-500 mb-4">{stockInProduct.name}</p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Quantity ({stockInProduct.unit || "units"})</label>
-                <input type="number" value={stockInQty} onChange={e => setStockInQty(e.target.value)} placeholder="0" autoFocus
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">{`QUANTITY (${(stockInProduct.unit ?? "units").toUpperCase()})`}</label>
+                <input type="number" min={0.001} value={stockInQty} onChange={e => setStockInQty(e.target.value)} placeholder="0" autoFocus
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
               </div>
               {stockInProduct.trackExpiry && (
@@ -956,12 +988,12 @@ export default function StockPage() {
               </div>
               <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 flex justify-between">
                 <span>Current stock</span>
-                <span className="font-semibold text-gray-700">{formatQty(stockInProduct.currentStock)} {stockInProduct.unit || ""}</span>
+                <span className="font-semibold text-gray-700">{formatQty(stockInProduct.currentStock)} {stockInProduct.unit ?? "units"}</span>
               </div>
               {stockInQty && Number(stockInQty) > 0 && (
                 <div className="bg-green-50 rounded-lg px-3 py-2 text-xs text-green-700 flex justify-between">
                   <span>After adding</span>
-                  <span className="font-semibold">{formatQty(Number(stockInProduct.currentStock || 0) + Number(stockInQty))} {stockInProduct.unit || ""}</span>
+                  <span className="font-semibold">{formatQty(Number(stockInProduct.currentStock || 0) + Number(stockInQty))} {stockInProduct.unit ?? "units"}</span>
                 </div>
               )}
               <div className="flex gap-2 pt-1">

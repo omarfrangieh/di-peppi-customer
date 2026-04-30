@@ -38,6 +38,7 @@ export default function PermissionsPage() {
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [expandedRoles, setExpandedRoles] = useState<Set<string>>(new Set(["Admin"]));
+  const [confirmResetAll, setConfirmResetAll] = useState(false);
 
   useEffect(() => {
     fetchPermissions();
@@ -137,33 +138,58 @@ export default function PermissionsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      <div className="flex items-center justify-center min-h-screen dark:bg-gray-900">
+        <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent dark:border-white rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6 min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Permissions</h1>
-          <p className="text-sm text-gray-600">Manage role-based access control</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Permissions</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Manage role-based access control</p>
         </div>
-        <button
-          onClick={handleResetAllToDefaults}
-          disabled={saving}
-          className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all"
-        >
-          Reset All to Defaults
-        </button>
+        {confirmResetAll ? (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Reset all roles to defaults? This cannot be undone.
+            </span>
+            <button
+              onClick={async () => {
+                setConfirmResetAll(false);
+                await handleResetAllToDefaults();
+              }}
+              disabled={saving}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all disabled:opacity-60"
+            >
+              Confirm
+            </button>
+            <button
+              onClick={() => setConfirmResetAll(false)}
+              disabled={saving}
+              className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmResetAll(true)}
+            disabled={saving}
+            className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 dark:bg-transparent dark:hover:bg-red-900/20 dark:border-red-700 dark:text-red-400 rounded-lg transition-all"
+          >
+            Reset All to Defaults
+          </button>
+        )}
       </div>
 
       {message && (
         <div className={`mb-4 p-3 rounded-lg text-sm ${
           message.includes("✓")
-            ? "bg-green-50 text-green-700 border border-green-200"
-            : "bg-red-50 text-red-700 border border-red-200"
+            ? "bg-green-50 text-green-700 border border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
+            : "bg-red-50 text-red-700 border border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800"
         }`}>
           {message}
         </div>
@@ -188,13 +214,27 @@ export default function PermissionsPage() {
 
           const isExpanded = expandedRoles.has(role);
           return (
-            <div key={role} className="bg-white rounded-lg shadow border border-gray-200">
+            <div key={role} className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <button
                 onClick={() => toggleRole(role)}
-                className="w-full px-6 py-4 border-b border-gray-200 flex items-center justify-between hover:bg-gray-50 transition-all"
+                className="w-full px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all"
               >
-                <h2 className="text-lg font-bold text-gray-900">{role}</h2>
-                <span className="text-gray-400">
+                <div className="flex items-baseline gap-3">
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">{role}</h2>
+                  {!isExpanded && (() => {
+                    const counts: Record<string, number> = { full: 0, edit: 0, view: 0, none: 0 };
+                    FEATURES.forEach((f) => {
+                      const lvl = (rolePermissions.features[f] || defaultLevel) as string;
+                      if (counts[lvl] !== undefined) counts[lvl]++;
+                    });
+                    return (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        Full: {counts.full} · Edit: {counts.edit} · View: {counts.view} · None: {counts.none}
+                      </span>
+                    );
+                  })()}
+                </div>
+                <span className="text-gray-400 dark:text-gray-400">
                   {isExpanded ? "▼" : "▶"}
                 </span>
               </button>
@@ -204,10 +244,10 @@ export default function PermissionsPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left font-semibold text-gray-700 pb-3">Feature</th>
+                      <tr className="border-b border-gray-200 dark:border-gray-700">
+                        <th className="text-left font-semibold text-gray-700 dark:text-gray-300 pb-3">Feature</th>
                         {PERMISSION_LEVELS.map((level) => (
-                          <th key={level} className="text-center font-semibold text-gray-700 pb-3">
+                          <th key={level} className="text-center font-semibold text-gray-700 dark:text-gray-300 pb-3">
                             {level.charAt(0).toUpperCase() + level.slice(1)}
                           </th>
                         ))}
@@ -215,9 +255,9 @@ export default function PermissionsPage() {
                     </thead>
                     <tbody>
                       {FEATURES.map((feature) => (
-                        <tr key={feature} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="py-3 text-gray-700 font-medium">
-                            {feature.replace(/([A-Z])/g, " $1").trim()}
+                        <tr key={feature} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                          <td className="py-3 text-gray-700 dark:text-gray-300 font-medium">
+                            {feature.replace(/([A-Z])/g, " $1").trim().replace(/\b\w/g, (c) => c.toUpperCase())}
                           </td>
                           {PERMISSION_LEVELS.map((level) => (
                             <td key={level} className="text-center py-3">
@@ -232,7 +272,7 @@ export default function PermissionsPage() {
                                   handlePermissionChange(role, feature, level)
                                 }
                                 disabled={saving}
-                                className="cursor-pointer"
+                                className="cursor-pointer accent-gray-900 dark:accent-white"
                               />
                             </td>
                           ))}
@@ -254,7 +294,7 @@ export default function PermissionsPage() {
                   <button
                     onClick={() => handleResetToDefaults(role)}
                     disabled={saving}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all"
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-all"
                   >
                     Reset to Defaults
                   </button>

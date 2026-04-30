@@ -2,6 +2,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { exportToExcel, exportToPDF } from "@/lib/exportReports";
+import { buildWhatsAppReportShare } from "@/lib/whatsappShare";
 import { db } from "@/lib/firebase";
 import { formatQty, formatPrice } from "@/lib/formatters";
 
@@ -127,7 +128,7 @@ export default function ReportsPage() {
     s + Math.max(Number(inv.finalTotal || 0) - Number(inv.paidAmount || 0), 0), 0
   ), [unpaidInvoices]);
 
-  const stockData = useMemo(() => products.map(p => {
+  const stockData = useMemo(() => products.filter(p => p.active !== false).map(p => {
     const mv = movements.filter(m => m.productId === p.id);
     const inTotal = mv.filter(m => m.movementType === "In").reduce((s, m) => s + Number(m.quantity || 0), 0);
     const outTotal = mv.filter(m => m.movementType === "Out").reduce((s, m) => s + Number(m.quantity || 0), 0);
@@ -143,27 +144,26 @@ export default function ReportsPage() {
       <div className="flex gap-2">
         {(["All", "B2B", "B2C"] as const).map(t => (
           <button key={t} onClick={() => setCustomerTypeFilter(t)}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${customerTypeFilter === t ? "text-white" : "text-gray-600 border border-gray-200 hover:bg-gray-50"}`}
+            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${customerTypeFilter === t ? "text-white" : "text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
             style={customerTypeFilter === t ? {backgroundColor: "#1B2A5E"} : {}}>
             {t}
           </button>
         ))}
       </div>
-      <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg" />
-      <span className="text-gray-400 text-sm">to</span>
-      <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg" />
+      <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg" />
+      <span className="text-gray-400 dark:text-gray-500 text-sm">to</span>
+      <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg" />
       <button onClick={load} className="px-4 py-2 text-sm text-white rounded-lg font-medium" style={{backgroundColor: "#1B2A5E"}}>Refresh</button>
       <button onClick={() => setShowExport(true)}
-        className="px-4 py-2 text-sm text-white rounded-lg font-medium"
-        style={{backgroundColor: "#B5535A"}}>
+        className="px-4 py-2 text-sm rounded-lg font-medium border border-red-500 text-red-500 bg-transparent hover:bg-red-50 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors">
         ↗ Export
       </button>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 sticky top-0 z-10">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-bold" style={{color: "#B5535A"}}>Reports</h1>
           <DateFilter />
@@ -171,7 +171,7 @@ export default function ReportsPage() {
         <div className="flex gap-1">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${tab === t ? "text-white" : "text-gray-500 hover:bg-gray-100"}`}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${tab === t ? "text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:text-white dark:border-gray-700"}`}
               style={tab === t ? {backgroundColor: "#1B2A5E"} : {}}>
               {t}
             </button>
@@ -184,123 +184,131 @@ export default function ReportsPage() {
         {tab === "Sales" && (<>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              {label: "Revenue (period)", value: money(totalRevenue), sub: `${filteredOrders.length} orders`},
-              {label: "Profit (period)", value: money(totalProfit), sub: totalRevenue > 0 ? pct(totalProfit/totalRevenue*100) + " margin" : "—"},
-              {label: "Avg Order Value", value: money(filteredOrders.length ? totalRevenue/filteredOrders.length : 0), sub: "per order"},
-              {label: "YTD Revenue", value: money(ytdRevenue), sub: new Date().getFullYear().toString()},
+              {label: "Revenue (period)", value: money(totalRevenue), valueColor: "text-gray-900 dark:text-white", sub: `${filteredOrders.length} ${filteredOrders.length === 1 ? "order" : "orders"}`},
+              {label: "Profit (period)", value: money(totalProfit), valueColor: totalProfit > 0 ? "text-green-600 dark:text-green-400" : totalProfit < 0 ? "text-red-600 dark:text-red-400" : "text-gray-500 dark:text-gray-400", sub: totalRevenue > 0 ? pct(totalProfit/totalRevenue*100) + " margin" : "—"},
+              {label: "Avg Order Value", value: money(filteredOrders.length ? totalRevenue/filteredOrders.length : 0), valueColor: "text-gray-900 dark:text-white", sub: "per order"},
+              {label: "YTD Revenue", value: money(ytdRevenue), valueColor: "text-gray-900 dark:text-white", sub: new Date().getFullYear().toString()},
             ].map(c => (
-              <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-xs text-gray-400 mb-1">{c.label}</p>
-                <p className="text-2xl font-bold text-gray-900">{c.value}</p>
-                <p className="text-xs text-gray-400 mt-1">{c.sub}</p>
+              <div key={c.label} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{c.label}</p>
+                <p className={`text-2xl font-bold ${c.valueColor}`}>{c.value}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{c.sub}</p>
               </div>
             ))}
           </div>
           <div className="flex gap-2">
             {(["daily","weekly","monthly","yearly"] as const).map(p => (
               <button key={p} onClick={() => setPeriod(p)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${period===p ? "text-white border-transparent" : "text-gray-600 border-gray-200 hover:bg-gray-50"}`}
+                className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${period===p ? "text-white border-transparent" : "text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
                 style={period===p ? {backgroundColor:"#1B2A5E"} : {}}>
                 {p.charAt(0).toUpperCase()+p.slice(1)}
               </button>
             ))}
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
                 <tr>
                   {["Period","Orders","Revenue","Profit","Margin"].map(h => (
-                    <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 uppercase ${h==="Period" ? "text-left" : "text-right"}`}>{h}</th>
+                    <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase ${h==="Period" ? "text-left" : "text-right"}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {salesByPeriod.map(([key, data]) => (
-                  <tr key={key} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{key}</td>
-                    <td className="px-4 py-3 text-right text-gray-600">{data.orders}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{money(data.revenue)}</td>
-                    <td className="px-4 py-3 text-right text-green-600">{money(data.profit)}</td>
+                  <tr key={key} className="hover:bg-gray-50 dark:hover:bg-gray-700/40 dark:border-gray-700">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{key}</td>
+                    <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{data.orders}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{money(data.revenue)}</td>
+                    <td className={`px-4 py-3 text-right font-medium ${data.profit > 0 ? "text-green-600 dark:text-green-400" : data.profit < 0 ? "text-red-600 dark:text-red-400" : "text-gray-400 dark:text-gray-500"}`}>{money(data.profit)}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`text-xs font-semibold ${data.revenue>0 && data.profit/data.revenue*100<15 ? "text-yellow-600" : "text-green-600"}`}>
+                      <span className={`text-xs font-semibold ${data.revenue>0 && data.profit/data.revenue*100<15 ? "text-yellow-600 dark:text-yellow-400" : "text-green-600 dark:text-green-400"}`}>
                         {data.revenue>0 ? pct(data.profit/data.revenue*100) : "—"}
                       </span>
                     </td>
                   </tr>
                 ))}
-                {salesByPeriod.length===0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No data for this period</td></tr>}
+                {salesByPeriod.length===0 && (
+                  <tr><td colSpan={5} className="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">No data for the selected period and filters.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
         </>)}
 
         {tab === "Customers" && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-              <p className="text-sm font-semibold text-gray-900">{byCustomer.length} customers · {money(totalRevenue)} total</p>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{byCustomer.length} customers · {money(totalRevenue)} total</p>
             </div>
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-gray-900/50">
                 <tr>
                   {["Customer","Orders","Revenue","Avg Order","Profit","Margin","% of Sales"].map((h,i) => (
-                    <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 uppercase ${i===0 ? "text-left" : "text-right"}`}>{h}</th>
+                    <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase ${i===0 ? "text-left" : "text-right"}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {byCustomer.map(c => (
-                  <tr key={c.name} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
-                    <td className="px-4 py-3 text-right text-gray-600">{c.orders}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{money(c.revenue)}</td>
-                    <td className="px-4 py-3 text-right text-gray-600">{money(c.orders ? c.revenue/c.orders : 0)}</td>
-                    <td className="px-4 py-3 text-right text-green-600">{money(c.profit)}</td>
+                  <tr key={c.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{c.name}</td>
+                    <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{c.orders}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{money(c.revenue)}</td>
+                    <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{money(c.orders ? c.revenue/c.orders : 0)}</td>
+                    <td className={`px-4 py-3 text-right font-medium ${c.profit > 0 ? "text-green-600 dark:text-green-400" : c.profit < 0 ? "text-red-600 dark:text-red-400" : "text-gray-400 dark:text-gray-500"}`}>{money(c.profit)}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`text-xs font-semibold ${c.revenue>0 && c.profit/c.revenue*100<15 ? "text-yellow-600" : "text-green-600"}`}>
+                      <span className={`text-xs font-semibold ${c.revenue>0 && c.profit/c.revenue*100<15 ? "text-yellow-600 dark:text-yellow-400" : "text-green-600 dark:text-green-400"}`}>
                         {c.revenue>0 ? pct(c.profit/c.revenue*100) : "—"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-500 text-xs">{totalRevenue>0 ? pct(c.revenue/totalRevenue*100) : "—"}</td>
+                    <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400 text-xs">{totalRevenue>0 ? pct(c.revenue/totalRevenue*100) : "—"}</td>
                   </tr>
                 ))}
+                {byCustomer.length===0 && (
+                  <tr><td colSpan={7} className="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">No data for the selected period and filters.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
         )}
 
         {tab === "Products" && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-              <p className="text-sm font-semibold text-gray-900">{byProduct.length} products sold</p>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{byProduct.length} products sold</p>
             </div>
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-gray-900/50">
                 <tr>
                   {["Product","Qty Sold","Revenue","Profit","Margin","Top Customers"].map((h,i) => (
-                    <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 uppercase ${i===0||i===5 ? "text-left" : "text-right"}`}>{h}</th>
+                    <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase ${i===0||i===5 ? "text-left" : "text-right"}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {byProduct.map((p,i) => (
-                  <tr key={p.name} className="hover:bg-gray-50">
+                  <tr key={p.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {i<3 && <span>{["🥇","🥈","🥉"][i]}</span>}
-                        <span className="font-medium text-gray-900">{p.name}</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{p.name}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-600">{formatQty(p.qty)}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{money(p.revenue)}</td>
-                    <td className="px-4 py-3 text-right text-green-600">{money(p.profit)}</td>
+                    <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{formatQty(p.qty)}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{money(p.revenue)}</td>
+                    <td className={`px-4 py-3 text-right font-medium ${p.profit > 0 ? "text-green-600 dark:text-green-400" : p.profit < 0 ? "text-red-600 dark:text-red-400" : "text-gray-400 dark:text-gray-500"}`}>{money(p.profit)}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`text-xs font-semibold ${p.revenue>0 && p.profit/p.revenue*100<15 ? "text-yellow-600" : "text-green-600"}`}>
+                      <span className={`text-xs font-semibold ${p.revenue>0 && p.profit/p.revenue*100<15 ? "text-yellow-600 dark:text-yellow-400" : "text-green-600 dark:text-green-400"}`}>
                         {p.revenue>0 ? pct(p.profit/p.revenue*100) : "—"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{Array.from(p.customers as Set<string>).slice(0,3).join(", ")}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{Array.from(p.customers as Set<string>).slice(0,3).join(", ")}</td>
                   </tr>
                 ))}
+                {byProduct.length===0 && (
+                  <tr><td colSpan={6} className="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">No data for the selected period and filters.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -310,39 +318,39 @@ export default function ReportsPage() {
           <div className="space-y-6">
             <div className="grid grid-cols-3 gap-4">
               {[
-                {label:"Total Profit", value:money(totalProfit), color:"text-green-600"},
-                {label:"Overall Margin", value:totalRevenue>0?pct(totalProfit/totalRevenue*100):"—", color:totalRevenue>0&&totalProfit/totalRevenue*100<15?"text-yellow-600":"text-green-600"},
-                {label:"Best Product", value:byProduct[0]?.name||"—", color:"text-gray-900"},
+                {label:"Total Profit", value:money(totalProfit), color: totalProfit > 0 ? "text-green-600 dark:text-green-400" : totalProfit < 0 ? "text-red-600 dark:text-red-400" : "text-gray-500 dark:text-gray-400"},
+                {label:"Overall Margin", value:totalRevenue>0?pct(totalProfit/totalRevenue*100):"—", color:totalRevenue>0&&totalProfit/totalRevenue*100<15?"text-yellow-600 dark:text-yellow-400":"text-green-600 dark:text-green-400"},
+                {label:"Best Product", value:byProduct[0]?.name||"—", color:"text-gray-900 dark:text-white"},
               ].map(c => (
-                <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
-                  <p className="text-xs text-gray-400 mb-1">{c.label}</p>
+                <div key={c.label} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{c.label}</p>
                   <p className={`text-2xl font-bold ${c.color}`}>{c.value}</p>
                 </div>
               ))}
             </div>
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100"><p className="text-sm font-semibold text-gray-900">Products by Profitability</p></div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700"><p className="text-sm font-semibold text-gray-900 dark:text-white">Products by Profitability</p></div>
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-gray-900/50">
                   <tr>
                     {["Product","Revenue","Profit","Margin","Bar"].map((h,i) => (
-                      <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 uppercase ${i===0 ? "text-left" : "text-right"}`}>{h}</th>
+                      <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase ${i===0 ? "text-left" : "text-right"}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {[...byProduct].sort((a,b) => (b.revenue>0?b.profit/b.revenue:0)-(a.revenue>0?a.profit/a.revenue:0)).map(p => {
                     const m = p.revenue>0?(p.profit/p.revenue)*100:0;
                     return (
-                      <tr key={p.name} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-medium text-gray-900">{p.name}</td>
-                        <td className="px-4 py-3 text-right text-gray-600">{money(p.revenue)}</td>
-                        <td className="px-4 py-3 text-right text-green-600">{money(p.profit)}</td>
+                      <tr key={p.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{p.name}</td>
+                        <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{money(p.revenue)}</td>
+                        <td className={`px-4 py-3 text-right font-medium ${p.profit > 0 ? "text-green-600 dark:text-green-400" : p.profit < 0 ? "text-red-600 dark:text-red-400" : "text-gray-400 dark:text-gray-500"}`}>{money(p.profit)}</td>
                         <td className="px-4 py-3 text-right">
-                          <span className={`text-xs font-bold ${m<0?"text-red-500":m<15?"text-yellow-600":"text-green-600"}`}>{pct(m)}</span>
+                          <span className={`text-xs font-bold ${m<0?"text-red-500 dark:text-red-400":m<15?"text-yellow-600 dark:text-yellow-400":"text-green-600 dark:text-green-400"}`}>{pct(m)}</span>
                         </td>
                         <td className="px-4 py-3 w-32">
-                          <div className="bg-gray-100 rounded-full h-2">
+                          <div className="bg-gray-100 dark:bg-gray-700 rounded-full h-2">
                             <div className={`h-2 rounded-full ${m<0?"bg-red-400":m<15?"bg-yellow-400":"bg-green-500"}`}
                               style={{width:`${Math.min(Math.max(m,0),100)}%`}} />
                           </div>
@@ -350,6 +358,9 @@ export default function ReportsPage() {
                       </tr>
                     );
                   })}
+                  {byProduct.length===0 && (
+                    <tr><td colSpan={5} className="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">No data for the selected period and filters.</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -360,40 +371,43 @@ export default function ReportsPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               {[
-                {label:"In Stock", value:stockData.filter(p=>!p.outOfStock&&!p.lowStock).length, color:"text-green-600"},
-                {label:"Low Stock", value:stockData.filter(p=>p.lowStock&&!p.outOfStock).length, color:"text-yellow-600"},
-                {label:"Out of Stock", value:stockData.filter(p=>p.outOfStock).length, color:"text-red-500"},
+                {label:"In Stock", value:stockData.filter(p=>!p.outOfStock&&!p.lowStock).length, color:"text-green-600 dark:text-green-400"},
+                {label:"Low Stock", value:stockData.filter(p=>p.lowStock&&!p.outOfStock).length, color:"text-yellow-600 dark:text-yellow-400"},
+                {label:"Out of Stock", value:stockData.filter(p=>p.outOfStock).length, color:"text-red-500 dark:text-red-400"},
               ].map(c => (
-                <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
-                  <p className="text-xs text-gray-400 mb-1">{c.label}</p>
+                <div key={c.label} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{c.label}</p>
                   <p className={`text-3xl font-bold ${c.color}`}>{c.value}</p>
                 </div>
               ))}
             </div>
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-gray-900/50">
                   <tr>
                     {["Product","Current Stock","Min Stock","Total In","Total Out","Status"].map((h,i) => (
-                      <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 uppercase ${i===0?"text-left":i===5?"text-center":"text-right"}`}>{h}</th>
+                      <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase ${i===0?"text-left":i===5?"text-center":"text-right"}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {stockData.map(p => (
-                    <tr key={p.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium text-gray-900">{p.name}</td>
-                      <td className="px-4 py-3 text-right font-semibold">{formatQty(p.currentStock)}</td>
-                      <td className="px-4 py-3 text-right text-gray-500">{p.minStock||"—"}</td>
-                      <td className="px-4 py-3 text-right text-green-600">{formatQty(p.inTotal)}</td>
-                      <td className="px-4 py-3 text-right text-red-500">{formatQty(p.outTotal)}</td>
+                    <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{p.name}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{formatQty(p.currentStock)}</td>
+                      <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">{p.minStock||"—"}</td>
+                      <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">{formatQty(p.inTotal)}</td>
+                      <td className="px-4 py-3 text-right text-red-500 dark:text-red-400">{formatQty(p.outTotal)}</td>
                       <td className="px-4 py-3 text-center">
-                        {p.outOfStock ? <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Out of Stock</span>
-                          : p.lowStock ? <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">⚠️ Low</span>
-                          : <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">✓ OK</span>}
+                        {p.outOfStock ? <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full font-medium">Out of Stock</span>
+                          : p.lowStock ? <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 px-2 py-0.5 rounded-full font-medium">⚠️ Low</span>
+                          : <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">✓ OK</span>}
                       </td>
                     </tr>
                   ))}
+                  {stockData.length===0 && (
+                    <tr><td colSpan={6} className="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">No data for the selected period and filters.</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -403,40 +417,40 @@ export default function ReportsPage() {
         {tab === "Collections" && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-xs text-gray-400 mb-1">Total Outstanding</p>
-                <p className="text-3xl font-bold text-red-500">{money(totalUnpaid)}</p>
-                <p className="text-xs text-gray-400 mt-1">{unpaidInvoices.length} invoices</p>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Total Outstanding</p>
+                <p className="text-3xl font-bold text-red-500 dark:text-red-400">{money(totalUnpaid)}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{unpaidInvoices.length} {unpaidInvoices.length === 1 ? "invoice" : "invoices"}</p>
               </div>
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-xs text-gray-400 mb-1">Overdue</p>
-                <p className="text-3xl font-bold text-red-700">{money(unpaidInvoices.filter(i=>i.status==="overdue").reduce((s,i)=>s+Math.max(Number(i.finalTotal||0)-Number(i.paidAmount||0),0),0))}</p>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Overdue</p>
+                <p className="text-3xl font-bold text-red-700 dark:text-red-400">{money(unpaidInvoices.filter(i=>i.status==="overdue").reduce((s,i)=>s+Math.max(Number(i.finalTotal||0)-Number(i.paidAmount||0),0),0))}</p>
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-gray-900/50">
                   <tr>
                     {["Invoice","Customer","Date","Total","Paid","Balance","Status"].map((h,i) => (
-                      <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 uppercase ${i<3?"text-left":i===6?"text-center":"text-right"}`}>{h}</th>
+                      <th key={h} className={`px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase ${i<3?"text-left":i===6?"text-center":"text-right"}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {unpaidInvoices.map(inv => (
-                    <tr key={inv.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => window.location.href=`/invoices/${inv.id}`}>
-                      <td className="px-4 py-3 font-medium text-gray-900">{inv.invoiceNumber}</td>
-                      <td className="px-4 py-3 text-gray-700">{inv.customerName}</td>
-                      <td className="px-4 py-3 text-gray-500">{inv.invoiceDate}</td>
-                      <td className="px-4 py-3 text-right font-semibold">{money(inv.finalTotal)}</td>
-                      <td className="px-4 py-3 text-right text-green-600">{money(inv.paidAmount||0)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-red-500">{money(Math.max(Number(inv.finalTotal||0)-Number(inv.paidAmount||0),0))}</td>
+                    <tr key={inv.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer" onClick={() => window.location.href=`/invoices/${inv.id}`}>
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{inv.invoiceNumber}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{inv.customerName}</td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{inv.invoiceDate}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{money(inv.finalTotal)}</td>
+                      <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">{money(inv.paidAmount||0)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-red-500 dark:text-red-400">{money(Math.max(Number(inv.finalTotal||0)-Number(inv.paidAmount||0),0))}</td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${inv.status==="overdue"?"bg-red-100 text-red-600":"bg-blue-50 text-blue-600"}`}>{inv.status}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${inv.status==="overdue"?"bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400":"bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"}`}>{inv.status}</span>
                       </td>
                     </tr>
                   ))}
-                  {unpaidInvoices.length===0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">🎉 All invoices are paid!</td></tr>}
+                  {unpaidInvoices.length===0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">🎉 All invoices are paid!</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -447,23 +461,33 @@ export default function ReportsPage() {
       {/* Export Modal */}
       {showExport && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-4">
-            <h3 className="text-base font-bold text-gray-900 mb-1">Export Report</h3>
-            <p className="text-xs text-gray-400 mb-4">Select tabs to include · {customerTypeFilter !== "All" ? customerTypeFilter + " · " : ""}{fromDate} to {toDate}</p>
+          <div className="bg-white dark:bg-gray-800 dark:border dark:border-gray-700 rounded-2xl shadow-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Export Report</h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Select tabs to include · {customerTypeFilter !== "All" ? customerTypeFilter + " · " : ""}{fromDate} to {toDate}</p>
 
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Include Tabs</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Include Tabs</p>
+              <button
+                onClick={() => {
+                  const allSelected = ["Sales", "Customers", "Products", "Profitability", "Stock", "Collections"].every(t => exportTabs.includes(t));
+                  setExportTabs(allSelected ? [] : ["Sales", "Customers", "Products", "Profitability", "Stock", "Collections"]);
+                }}
+                className="text-xs text-blue-500 dark:text-blue-400 hover:underline">
+                {["Sales", "Customers", "Products", "Profitability", "Stock", "Collections"].every(t => exportTabs.includes(t)) ? "Deselect all" : "Select all"}
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-2 mb-5">
               {["Sales", "Customers", "Products", "Profitability", "Stock", "Collections"].map(t => (
                 <label key={t} className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={exportTabs.includes(t)}
                     onChange={e => setExportTabs(prev => e.target.checked ? [...prev, t] : prev.filter(x => x !== t))}
-                    className="w-4 h-4 rounded" />
-                  <span className="text-sm text-gray-700">{t}</span>
+                    className="w-4 h-4 rounded accent-blue-600 dark:accent-blue-400 cursor-pointer" />
+                  <span className="text-sm text-gray-700 dark:text-white">{t}</span>
                 </label>
               ))}
             </div>
 
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Download</p>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Download</p>
             <div className="grid grid-cols-2 gap-2 mb-4">
               <button disabled={exporting || exportTabs.length === 0}
                 onClick={async () => {
@@ -471,7 +495,7 @@ export default function ReportsPage() {
                   try { exportToExcel({ salesByPeriod, byCustomer, byProduct, stockData, unpaidInvoices, totalRevenue, totalProfit, period, fromDate, toDate, customerTypeFilter }, exportTabs); }
                   finally { setExporting(false); }
                 }}
-                className="px-3 py-2.5 text-sm font-medium rounded-lg border-2 border-gray-200 hover:border-gray-400 hover:bg-gray-50 disabled:opacity-40 flex items-center justify-center gap-2">
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-gray-600 font-medium text-sm text-gray-800 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700/60 hover:border-gray-400 dark:hover:border-gray-500 disabled:opacity-40 transition-colors">
                 📊 Download Excel
               </button>
               <button disabled={exporting || exportTabs.length === 0}
@@ -480,62 +504,71 @@ export default function ReportsPage() {
                   try { await exportToPDF({ salesByPeriod, byCustomer, byProduct, stockData, unpaidInvoices, totalRevenue, totalProfit, period, fromDate, toDate, customerTypeFilter }, exportTabs); }
                   finally { setExporting(false); }
                 }}
-                className="px-3 py-2.5 text-sm font-medium rounded-lg border-2 border-gray-200 hover:border-gray-400 hover:bg-gray-50 disabled:opacity-40 flex items-center justify-center gap-2">
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-gray-600 font-medium text-sm text-gray-800 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700/60 hover:border-gray-400 dark:hover:border-gray-500 disabled:opacity-40 transition-colors">
                 📄 Download PDF
               </button>
             </div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Share</p>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Share</p>
             <div className="grid grid-cols-2 gap-2 mb-2">
               <button disabled={exporting || exportTabs.length === 0}
                 onClick={async () => {
                   setExporting(true);
                   try {
                     await exportToPDF({ salesByPeriod, byCustomer, byProduct, stockData, unpaidInvoices, totalRevenue, totalProfit, period, fromDate, toDate, customerTypeFilter }, exportTabs);
-                    const msg = `📊 *Di Peppi Report*
-${customerTypeFilter !== "All" ? "_" + customerTypeFilter + "_  · " : ""}${fromDate} → ${toDate}
-
-💰 Revenue: *${money(totalRevenue)}*
-📈 Profit: *${money(totalProfit)}*
-📊 Margin: *${totalRevenue > 0 ? (totalProfit/totalRevenue*100).toFixed(1) : 0}%*
-
-_PDF attached separately_`;
-                    window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
+                    const totalOrders = salesByPeriod.reduce((s, [, d]) => s + d.orders, 0);
+                    const url = buildWhatsAppReportShare({
+                      dateFrom: fromDate,
+                      dateTo: toDate,
+                      type: customerTypeFilter,
+                      revenue: totalRevenue,
+                      profit: totalProfit,
+                      margin: totalRevenue > 0 ? (totalProfit / totalRevenue * 100) : 0,
+                      orderCount: totalOrders,
+                    });
+                    window.open(url, "_blank");
                   } finally { setExporting(false); }
                 }}
-                className="px-3 py-2.5 text-sm font-medium rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 flex items-center justify-center gap-2">
-                💬 WhatsApp + PDF
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-green-500 text-white text-sm hover:bg-green-600 disabled:opacity-40 transition-colors">
+                WhatsApp + PDF
               </button>
               <button disabled={exporting || exportTabs.length === 0}
                 onClick={async () => {
                   setExporting(true);
                   try {
                     exportToExcel({ salesByPeriod, byCustomer, byProduct, stockData, unpaidInvoices, totalRevenue, totalProfit, period, fromDate, toDate, customerTypeFilter }, exportTabs);
-                    const body = `Hi,
-
-Please find attached the Di Peppi report.
-
-Period: ${fromDate} to ${toDate}
-Type: ${customerTypeFilter}
-Revenue: ${money(totalRevenue)}
-Profit: ${money(totalProfit)}
-Margin: ${totalRevenue > 0 ? (totalProfit/totalRevenue*100).toFixed(1) : 0}%
-
-Best regards,
-Di Peppi`;
-                    await navigator.clipboard.writeText(body);
+                    const marginStr = totalRevenue > 0 ? (totalProfit/totalRevenue*100).toFixed(1) : "0";
+                    const emailBody = [
+                      "Hi,",
+                      "",
+                      "Please find attached the Di Peppi report for the period below.",
+                      "",
+                      "Report Summary",
+                      "--------------",
+                      "Period:   " + fromDate + " to " + toDate,
+                      "Type:     " + customerTypeFilter,
+                      "Orders:   " + filteredOrders.length,
+                      "Revenue:  " + money(totalRevenue),
+                      "Profit:   " + money(totalProfit),
+                      "Margin:   " + marginStr + "%",
+                      "",
+                      "Tabs included: " + exportTabs.join(", "),
+                      "",
+                      "Best regards,",
+                      "Di Peppi",
+                    ].join("\n");
+                    await navigator.clipboard.writeText(emailBody);
                     const subject = encodeURIComponent(`Di Peppi Report · ${customerTypeFilter} · ${fromDate} to ${toDate}`);
-                    const bodyEnc = encodeURIComponent(body);
-                    window.open(`mailto:?subject=${subject}&body=${bodyEnc}`, "_blank");
+                    window.open(`mailto:?subject=${subject}&body=${encodeURIComponent(emailBody)}`, "_blank");
                     alert("✅ Excel downloaded + email body copied to clipboard. Attach the Excel file manually.");
                   } finally { setExporting(false); }
                 }}
-                className="px-3 py-2.5 text-sm font-medium rounded-lg border-2 border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-40 flex items-center justify-center gap-2">
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700/60 disabled:opacity-40 transition-colors">
                 ✉️ Email + Excel
               </button>
             </div>
 
             <button onClick={() => setShowExport(false)}
-              className="w-full mt-3 px-4 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50">
+              className="w-full mt-3 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors">
               Cancel
             </button>
           </div>

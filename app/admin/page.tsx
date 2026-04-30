@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, addDoc, runTransaction } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { formatPrice, formatQty } from "@/lib/formatters";
-import { useTheme } from "@/components/ThemeProvider";
 
 /* ─── helpers ─── */
 
@@ -15,12 +14,12 @@ function formatDate(iso: string) {
   return `${d}-${m}-${y}`;
 }
 
-function trendLabel(cur: number, prev: number): { text: string; up: boolean | null } {
+function trendLabel(cur: number, prev: number, period = "last week"): { text: string; up: boolean | null } {
   if (prev === 0 && cur === 0) return { text: "—", up: null };
-  if (prev === 0) return { text: "New this week", up: true };
+  if (prev === 0) return { text: "New", up: true };
   const pct = Math.round(((cur - prev) / prev) * 100);
-  if (pct === 0) return { text: "Same as last week", up: null };
-  return { text: `${pct > 0 ? "▲" : "▼"}${Math.abs(pct)}% vs last week`, up: pct > 0 };
+  if (pct === 0) return { text: `Same as ${period}`, up: null };
+  return { text: `${pct > 0 ? "▲" : "▼"}${Math.abs(pct)}% vs ${period}`, up: pct > 0 };
 }
 
 function timeAgo(iso: string) {
@@ -33,23 +32,26 @@ function timeAgo(iso: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-/* ─── mini bar chart ─── */
+/* ─── revenue sparkline ─── */
 
-function MiniBarChart({ days }: { days: { label: string; value: number }[] }) {
+function Sparkline({ days }: { days: { label: string; value: number }[] }) {
   const max = Math.max(...days.map(d => d.value), 1);
-  const BW = 10, GAP = 3, H = 32;
+  const W = 88, H = 32, n = days.length;
+  const xs = days.map((_, i) => (i / Math.max(n - 1, 1)) * W);
+  const ys = days.map(d => H - 4 - Math.round((d.value / max) * (H - 10)));
+  const pts = xs.map((x, i) => `${x},${ys[i]}`).join(" ");
   return (
     <div className="mt-2">
-      <svg width={days.length * (BW + GAP) - GAP} height={H}>
-        {days.map((d, i) => {
-          const h = Math.max(Math.round((d.value / max) * H), 2);
-          return <rect key={i} x={i * (BW + GAP)} y={H - h} width={BW} height={h} rx={2}
-            fill={d.value > 0 ? "#4ade80" : "#374151"} />;
-        })}
+      <svg width={W} height={H} style={{ overflow: "visible" }}>
+        <polyline points={pts} fill="none" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
+          className="stroke-green-500 dark:stroke-green-400" />
+        {days.map((d, i) => d.value > 0 ? (
+          <circle key={i} cx={xs[i]} cy={ys[i]} r={2} className="fill-green-500 dark:fill-green-400" />
+        ) : null)}
       </svg>
-      <div className="flex mt-0.5" style={{ gap: GAP }}>
+      <div className="flex mt-0.5" style={{ gap: 3 }}>
         {days.map((d, i) => (
-          <span key={i} style={{ width: BW, fontSize: 7, display: "inline-block" }}
+          <span key={i} style={{ width: 10, fontSize: 7, display: "inline-block" }}
             className="text-center text-gray-400">{d.label}</span>
         ))}
       </div>
@@ -145,12 +147,13 @@ export default function Dashboard() {
   // UI state
   const [density, setDensity]     = useState<"comfortable" | "compact">("comfortable");
   const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "all">("all");
-  const { theme, toggle: toggleDark } = useTheme();
-  const darkMode = theme === "dark";
   const [dragOrderId, setDragOrderId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [searchOpen, setSearchOpen]   = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showLowStockPOModal, setShowLowStockPOModal] = useState(false);
+  const [lowStockModalItems, setLowStockModalItems]   = useState<any[]>([]);
+  const [creatingPOs, setCreatingPOs]                 = useState(false);
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
@@ -249,7 +252,7 @@ export default function Dashboard() {
         if (p.active !== false && min > 0 && cur <= min) {
           const pct = cur <= 0 ? 0 : cur / min;
           const tier = cur <= 0 ? 0 : pct <= 0.25 ? 1 : 2;
-          lowStock.push({ id: d.id, name: p.name, currentStock: cur, minStock: min, unit: p.unit || "", tier, pct });
+          lowStock.push({ id: d.id, name: p.name, currentStock: cur, minStock: min, unit: p.unit || "", tier, pct, supplierId: p.supplierId || "", supplier: p.supplier || "" });
         }
       });
       lowStock.sort((a, b) => a.tier !== b.tier ? a.tier - b.tier : a.pct - b.pct);
@@ -327,14 +330,34 @@ export default function Dashboard() {
     delivered: filteredOrders.filter(o => o.status === "Delivered"),
   } as Record<string, any[]>;
 
-  // Week-over-week trends (always from all orders, not date-filtered)
+  // Period-aware trends
   const revTotal       = deliveredOrders.reduce((s, o) => s + Number(o.finalTotal || 0), 0);
-  const activeThisWeek = orders.filter(o => (o.createdAt || "") >= twISO).length;
-  const activeLastWeek = orders.filter(o => (o.createdAt || "") >= lwISO && (o.createdAt || "") < twISO).length;
-  const revThisWeek    = orders.filter(o => o.status === "Delivered" && (o.updatedAt || o.createdAt || "") >= twISO).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
-  const revLastWeek    = orders.filter(o => { const d = o.updatedAt || o.createdAt || ""; return o.status === "Delivered" && d >= lwISO && d < twISO; }).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
-  const orderTrend = trendLabel(activeThisWeek, activeLastWeek);
-  const revTrend   = trendLabel(revThisWeek, revLastWeek);
+  const yesterdayISO   = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().slice(0, 10);
+  const lastMonthEnd   = new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().slice(0, 10);
+
+  const activeThisWeek  = orders.filter(o => (o.createdAt || "") >= twISO).length;
+  const activeLastWeek  = orders.filter(o => (o.createdAt || "") >= lwISO && (o.createdAt || "") < twISO).length;
+  const activeToday     = orders.filter(o => String(o.createdAt || "").slice(0, 10) === todayISO).length;
+  const activeYesterday = orders.filter(o => String(o.createdAt || "").slice(0, 10) === yesterdayISO).length;
+  const activeThisMonth = orders.filter(o => String(o.createdAt || "").slice(0, 10) >= firstOfMonth).length;
+  const activeLastMonth = orders.filter(o => { const d = String(o.createdAt || "").slice(0, 10); return d >= lastMonthStart && d <= lastMonthEnd; }).length;
+
+  const revThisWeek  = orders.filter(o => o.status === "Delivered" && (o.updatedAt || o.createdAt || "") >= twISO).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
+  const revLastWeek  = orders.filter(o => { const d = o.updatedAt || o.createdAt || ""; return o.status === "Delivered" && d >= lwISO && d < twISO; }).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
+  const revToday     = orders.filter(o => o.status === "Delivered" && String(o.deliveryDate || o.updatedAt || "").slice(0, 10) === todayISO).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
+  const revYesterday = orders.filter(o => o.status === "Delivered" && String(o.deliveryDate || o.updatedAt || "").slice(0, 10) === yesterdayISO).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
+  const revThisMonth = orders.filter(o => o.status === "Delivered" && String(o.deliveryDate || o.updatedAt || "").slice(0, 10) >= firstOfMonth).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
+  const revLastMonth = orders.filter(o => { const d = String(o.deliveryDate || o.updatedAt || "").slice(0, 10); return o.status === "Delivered" && d >= lastMonthStart && d <= lastMonthEnd; }).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
+
+  const orderTrend = dateRange === "today" ? trendLabel(activeToday, activeYesterday, "yesterday") :
+                     dateRange === "week"  ? trendLabel(activeThisWeek, activeLastWeek, "last week") :
+                     dateRange === "month" ? trendLabel(activeThisMonth, activeLastMonth, "last month") :
+                     { text: "—", up: null };
+  const revTrend   = dateRange === "today" ? trendLabel(revToday, revYesterday, "yesterday") :
+                     dateRange === "week"  ? trendLabel(revThisWeek, revLastWeek, "last week") :
+                     dateRange === "month" ? trendLabel(revThisMonth, revLastMonth, "last month") :
+                     { text: "—", up: null };
 
   // Today's snapshot (always from all orders)
   const packToday    = orders.filter(o => ["Draft", "Confirmed", "Preparing"].includes(o.status) && o.deliveryDate === todayISO).length;
@@ -364,13 +387,6 @@ export default function Dashboard() {
     finally { setDragOrderId(null); setDragOverCol(null); }
   };
 
-  const markDelivered = async (orderId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await updateDoc(doc(db, "orders", orderId), { status: "Delivered", updatedAt: new Date().toISOString() });
-      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "Delivered" } : o));
-    } catch { alert("Failed to update order"); }
-  };
 
   /* ─── sub-components ─── */
 
@@ -385,8 +401,8 @@ export default function Dashboard() {
       <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</p>
       <p className={`text-2xl font-bold ${color}`}>{value}</p>
       <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
-      {trend && trend.text !== "—" && (
-        <p className={`text-xs font-medium mt-1.5 ${trend.up === true ? "text-green-600" : trend.up === false ? "text-red-500" : "text-gray-400"}`}>
+      {trend && (
+        <p className={`text-xs font-medium mt-1.5 ${trend.up === true ? "text-green-600 dark:text-green-400" : trend.up === false ? "text-red-500" : "text-gray-400"}`}>
           {trend.text}
         </p>
       )}
@@ -397,7 +413,7 @@ export default function Dashboard() {
   const isCompact = density === "compact";
 
   const OrderCard = ({ order }: { order: any }) => {
-    const isOverdue  = order.deliveryDate && order.deliveryDate < todayISO;
+    const isOverdue  = order.deliveryDate && order.deliveryDate <= todayISO && !["Delivered", "Cancelled", "Canceled"].includes(order.status);
     const isDragging = dragOrderId === order.id;
     const statusDot: Record<string, string> = {
       Draft: "bg-gray-400", Confirmed: "bg-blue-400", Preparing: "bg-yellow-400",
@@ -466,15 +482,9 @@ export default function Dashboard() {
           </p>
         </div>
         {order.deliveryDate && (
-          <p className={`text-xs mt-1 font-medium ${isOverdue ? "text-red-500" : "text-gray-400"}`}>
+          <p className={`text-xs mt-1 ${isOverdue ? "text-red-500 font-bold" : "text-gray-400 font-medium"}`}>
             {isOverdue ? "⚠️ " : ""}Delivery: {formatDate(order.deliveryDate)}
           </p>
-        )}
-        {["Draft", "Confirmed", "Preparing", "To Deliver"].includes(order.status) && (
-          <button onClick={(e) => markDelivered(order.id, e)}
-            className="mt-2 w-full text-xs py-1 rounded-lg border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 font-medium transition-all">
-            ✓ Mark Delivered
-          </button>
         )}
       </div>
     );
@@ -512,13 +522,7 @@ export default function Dashboard() {
               {density === "comfortable" ? "⊞ Compact" : "⊟ Comfy"}
             </button>
 
-            {/* Dark mode toggle */}
-            <button onClick={toggleDark} title={darkMode ? "Light mode" : "Dark mode"}
-              className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm">
-              {darkMode ? "☀️" : "🌙"}
-            </button>
-
-            <button onClick={() => router.push("/admin/orders/new")}
+<button onClick={() => router.push("/admin/orders/new")}
               className="px-4 py-1.5 text-sm text-white rounded-xl font-bold flex-shrink-0"
               style={{ backgroundColor: "#1B2A5E" }}>
               + New Order
@@ -580,27 +584,27 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KPICard label="Active Orders" value={activeOrders.length}
               sub={`${colOrders.toDeliver.length} ready to deliver`}
-              color="text-blue-700" bg="bg-blue-50 border-blue-200"
+              color="text-blue-700 dark:text-blue-400" bg="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-900"
               trend={orderTrend} href="/admin/orders" />
             <KPICard
               label="Revenue (Delivered)"
               value={"$" + revTotal.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               sub={`${deliveredOrders.length} delivered orders`}
-              color="text-green-700" bg="bg-green-50 border-green-200"
+              color="text-green-700 dark:text-green-400" bg="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-900"
               trend={revTrend}
-              chart={revDays.length > 0 ? <MiniBarChart days={revDays} /> : undefined} />
+              chart={<Sparkline days={revDays} />} />
             <KPICard
               label="Outstanding Invoices"
               value={"$" + invoiceStats.outstanding.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               sub={invoiceStats.overdueCount > 0 ? `${invoiceStats.overdueCount} overdue` : "All on time"}
-              color={invoiceStats.overdueCount > 0 ? "text-red-700" : "text-gray-700 dark:text-gray-200"}
-              bg={invoiceStats.overdueCount > 0 ? "bg-red-50 border-red-200" : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"}
+              color={invoiceStats.overdueCount > 0 ? "text-red-700 dark:text-red-400" : "text-gray-700 dark:text-gray-200"}
+              bg={invoiceStats.overdueCount > 0 ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-900" : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"}
               href="/invoices" />
             <KPICard
               label="⚖️ Need Weighing"
               value={orders.filter(o => weighingOrderIds.has(o.id) && !["Delivered","Cancelled","Canceled"].includes(o.status)).length}
               sub="active orders with weigh items"
-              color="text-orange-700" bg="bg-orange-50 border-orange-200"
+              color="text-orange-700 dark:text-orange-400" bg="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-900"
               href="/admin/orders" />
           </div>
         )}
@@ -631,6 +635,108 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Low Stock PO Modal */}
+        {showLowStockPOModal && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-lg overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+                <h3 className="font-bold text-gray-900 dark:text-white text-sm">Create POs for Low Stock</h3>
+                <button onClick={() => setShowLowStockPOModal(false)}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none w-6 h-6 flex items-center justify-center">×</button>
+              </div>
+              <div className="max-h-96 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700 px-5">
+                {lowStockModalItems.map((item: any) => (
+                  <div key={item.id} className="flex items-center gap-3 py-3">
+                    <input type="checkbox" checked={item.checked}
+                      onChange={e => setLowStockModalItems(prev => prev.map((i: any) => i.id === item.id ? { ...i, checked: e.target.checked } : i))}
+                      className="w-4 h-4 rounded border-gray-300 accent-blue-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
+                        {item.tier === 0 && <span className="w-2 h-2 rounded-full bg-red-500 inline-block flex-shrink-0 animate-pulse" />}
+                        <span className="truncate">{item.name}</span>
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {item.tier === 0 ? "Out of stock" : `${formatQty(item.currentStock)} ${item.unit} · min ${formatQty(item.minStock)}`}
+                        {item.supplier ? ` · ${item.supplier}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="text-xs text-gray-400">Qty:</span>
+                      <input type="number" value={item.orderQty} min={0.1} step={0.1}
+                        onChange={e => setLowStockModalItems(prev => prev.map((i: any) => i.id === item.id ? { ...i, orderQty: Number(e.target.value) } : i))}
+                        className="w-20 text-xs border border-gray-200 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100 dark:border-gray-700">
+                <span className="text-xs text-gray-400">{lowStockModalItems.filter((i: any) => i.checked).length} selected</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowLowStockPOModal(false)}
+                    className="px-4 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const selected = lowStockModalItems.filter((i: any) => i.checked && i.orderQty > 0);
+                      if (!selected.length) return;
+                      setCreatingPOs(true);
+                      try {
+                        const year = new Date().getFullYear();
+                        const bySupplier: Record<string, any[]> = {};
+                        selected.forEach((item: any) => {
+                          const key = item.supplierId || "unknown";
+                          if (!bySupplier[key]) bySupplier[key] = [];
+                          bySupplier[key].push(item);
+                        });
+                        for (const [supplierId, items] of Object.entries(bySupplier)) {
+                          let poNumber = "";
+                          const counterRef = doc(db, "settings", "poCounter");
+                          await runTransaction(db, async (tx) => {
+                            const snap = await tx.get(counterRef);
+                            const cur = snap.exists() ? snap.data().count : 0;
+                            const next = cur + 1;
+                            tx.set(counterRef, { count: next });
+                            poNumber = `PO-${year}-${String(next).padStart(3, "0")}`;
+                          });
+                          await addDoc(collection(db, "purchaseOrders"), {
+                            poNumber,
+                            orderId: null,
+                            invoiceId: null,
+                            supplierId: supplierId === "unknown" ? null : supplierId,
+                            supplierName: items[0].supplier || supplierId,
+                            poDate: todayISO,
+                            deliveryDate: "",
+                            status: "Generated",
+                            poTotal: 0,
+                            source: "low-stock",
+                            items: items.map((i: any) => ({
+                              productId: i.id,
+                              productName: i.name,
+                              quantity: i.orderQty,
+                              unitCostPrice: 0,
+                              lineTotal: 0,
+                              weightNote: "",
+                            })),
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                          });
+                        }
+                        setShowLowStockPOModal(false);
+                        router.push("/admin/purchase-orders");
+                      } catch { alert("Failed to create POs"); }
+                      finally { setCreatingPOs(false); }
+                    }}
+                    disabled={creatingPOs || lowStockModalItems.filter((i: any) => i.checked).length === 0}
+                    className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    {creatingPOs ? "Creating…" : "Submit POs"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Low Stock — left border accent + pulse on tier 0 */}
         {lowStockProducts.length > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-yellow-200 dark:border-yellow-900 p-4">
@@ -644,35 +750,59 @@ export default function Dashboard() {
                   </span>
                 )}
               </div>
-              <button onClick={() => router.push("/admin/purchase-orders")} className="text-xs px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                View POs →
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setLowStockModalItems(
+                      [...lowStockProducts].sort((a, b) => a.tier - b.tier || a.pct - b.pct).map(p => ({
+                        ...p,
+                        checked: true,
+                        orderQty: Math.max(0.1, Math.round((p.minStock - p.currentStock) * 10) / 10),
+                      }))
+                    );
+                    setShowLowStockPOModal(true);
+                  }}
+                  className="text-xs px-3 py-1 rounded-lg border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors font-medium">
+                  + Create POs for Low Stock
+                </button>
+                <button onClick={() => router.push("/admin/purchase-orders")} className="text-xs px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  View POs →
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-              {lowStockProducts.slice(0, 12).map(p => (
-                <div key={p.id} className={`relative rounded-xl overflow-hidden border text-xs flex flex-col gap-1 ${
-                  p.tier === 0 ? "bg-red-50 dark:bg-red-900/20 border-red-300" :
-                  p.tier === 1 ? "bg-red-50 dark:bg-red-900/10 border-red-200" :
-                  "bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200"
-                }`}>
-                  {/* Left accent bar */}
-                  <div className={`absolute inset-y-0 left-0 w-1 ${
-                    p.tier === 0 ? "bg-red-500" : p.tier === 1 ? "bg-red-400" : "bg-yellow-400"
-                  }`} />
-                  <div className="pl-4 pr-3 py-2 flex flex-col gap-1">
-                    <p className="font-semibold text-gray-900 dark:text-white truncate">{p.name}</p>
-                    <p className={`font-bold flex items-center gap-1 ${p.tier === 0 ? "text-red-600" : p.tier === 1 ? "text-red-500" : "text-yellow-700"}`}>
-                      {p.tier === 0 && <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />}
-                      {p.tier === 0 ? "❌ Out" : `${formatQty(p.currentStock)} ${p.unit}`}
-                    </p>
-                    <p className="text-gray-400">Min: {formatQty(p.minStock)}</p>
-                    <button onClick={() => router.push("/admin/purchase-orders")}
-                      className="mt-0.5 text-xs py-0.5 rounded border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors font-medium text-center">
-                      + Create PO
-                    </button>
+              {lowStockProducts.slice(0, 12).map(p => {
+                const fillPct = p.currentStock <= 0 ? 0 : Math.min(100, Math.round((p.currentStock / p.minStock) * 100));
+                return (
+                  <div key={p.id} className={`relative rounded-xl overflow-hidden border text-xs flex flex-col gap-1 ${
+                    p.tier === 0 ? "bg-red-50 dark:bg-red-900/20 border-red-300" :
+                    p.tier === 1 ? "bg-red-50 dark:bg-red-900/10 border-red-200" :
+                    "bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200"
+                  }`}>
+                    {/* Left accent bar */}
+                    <div className={`absolute inset-y-0 left-0 w-1 ${
+                      p.tier === 0 ? "bg-red-500" : p.tier === 1 ? "bg-red-400" : "bg-yellow-400"
+                    }`} />
+                    <div className="pl-4 pr-3 py-2 flex flex-col gap-1">
+                      <p className="font-semibold text-gray-900 dark:text-white truncate">{p.name}</p>
+                      <p className={`font-bold flex items-center gap-1 ${p.tier === 0 ? "text-red-600" : p.tier === 1 ? "text-red-500" : "text-yellow-700"}`}>
+                        {p.tier === 0 && <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />}
+                        {p.tier === 0 ? "❌ Out" : `${formatQty(p.currentStock)} ${p.unit}`}
+                      </p>
+                      {/* Stock progress bar */}
+                      <div className="w-full h-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                        <div className={`h-full rounded-full ${
+                          fillPct === 0 ? "bg-red-500" :
+                          fillPct < 25  ? "bg-red-500" :
+                          fillPct < 75  ? "bg-yellow-500" :
+                          "bg-green-500"
+                        }`} style={{ width: `${fillPct}%` }} />
+                      </div>
+                      <p className="text-gray-400">Min: {formatQty(p.minStock)}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {lowStockProducts.length > 12 && (
                 <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 px-3 py-2 text-xs flex items-center justify-center text-gray-400">
                   +{lowStockProducts.length - 12} more
@@ -702,7 +832,14 @@ export default function Dashboard() {
                   }`}>
                   <div className="flex items-center justify-between">
                     <h2 className="font-bold text-gray-900 dark:text-white text-sm">{col.label}</h2>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${col.badge}`}>{list.length}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${col.badge}`}>{list.length}</span>
+                      {list.length > 0 && (
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          · ${formatPrice(list.reduce((s, o) => s + Number(o.finalTotal || 0), 0))}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {isDragTarget && (
                     <div className="border-2 border-dashed border-blue-300 rounded-lg py-4 text-center text-xs text-blue-400 font-medium">

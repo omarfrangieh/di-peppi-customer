@@ -49,7 +49,7 @@ function formatDate(iso: any) {
 }
 
 function money(n: number) {
-  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 export default function OrdersPage() {
@@ -63,6 +63,7 @@ export default function OrdersPage() {
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [poReadiness, setPoReadiness] = useState<Record<string, { total: number; delivered: number }>>({});
   const [weighingOrderIds, setWeighingOrderIds] = useState<Set<string>>(new Set());
+  const [itemCounts, setItemCounts] = useState<Record<string, number>>({});
   const [customers, setCustomers] = useState<string[]>([]);
   const [showClientDropdown, setShowClientDropdown] = useState(false);
 
@@ -92,15 +93,18 @@ export default function OrdersPage() {
         getDocs(collection(db, "purchaseOrders")),
       ]);
 
-      // Weighing
+      // Weighing + item counts
       const weighingProductIds = new Set<string>();
       productsSnap.forEach(d => { if (d.data().requiresWeighing) weighingProductIds.add(d.id); });
       const weighingOrders = new Set<string>();
+      const counts: Record<string, number> = {};
       itemsSnap.forEach(d => {
         const item = d.data();
         if (item.orderId && weighingProductIds.has(item.productId)) weighingOrders.add(item.orderId);
+        if (item.orderId) counts[item.orderId] = (counts[item.orderId] || 0) + 1;
       });
       setWeighingOrderIds(weighingOrders);
+      setItemCounts(counts);
 
       // PO readiness
       const readiness: Record<string, { total: number; delivered: number }> = {};
@@ -158,6 +162,10 @@ export default function OrdersPage() {
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
+  const hasOverdueOrders = orders.some(o =>
+    o.deliveryDate && o.deliveryDate <= todayISO && !["Delivered", "Cancelled", "Canceled"].includes(o.status)
+  );
+
   const filtered = orders.filter(o => {
     const matchSearch = !search ||
       (o.name || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -184,25 +192,26 @@ export default function OrdersPage() {
   const hasActiveFilter = filterStatus !== "All" || filterType !== "All" || search;
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 transition-colors">
+      <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent dark:border-white rounded-full animate-spin" />
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
 
       {/* Sticky header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700 px-6 py-4 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <h1 className="text-xl font-bold flex-shrink-0" style={{ color: "#B5535A" }}>Orders</h1>
-            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full flex-shrink-0">
+            <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 dark:text-gray-400 px-2 py-0.5 rounded-full flex-shrink-0">
               {filtered.length}
             </span>
             {filteredRevenue > 0 && (
-              <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full flex-shrink-0">
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full flex-shrink-0 flex items-center gap-1">
                 {money(filteredRevenue)}
+                <span className="font-normal text-gray-400">(all time)</span>
               </span>
             )}
           </div>
@@ -212,7 +221,7 @@ export default function OrdersPage() {
             <select
               value={filterType}
               onChange={e => setFilterType(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none"
+              className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none"
             >
               <option value="All">All Types</option>
               <option value="B2B">B2B</option>
@@ -223,9 +232,9 @@ export default function OrdersPage() {
             <button
               onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
               title={sortDir === "desc" ? "Newest first" : "Oldest first"}
-              className="p-1.5 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+              className="p-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
             >
-              <ArrowUpDown size={15} className="text-gray-500" />
+              <ArrowUpDown size={15} className="text-gray-500 dark:text-gray-400" />
             </button>
 
             {/* Search */}
@@ -237,7 +246,7 @@ export default function OrdersPage() {
                 onChange={e => { setSearch(e.target.value); setShowClientDropdown(e.target.value.length > 0); }}
                 onFocus={() => { if (search.length > 0) setShowClientDropdown(true); }}
                 onBlur={() => setTimeout(() => setShowClientDropdown(false), 150)}
-                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none w-52"
+                className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none w-52 bg-white dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
               />
               {search && (
                 <button
@@ -248,10 +257,10 @@ export default function OrdersPage() {
                 </button>
               )}
               {showClientDropdown && customers.filter(c => c.toLowerCase().includes(search.toLowerCase())).length > 0 && (
-                <div className="absolute top-full mt-1 left-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
+                <div className="absolute top-full mt-1 left-0 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
                   {customers.filter(c => c.toLowerCase().includes(search.toLowerCase())).map(c => (
                     <div key={c}
-                      className="px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
+                      className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
                       onMouseDown={() => { setSearch(c); setShowClientDropdown(false); }}>
                       {c}
                     </div>
@@ -280,12 +289,15 @@ export default function OrdersPage() {
             onClick={() => setFilterStatus("All")}
             className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
               filterStatus === "All"
-                ? "bg-gray-900 text-white border-gray-900"
-                : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                ? "bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-gray-900"
+                : "bg-white text-gray-600 border-gray-200 hover:border-gray-400 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700"
             }`}
           >
             <span className="font-bold text-sm">{orders.length}</span>
-            <span>All</span>
+            <span className="flex items-center gap-1">
+              All
+              {hasOverdueOrders && <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />}
+            </span>
             {filterStatus === "All" && filteredRevenue > 0 && (
               <span className="opacity-70">{money(filteredRevenue)}</span>
             )}
@@ -303,19 +315,20 @@ export default function OrdersPage() {
                 key={status}
                 onClick={() => setFilterStatus(active ? "All" : status)}
                 className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
+                  count === 0 ? "opacity-50 pointer-events-none" : ""
+                } ${
                   active
-                    ? "bg-gray-900 text-white border-gray-900"
+                    ? "bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-gray-900"
                     : count === 0
-                    ? "bg-white text-gray-300 border-gray-100 cursor-default"
-                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                    ? "bg-white text-gray-300 border-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600"
+                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-400 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700"
                 }`}
-                disabled={count === 0}
               >
                 <span>{STATUS_ICONS[status]}</span>
                 <span className="font-bold text-sm">{count}</span>
                 <span>{status}</span>
                 {count > 0 && rev > 0 && (
-                  <span className={active ? "opacity-70" : "text-gray-400"}>{money(rev)}</span>
+                  <span className={active ? "opacity-70" : "text-gray-400 dark:text-gray-400"}>{money(rev)}</span>
                 )}
               </button>
             );
@@ -327,15 +340,24 @@ export default function OrdersPage() {
 
           {/* Empty state */}
           {filtered.length === 0 && (
-            <div className="text-center py-16 bg-white rounded-xl border border-gray-200">
-              <p className="text-gray-400 text-sm mb-3">No orders match your filters.</p>
-              {hasActiveFilter && (
-                <button
-                  onClick={() => { setSearch(""); setFilterStatus("All"); setFilterType("All"); }}
-                  className="text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors"
-                >
-                  Clear all filters
-                </button>
+            <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+              {filterStatus !== "All" ? (
+                <>
+                  <p className="text-2xl mb-2">{STATUS_ICONS[filterStatus] || "📝"}</p>
+                  <p className="text-gray-400 dark:text-gray-500 text-sm">No {filterStatus} orders</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-gray-400 text-sm mb-3">No orders match your filters.</p>
+                  {hasActiveFilter && (
+                    <button
+                      onClick={() => { setSearch(""); setFilterStatus("All"); setFilterType("All"); }}
+                      className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg transition-colors"
+                    >
+                      Clear all filters
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -344,20 +366,24 @@ export default function OrdersPage() {
             <div key={date}>
               {/* Date group header */}
               <div className="flex items-center gap-3 py-2 mt-2">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   {date !== "No Date" ? formatDate(date) : "No Date"}
                 </span>
-                <div className="h-px flex-1 bg-gray-200" />
+                <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
                 <span className="text-xs text-gray-400">
                   {money(groupOrders.reduce((s, o) => s + Number(o.finalTotal || 0), 0))}
                 </span>
               </div>
 
               <div className="space-y-1.5">
-                {groupOrders.map(order => {
+                {[...groupOrders].sort((a, b) => {
+                  const ao = a.deliveryDate && a.deliveryDate <= todayISO && !["Delivered", "Cancelled", "Canceled"].includes(a.status);
+                  const bo = b.deliveryDate && b.deliveryDate <= todayISO && !["Delivered", "Cancelled", "Canceled"].includes(b.status);
+                  return ao === bo ? 0 : ao ? -1 : 1;
+                }).map(order => {
                   const po = poReadiness[order.id];
-                  const isOverdue = order.deliveryDate && order.deliveryDate < todayISO &&
-                    !["Delivered", "Cancelled", "Canceled"].includes(order.status);
+                  const isOverdue = !!(order.deliveryDate && order.deliveryDate <= todayISO &&
+                    !["Delivered", "Cancelled", "Canceled"].includes(order.status));
                   const nextStatus = STATUS_FLOW[order.status];
                   const isAdvancing = advancing === order.id;
 
@@ -366,29 +392,29 @@ export default function OrdersPage() {
                       key={order.id}
                       onClick={() => router.push(`/admin/orders/${order.id}`)}
                       className={`rounded-xl border px-5 py-3.5 flex items-center justify-between cursor-pointer hover:shadow-sm transition-all ${
-                        order.status === "Draft"        ? "bg-white border-gray-200" :
-                        order.status === "Confirmed"    ? "bg-blue-50 border-blue-200" :
-                        order.status === "Preparing"    ? "bg-yellow-50 border-yellow-200" :
-                        order.status === "To Deliver"   ? "bg-orange-50 border-orange-200" :
-                        order.status === "Delivered"    ? "bg-green-50 border-green-200" :
+                        order.status === "Draft"        ? "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700" :
+                        order.status === "Confirmed"    ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800" :
+                        order.status === "Preparing"    ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800" :
+                        order.status === "To Deliver"   ? "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800" :
+                        order.status === "Delivered"    ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" :
                         order.status === "Cancelled" || order.status === "Canceled"
-                                                        ? "bg-red-50 border-red-200" :
-                        "bg-white border-gray-200"
+                                                        ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800" :
+                        "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                       }`}
                     >
                       {/* Left: info */}
                       <div className="flex items-center gap-4 min-w-0">
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="font-semibold text-gray-900 text-sm">{order.name}</p>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600"}`}>
+                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{order.name}</p>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"}`}>
                               {STATUS_ICONS[order.status] || "📝"} {order.status || "Draft"}
                             </span>
-                            <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
                               {order.customerType || "B2C"}
                             </span>
                             {isOverdue && (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium">
                                 ⚠️ Overdue
                               </span>
                             )}
@@ -399,14 +425,19 @@ export default function OrdersPage() {
                             )}
                           </div>
 
-                          <p className="text-sm text-gray-500 mt-0.5 truncate">{order.customerName || "—"}</p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 truncate">{order.customerName || "—"}</p>
+                          {(itemCounts[order.id] ?? 0) > 0 && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                              {itemCounts[order.id]} item{itemCounts[order.id] !== 1 ? "s" : ""}
+                            </p>
+                          )}
 
                           <div className="flex items-center gap-3 mt-1 flex-wrap">
                             {order.orderDate && (
                               <span className="text-xs text-gray-400">📅 {formatDate(order.orderDate)}</span>
                             )}
                             {order.deliveryDate && (
-                              <span className={`text-xs font-medium ${isOverdue ? "text-red-500" : "text-gray-400"}`}>
+                              <span className={`text-xs ${isOverdue ? "text-red-500 dark:text-red-400 font-bold" : "text-gray-400 font-medium"}`}>
                                 🚚 {formatDate(order.deliveryDate)}
                               </span>
                             )}
@@ -428,9 +459,22 @@ export default function OrdersPage() {
 
                       {/* Right: total + actions */}
                       <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-                        <p className="font-bold text-gray-900 text-base">
-                          ${formatPrice(order.finalTotal || 0)}
-                        </p>
+                        <div className="flex flex-col items-end gap-1">
+                          <p className="font-bold text-gray-900 dark:text-white text-base">
+                            ${formatPrice(order.finalTotal || 0)}
+                          </p>
+                          {(() => {
+                            const paid = order.invoiceStatus === "paid" || order.isPaid === true;
+                            const hasInvoice = !!(order.invoiceId || order.invoiceStatus);
+                            return paid ? (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">Paid</span>
+                            ) : hasInvoice ? (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-medium">Unpaid</span>
+                            ) : (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500">No Invoice</span>
+                            );
+                          })()}
+                        </div>
 
                         {/* Quick advance */}
                         {nextStatus && (
@@ -438,7 +482,7 @@ export default function OrdersPage() {
                             onClick={e => handleAdvanceStatus(e, order)}
                             disabled={isAdvancing}
                             title={`Mark as ${nextStatus}`}
-                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all disabled:opacity-40"
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:border-gray-400 transition-all disabled:opacity-40"
                           >
                             {isAdvancing ? (
                               <span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />

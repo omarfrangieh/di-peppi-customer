@@ -12,9 +12,9 @@ export default function LoginPage() {
   }, [router]);
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="text-center">
-        <p className="text-gray-600">Redirecting...</p>
+        <p className="text-gray-600 dark:text-gray-400">Redirecting...</p>
       </div>
     </div>
   );
