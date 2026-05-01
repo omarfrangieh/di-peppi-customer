@@ -223,6 +223,11 @@ export default function ProductDetailPage() {
               {product.productSubName && (
                 <p className="text-gray-600 text-sm mt-1">{product.productSubName}</p>
               )}
+              {product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit && (
+                <p className="text-2xl font-bold text-gray-700 mt-2">
+                  ⚖️ {product.minWeightPerUnit}–{product.maxWeightPerUnit} g
+                </p>
+              )}
             </div>
 
             {/* Origin & Category */}
@@ -246,12 +251,12 @@ export default function ProductDetailPage() {
 
             {/* Price */}
             <div className="border-t border-b border-gray-200 py-4">
-              {product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit ? (
+              {product.requiresWeighing ? (
                 <>
                   <p className="text-4xl font-bold text-gray-900">
-                    ~${formatPrice(product.price * product.minWeightPerUnit)}–${formatPrice(product.price * product.maxWeightPerUnit)}
+                    ${formatPrice(product.price)} <span className="text-xl font-medium text-gray-500">/kg</span>
                   </p>
-                  <p className="text-gray-500 text-xs mt-1">Estimated price · ${formatPrice(product.price)}/{product.unit} · final amount based on confirmed weight at delivery</p>
+                  <p className="text-sm font-medium mt-1" style={{ color: "#B5535A" }}>Final price based on confirmed weight at delivery</p>
                 </>
               ) : (
                 <p className="text-4xl font-bold text-gray-900">

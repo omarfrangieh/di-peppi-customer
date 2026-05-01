@@ -118,17 +118,20 @@ export async function createPurchaseOrdersForInvoice({
       items: items.map((item: any) => {
         const product = productMap[item.productId] || {};
         const unit = product.unit || "";
-        const minW = Number(product.minWeightPerUnit || 0);
-        const maxW = Number(product.maxWeightPerUnit || 0);
+        // minWeightPerUnit / maxWeightPerUnit are stored in grams; convert to kg for PO notes
+        const minG = Number(product.minWeightPerUnit || 0);
+        const maxG = Number(product.maxWeightPerUnit || 0);
+        const minW = minG / 1000;
+        const maxW = maxG / 1000;
         const qty = Number(item.quantity || 0);
         let weightNote = "";
-        if (minW > 0 && maxW > 0) {
+        if (minG > 0 && maxG > 0) {
           if (unit === "KG") {
-            weightNote = `Approx. ${minW}–${maxW} kg — final weight at delivery`;
+            weightNote = `Approx. ${minG}–${maxG} g — final weight at delivery`;
           } else if (unit === "Piece") {
-            const estMin = (qty * minW).toFixed(2);
-            const estMax = (qty * maxW).toFixed(2);
-            weightNote = `Approx. ${minW}–${maxW} kg each (est. total: ${estMin}–${estMax} kg)`;
+            const estMinKg = (qty * minW).toFixed(3);
+            const estMaxKg = (qty * maxW).toFixed(3);
+            weightNote = `Approx. ${minG}–${maxG} g each (est. total: ${estMinKg}–${estMaxKg} kg)`;
           }
         }
         const cost = Number(item.unitCostPrice || 0);

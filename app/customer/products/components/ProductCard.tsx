@@ -107,18 +107,25 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
           {product.name}
         </h3>
 
+        {/* Weight range — shown under name for weigh items */}
+        {product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit && (
+          <p className="text-xs font-semibold text-gray-600 mb-1">
+            ⚖️ {product.minWeightPerUnit}–{product.maxWeightPerUnit} g
+          </p>
+        )}
+
         {/* Origin */}
         {product.origin && (
           <p className="text-xs text-gray-500 mb-2">from {product.origin}</p>
         )}
 
         {/* Price */}
-        {product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit ? (
+        {product.requiresWeighing ? (
           <div className="mb-2">
             <p className="text-lg font-bold text-gray-900">
-              ~${formatPrice(product.price * product.minWeightPerUnit)}–${formatPrice(product.price * product.maxWeightPerUnit)}
+              ${formatPrice(product.price)} <span className="text-sm font-medium text-gray-500">/kg</span>
             </p>
-            <p className="text-xs text-gray-400">est. · final price based on weight</p>
+            <p className="text-xs font-medium" style={{ color: "#B5535A" }}>Final price based on confirmed weight</p>
           </div>
         ) : (
           <p className="text-lg font-bold text-gray-900 mb-2">
@@ -130,9 +137,6 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         <div className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stockColor} mb-3 w-fit`}>
           {stockStatus}
         </div>
-
-        {/* Unit */}
-        <p className="text-xs text-gray-600 mb-3">{product.unit}</p>
 
         {/* Quantity stepper + add to cart */}
         <div className="flex gap-2 mt-auto">

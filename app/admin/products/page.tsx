@@ -586,6 +586,18 @@ export default function AdminProductsPage() {
 
   const saveNewProduct = async () => {
     if (!newProduct.name.trim()) { showToast("Product name is required", "warning"); return; }
+    if (newProduct.requiresWeighing) {
+      const minW = Number(newProduct.minWeightPerUnit || 0);
+      const maxW = Number(newProduct.maxWeightPerUnit || 0);
+      if (!minW || !maxW) {
+        showToast("Weight range (min & max kg) is required when Requires Weighing is enabled.", "error");
+        return;
+      }
+      if (minW >= maxW) {
+        showToast("Min weight must be less than max weight.", "error");
+        return;
+      }
+    }
     setAddingSaving(true);
     try {
       await addDoc(collection(db, "products"), {
@@ -648,6 +660,19 @@ export default function AdminProductsPage() {
   };
 
   const saveProduct = async (id: string) => {
+    // Validation: weight range is mandatory when requiresWeighing is on
+    if (editData.requiresWeighing) {
+      const minW = Number(editData.minWeightPerUnit || 0);
+      const maxW = Number(editData.maxWeightPerUnit || 0);
+      if (!minW || !maxW) {
+        showToast("Weight range (min & max kg) is required when Requires Weighing is enabled.", "error");
+        return;
+      }
+      if (minW >= maxW) {
+        showToast("Min weight must be less than max weight.", "error");
+        return;
+      }
+    }
     setSaving(id);
     const intendedActive = Boolean(editData.active);
     try {
@@ -1321,6 +1346,33 @@ export default function AdminProductsPage() {
                       <span className="font-medium">📦 FIFO / Track Expiry</span>
                     </label>
                   </div>
+                  {editData.requiresWeighing && (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 space-y-2">
+                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">⚖️ Weight range per unit (g) <span className="text-red-500">*</span></p>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Min (g)</label>
+                          <input type="number" step="1" min="0" placeholder="e.g. 800"
+                            value={editData.minWeightPerUnit || ""}
+                            onChange={e => setEditData((p: any) => ({ ...p, minWeightPerUnit: e.target.value }))}
+                            className={`w-full border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${!editData.minWeightPerUnit ? "border-red-300 dark:border-red-600" : "border-amber-200 dark:border-amber-700"}`} />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Max (g)</label>
+                          <input type="number" step="1" min="0" placeholder="e.g. 1400"
+                            value={editData.maxWeightPerUnit || ""}
+                            onChange={e => setEditData((p: any) => ({ ...p, maxWeightPerUnit: e.target.value }))}
+                            className={`w-full border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${!editData.maxWeightPerUnit ? "border-red-300 dark:border-red-600" : "border-amber-200 dark:border-amber-700"}`} />
+                        </div>
+                      </div>
+                      {editData.minWeightPerUnit && editData.maxWeightPerUnit && editData.b2cPrice > 0 && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                          B2C range: ~${formatPrice(editData.b2cPrice * editData.minWeightPerUnit / 1000)}–${formatPrice(editData.b2cPrice * editData.maxWeightPerUnit / 1000)}
+                        </p>
+                      )}
+                      <p className="text-xs text-amber-600 dark:text-amber-400">Used to estimate price range shown to customers.</p>
+                    </div>
+                  )}
                   {editData.trackExpiry && (
                     <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-lg p-3">
                       <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
@@ -1412,7 +1464,9 @@ export default function AdminProductsPage() {
 
                   {product.requiresWeighing && (
                     <span className="inline-flex items-center gap-1 text-xs font-medium text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 px-2 py-0.5 rounded-full">
-                      ⚖️ Requires weighing
+                      ⚖️ {product.minWeightPerUnit && product.maxWeightPerUnit
+                        ? `${product.minWeightPerUnit}–${product.maxWeightPerUnit} g`
+                        : "⚠️ Set weight range"}
                     </span>
                   )}
                   {product.trackExpiry && (
@@ -1459,45 +1513,57 @@ export default function AdminProductsPage() {
                     {expandedSections.pricing.has(product.id) ? '▼' : '▶'} Pricing & Margins
                   </button>
 
-                  {expandedSections.pricing.has(product.id) && (
-                    <>
-                      <div className="grid grid-cols-3 gap-2 py-2">
-                        <div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Cost</p>
-                          <p className="font-semibold text-gray-900 dark:text-white">${formatPrice(product.costPrice || 0)}</p>
+                  {expandedSections.pricing.has(product.id) && (() => {
+                    const isWeigh = product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit;
+                    const minKg = isWeigh ? Number(product.minWeightPerUnit) / 1000 : null;
+                    const maxKg = isWeigh ? Number(product.maxWeightPerUnit) / 1000 : null;
+                    const priceLabel = isWeigh ? "/kg · est. range" : "";
+                    const fmt = (price: number) => isWeigh && minKg && maxKg
+                      ? `~$${formatPrice(price * minKg)}–$${formatPrice(price * maxKg)}`
+                      : `$${formatPrice(price)}`;
+                    return (
+                      <>
+                        {isWeigh && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 pb-1">⚖️ Prices shown as estimated range ({product.minWeightPerUnit}–{product.maxWeightPerUnit} g)</p>
+                        )}
+                        <div className="grid grid-cols-3 gap-2 py-2">
+                          <div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Cost{priceLabel && " /kg"}</p>
+                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{fmt(product.costPrice || 0)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2B{priceLabel && " /kg"}</p>
+                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{fmt(product.b2bPrice || 0)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2C{priceLabel && " /kg"}</p>
+                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{fmt(product.b2cPrice || 0)}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2B</p>
-                          <p className="font-semibold text-gray-900 dark:text-white">${formatPrice(product.b2bPrice || 0)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2C</p>
-                          <p className="font-semibold text-gray-900 dark:text-white">${formatPrice(product.b2cPrice || 0)}</p>
-                        </div>
-                      </div>
 
-                      {product.costPrice > 0 && (
-                        <div className="space-y-2 py-2 border-t dark:border-gray-700">
-                          <div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2B Margin</p>
-                            {product.b2bPrice > 0 ? (
-                              <div className={`text-sm font-semibold ${((product.b2bPrice - product.costPrice) / product.b2bPrice * 100) < 10 ? "text-red-600" : "text-blue-600"}`}>
-                                {((product.b2bPrice - product.costPrice) / product.b2bPrice * 100).toFixed(1)}%
-                              </div>
-                            ) : <p className="text-xs text-gray-400 dark:text-gray-500">No price set</p>}
+                        {product.costPrice > 0 && (
+                          <div className="space-y-2 py-2 border-t dark:border-gray-700">
+                            <div>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2B Margin</p>
+                              {product.b2bPrice > 0 ? (
+                                <div className={`text-sm font-semibold ${((product.b2bPrice - product.costPrice) / product.b2bPrice * 100) < 10 ? "text-red-600" : "text-blue-600"}`}>
+                                  {((product.b2bPrice - product.costPrice) / product.b2bPrice * 100).toFixed(1)}%
+                                </div>
+                              ) : <p className="text-xs text-gray-400 dark:text-gray-500">No price set</p>}
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2C Margin</p>
+                              {product.b2cPrice > 0 ? (
+                                <div className={`text-sm font-semibold ${((product.b2cPrice - product.costPrice) / product.b2cPrice * 100) < 15 ? "text-red-600" : "text-green-600"}`}>
+                                  {((product.b2cPrice - product.costPrice) / product.b2cPrice * 100).toFixed(1)}%
+                                </div>
+                              ) : <p className="text-xs text-gray-400 dark:text-gray-500">No price set</p>}
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2C Margin</p>
-                            {product.b2cPrice > 0 ? (
-                              <div className={`text-sm font-semibold ${((product.b2cPrice - product.costPrice) / product.b2cPrice * 100) < 15 ? "text-red-600" : "text-green-600"}`}>
-                                {((product.b2cPrice - product.costPrice) / product.b2cPrice * 100).toFixed(1)}%
-                              </div>
-                            ) : <p className="text-xs text-gray-400 dark:text-gray-500">No price set</p>}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
+                        )}
+                      </>
+                    );
+                  })()}
 
                   <div className="flex gap-2">
                     <button onClick={() => startEdit(product)} className="flex-1 px-2 py-2 text-xs border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 font-medium dark:text-gray-300">
@@ -1715,30 +1781,40 @@ export default function AdminProductsPage() {
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Leave empty for VAT-exempt items. E.g., 12 for 12% VAT</p>
                 </div>
               </div>
-              {(newProduct.unit === "KG" || newProduct.unit === "Piece") && (
-                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 rounded-lg p-3 space-y-2">
-                  <div className="flex items-center gap-4">
-                    <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Weight range (kg):</span>
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-500 dark:text-gray-400">Min</label>
-                      <input type="number" step="0.01" value={newProduct.minWeightPerUnit}
-                        onChange={e => setNewProduct((p:any) => ({...p, minWeightPerUnit: e.target.value}))}
-                        className="w-20 border border-amber-200 dark:border-amber-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="e.g. 0.9" />
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 rounded-lg p-3 space-y-3">
+                <label className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300 cursor-pointer font-medium">
+                  <input type="checkbox" checked={!!newProduct.requiresWeighing}
+                    onChange={e => setNewProduct((p:any) => ({...p, requiresWeighing: e.target.checked, minWeightPerUnit: "", maxWeightPerUnit: ""}))} />
+                  ⚖️ Requires weighing at delivery
+                </label>
+                {newProduct.requiresWeighing && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">Weight range per unit (g) <span className="text-red-500">*</span></p>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Min (g)</label>
+                        <input type="number" step="1" min="0" placeholder="e.g. 800"
+                          value={newProduct.minWeightPerUnit}
+                          onChange={e => setNewProduct((p:any) => ({...p, minWeightPerUnit: e.target.value}))}
+                          className={`w-full border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${!newProduct.minWeightPerUnit ? "border-red-300 dark:border-red-600" : "border-amber-200 dark:border-amber-700"}`} />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Max (g)</label>
+                        <input type="number" step="1" min="0" placeholder="e.g. 1400"
+                          value={newProduct.maxWeightPerUnit}
+                          onChange={e => setNewProduct((p:any) => ({...p, maxWeightPerUnit: e.target.value}))}
+                          className={`w-full border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${!newProduct.maxWeightPerUnit ? "border-red-300 dark:border-red-600" : "border-amber-200 dark:border-amber-700"}`} />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-500 dark:text-gray-400">Max</label>
-                      <input type="number" step="0.01" value={newProduct.maxWeightPerUnit}
-                        onChange={e => setNewProduct((p:any) => ({...p, maxWeightPerUnit: e.target.value}))}
-                        className="w-20 border border-amber-200 dark:border-amber-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="e.g. 1.4" />
-                    </div>
+                    {Number(newProduct.b2cPrice) > 0 && Number(newProduct.minWeightPerUnit) > 0 && Number(newProduct.maxWeightPerUnit) > 0 && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                        B2C range: ~${formatPrice(Number(newProduct.b2cPrice) * Number(newProduct.minWeightPerUnit) / 1000)}–${formatPrice(Number(newProduct.b2cPrice) * Number(newProduct.maxWeightPerUnit) / 1000)}
+                      </p>
+                    )}
+                    <p className="text-xs text-amber-600 dark:text-amber-400">Used to estimate price range shown to customers.</p>
                   </div>
-                  <label className="flex items-center gap-1.5 text-xs text-purple-700 dark:text-purple-400 cursor-pointer">
-                    <input type="checkbox" checked={!!newProduct.requiresWeighing}
-                      onChange={e => setNewProduct((p:any) => ({...p, requiresWeighing: e.target.checked}))} />
-                    ⚖️ Requires weighing at delivery
-                  </label>
-                </div>
-              )}
+                )}
+              </div>
               {/* Track expiry — always visible for any unit type */}
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-lg p-3 space-y-2">
                 <label className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-400 cursor-pointer font-medium">
