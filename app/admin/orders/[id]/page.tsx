@@ -22,6 +22,7 @@ import { getPricing } from "@/lib/pricing";
 import { createDraftInvoice } from "@/lib/createDraftInvoice";
 import { syncOrderToInvoice } from "@/lib/syncOrderToInvoice";
 import { formatQty, formatPrice } from "@/lib/formatters";
+import { showToast } from "@/lib/toast";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 
 type Product = {
@@ -237,6 +238,13 @@ export default function Page() {
   const [deliveryDate, setDeliveryDate] = useState("");
   const [orderStatus, setOrderStatus] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
+
+  // B2C online order extra fields (read-only in admin)
+  const [orderSource, setOrderSource] = useState("");
+  const [b2cDeliveryAddress, setB2cDeliveryAddress] = useState("");
+  const [b2cDeliveryPhone, setB2cDeliveryPhone] = useState("");
+  const [b2cPaymentMethod, setB2cPaymentMethod] = useState("");
+  const [b2cSpecialInstructions, setB2cSpecialInstructions] = useState("");
 
   const [discountPercent, setDiscountPercent] = useState("");
   const [discountAmount, setDiscountAmount] = useState("");
@@ -494,21 +502,12 @@ export default function Page() {
   };
 
   const createNewOrder = async () => {
-    if (!customerId) { alert("Please select a customer first."); return; }
+    if (!customerId) { showToast("Please select a customer first.", "warning"); return; }
     try {
       const customer = customers.find(c => c.id === customerId);
-      const { addDoc, collection, serverTimestamp, runTransaction, doc, getDoc } = await import("firebase/firestore");
-      const year = new Date().getFullYear();
-      const yy = String(year).slice(-2);
-      const counterRef = doc(db, "settings", `orderCounter_${year}`);
-      let orderNumber = "";
-      await runTransaction(db, async (transaction) => {
-        const snap = await transaction.get(counterRef);
-        const count = snap.exists() ? (snap.data().count || 0) : 0;
-        const newCount = count + 1;
-        orderNumber = `ORD-${yy}-${String(newCount).padStart(3, "0")}`;
-        transaction.set(counterRef, { count: newCount }, { merge: true });
-      });
+      const { addDoc, collection, serverTimestamp } = await import("firebase/firestore");
+      const { generateOrderNumber } = await import("@/lib/orderNumber");
+      const orderNumber = await generateOrderNumber();
       const orderRef = await addDoc(collection(db, "orders"), {
           customerId,
           customerName: customer?.name || "",
@@ -532,7 +531,7 @@ export default function Page() {
       setSelectedOrderId(orderRef.id);
     } catch (e) {
       console.error("Error creating order:", e);
-      alert("Failed to create order.");
+      showToast("Failed to create order.", "error");
     }
   };
 
@@ -681,14 +680,16 @@ export default function Page() {
         data.deliveryFee !== undefined ? String(Number(data.deliveryFee)) : ""
       );
       setCustomerId(data.customerId !== undefined ? String(data.customerId) : "");
-      setOrderDate(data.orderDate !== undefined ? firestoreDateToString(data.orderDate) : "");
+      setOrderDate(data.orderDate ? firestoreDateToString(data.orderDate) : data.createdAt ? firestoreDateToString(data.createdAt) : "");
       setDeliveryDate(data.deliveryDate !== undefined ? firestoreDateToString(data.deliveryDate) : "");
       setOrderStatus(data.status !== undefined ? String(data.status) : "");
       setOrderNotes(data.notes !== undefined ? String(data.notes) : "");
       setOrderDataLoaded(true);
     } catch (error) {
-      console.error("Error loading order totals:", error);
-      resetOrderHeader();
+      console.error("Error loading order totals (Firestore):", error);
+      // Do NOT reset — the orders-array fallback in useEffect([urlOrderId, orders])
+      // already populated the key fields. Just prevent auto-save from firing.
+      setOrderDataLoaded(false);
     }
   };
 
@@ -696,6 +697,12 @@ export default function Page() {
     if (!selectedOrderId) return;
 
     try {
+      // For B2C orders, checkout already saves total/finalTotal/subtotal correctly.
+      // The admin order builder reads unitPrice from orderItems, but B2C items use priceAtTime,
+      // so the computed netSubtotal may be stale until getOrderItems is refreshed.
+      // Never overwrite B2C totals from the admin builder — they're set by checkout.
+      const isB2c = orderSource === "b2c";
+
       await updateDoc(doc(db, "orders", selectedOrderId), {
         customerId,
         orderDate,
@@ -705,11 +712,14 @@ export default function Page() {
         discountPercent: discountPercentNumber,
         discountAmount: discountAmountNumber,
         deliveryFee: deliveryFeeNumber,
-        subtotal: netSubtotal,
-        grossSubtotal,
-        itemDiscountTotal,
-        totalDiscount: orderDiscountTotal,
-        finalTotal,
+        // Only overwrite computed totals for admin-created (non-B2C) orders
+        ...(isB2c ? {} : {
+          subtotal: netSubtotal,
+          grossSubtotal,
+          itemDiscountTotal,
+          totalDiscount: orderDiscountTotal,
+          finalTotal,
+        }),
         updatedAt: serverTimestamp(),
       });
     } catch (error) {
@@ -743,9 +753,16 @@ export default function Page() {
     if (order) {
       setCustomerId(order.customerId || "");
       // Functional update: only fills in if the value is still empty (Firestore may have set it already)
-      if (order.orderDate) setOrderDate(prev => prev || firestoreDateToString(order.orderDate));
+      if (order.orderDate || order.createdAt) setOrderDate(prev => prev || firestoreDateToString(order.orderDate || order.createdAt));
       if (order.deliveryDate) setDeliveryDate(prev => prev || firestoreDateToString(order.deliveryDate));
       if (order.status) setOrderStatus(prev => prev || order.status || "");
+      if (order.notes) setOrderNotes(prev => prev || order.notes || "");
+      // B2C-specific fields from the customer checkout
+      setOrderSource(order.source || "");
+      setB2cDeliveryAddress(order.deliveryAddress || "");
+      setB2cDeliveryPhone(order.deliveryPhone || "");
+      setB2cPaymentMethod(order.paymentMethod || "");
+      setB2cSpecialInstructions(order.specialInstructions || "");
     }
   }, [urlOrderId, orders]);
 
@@ -1065,7 +1082,7 @@ export default function Page() {
                     await deleteOrder({ orderId: selectedOrderId });
                     router.push("/admin/orders");
                   } catch (e: any) {
-                    alert(`Failed to delete order: ${e.message}`);
+                    showToast(`Failed to delete order: ${e.message}`, "error");
                   }
                 }}
                 className="px-3 py-1.5 text-xs rounded-lg font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
@@ -1099,6 +1116,33 @@ export default function Page() {
               {orderNotes && <div className="col-span-3"><p className="text-xs text-gray-400 mb-1">Notes</p><p className="text-gray-700 dark:text-gray-300">{orderNotes}</p></div>}
             </div>
           </div>
+          {/* B2C Customer Order Details (read-only) */}
+          {orderSource === "b2c" && (b2cDeliveryAddress || b2cDeliveryPhone) && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-4">
+              <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">🛒 Online Order Details</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Delivery Address</p>
+                  <p className="font-medium text-gray-900 dark:text-white">{b2cDeliveryAddress || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Phone</p>
+                  <p className="font-medium text-gray-900 dark:text-white">{b2cDeliveryPhone || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Payment</p>
+                  <p className="font-medium text-gray-900 dark:text-white capitalize">{b2cPaymentMethod || "—"}</p>
+                </div>
+                {b2cSpecialInstructions && (
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Special Instructions</p>
+                    <p className="font-medium text-gray-900 dark:text-white">{b2cSpecialInstructions}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Invoice banner */}
           <div className={`rounded-xl px-4 py-3 flex items-center justify-between border ${existingInvoiceStatus === "draft" ? "bg-yellow-50 border-yellow-200" : "bg-blue-50 border-blue-200"}`}>
             <p className="text-sm font-medium text-gray-800">
@@ -1377,6 +1421,33 @@ export default function Page() {
                   placeholder="Order notes..." value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} />
               </div>
             </div>
+
+            {/* B2C Customer Order Details */}
+            {orderSource === "b2c" && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-5">
+                <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">🛒 Online Order Details</h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Delivery Address</p>
+                    <p className="font-medium text-gray-900 dark:text-white">{b2cDeliveryAddress || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Phone</p>
+                    <p className="font-medium text-gray-900 dark:text-white">{b2cDeliveryPhone || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Payment Method</p>
+                    <p className="font-medium text-gray-900 dark:text-white capitalize">{b2cPaymentMethod || "—"}</p>
+                  </div>
+                  {b2cSpecialInstructions && (
+                    <div>
+                      <p className="text-xs text-gray-400 mb-1">Special Instructions</p>
+                      <p className="font-medium text-gray-900 dark:text-white">{b2cSpecialInstructions}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Add Product */}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-5 space-y-3">
@@ -1658,7 +1729,7 @@ export default function Page() {
                                       setOrderItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: qty, totalPrice: newNet, profit: newProfit } : i));
                                       setWeighingItemId(""); setWeighedQuantity("");
                                     }
-                                    } catch { alert("Failed to update quantity"); }
+                                    } catch { showToast("Failed to update quantity", "error"); }
                                   }} className="text-xs px-2 py-1 bg-green-600 text-white rounded">✓</button>
                                   <button onClick={() => { setWeighingItemId(""); setWeighedQuantity(""); }} className="text-xs px-2 py-1 border rounded">✕</button>
                                 </div>
@@ -1724,9 +1795,9 @@ export default function Page() {
                 style={{backgroundColor: "#1B2A5E"}}
                 onClick={async () => {
                   try {
-                    if (!deliveryDate) { alert("Please set a Delivery Date first."); return; }
+                    if (!deliveryDate) { showToast("Please set a Delivery Date first.", "warning"); return; }
                     const selectedOrder = orders.find(o => o.id === selectedOrderId);
-                    if (!selectedOrder) { alert("Order not found"); return; }
+                    if (!selectedOrder) { showToast("Order not found", "error"); return; }
                     const id = await createDraftInvoice({
                       ...selectedOrder,
                       customerId: selectedCustomer?.id || "",
@@ -1750,7 +1821,7 @@ export default function Page() {
                     });
                     await updateDoc(doc(db, "orders", selectedOrderId), { status: "To Deliver" });
                     window.location.href = `/invoices/${id}`;
-                  } catch (err) { console.error(err); alert("Error creating invoice"); }
+                  } catch (err) { console.error(err); showToast("Error creating invoice", "error"); }
                 }}>
                 🧾 Create Invoice →
               </button>

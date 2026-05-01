@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
 import { collection, getDocs } from "firebase/firestore";
+import { showToast } from "@/lib/toast";
 import { exportToExcel, exportToPDF } from "@/lib/exportReports";
 import { buildWhatsAppReportShare } from "@/lib/whatsappShare";
 import { db } from "@/lib/firebase";
@@ -559,7 +560,7 @@ export default function ReportsPage() {
                     await navigator.clipboard.writeText(emailBody);
                     const subject = encodeURIComponent(`Di Peppi Report · ${customerTypeFilter} · ${fromDate} to ${toDate}`);
                     window.open(`mailto:?subject=${subject}&body=${encodeURIComponent(emailBody)}`, "_blank");
-                    alert("✅ Excel downloaded + email body copied to clipboard. Attach the Excel file manually.");
+                    showToast("Excel downloaded + email body copied to clipboard. Attach the Excel file manually.", "success");
                   } finally { setExporting(false); }
                 }}
                 className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700/60 disabled:opacity-40 transition-colors">

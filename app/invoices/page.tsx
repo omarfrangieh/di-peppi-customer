@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { collection, getDocs, orderBy, query, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { showToast } from "@/lib/toast";
 import SearchInput from "@/components/SearchInput";
 
 interface Invoice {
@@ -128,7 +129,7 @@ export default function InvoicesListPage() {
       await updateDoc(doc(db, "invoices", invId), { status: "paid", paidAt: date, paymentMethod: method });
       await loadInvoices();
     } catch {
-      alert("Error marking as paid");
+      showToast("Error marking as paid", "error");
     }
   };
 
@@ -138,7 +139,7 @@ export default function InvoicesListPage() {
       await updateDoc(doc(db, "invoices", invId), { status: "issued" });
       await loadInvoices();
     } catch {
-      alert("Error issuing invoice");
+      showToast("Error issuing invoice", "error");
     }
   };
 

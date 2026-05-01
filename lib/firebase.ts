@@ -21,13 +21,14 @@ export const functions = getFunctions(app);
 export const auth = getAuth(app);
 
 // Connect to emulators in development
-if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-  try {
-    connectAuthEmulator(auth, "http://localhost:9099", { disableWarnings: true });
-    connectFirestoreEmulator(db, "localhost", 8080);
-    connectFunctionsEmulator(functions, "localhost", 5001);
-    connectStorageEmulator(storage, "localhost", 9199);
-  } catch (err) {
-    // Emulators already connected (hot reload)
-  }
-}
+// Uncomment below if running: firebase emulators:start
+// if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+//   try {
+//     connectAuthEmulator(auth, "http://localhost:9099", { disableWarnings: true });
+//     connectFirestoreEmulator(db, "localhost", 8080);
+//     connectFunctionsEmulator(functions, "localhost", 5001);
+//     connectStorageEmulator(storage, "localhost", 9199);
+//   } catch (err) {
+//     // Emulators already connected (hot reload)
+//   }
+// }

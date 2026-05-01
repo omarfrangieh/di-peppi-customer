@@ -49,6 +49,12 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2500);
+  };
 
   // Fetch products on mount
   useEffect(() => {
@@ -108,12 +114,12 @@ export default function ProductDetailPage() {
         priceAtTime: product.price,
       });
 
-      // Success feedback
-      alert(`${product.name} added to cart!`);
-      router.push("/customer/products");
+      // Success feedback — brief toast then navigate back
+      showToast("Added to cart ✓");
+      setTimeout(() => router.push("/customer/products"), 1000);
     } catch (err) {
       console.error("Error adding to cart:", err);
-      alert("Failed to add to cart");
+      showToast("Failed to add to cart", "error");
     } finally {
       setIsAddingToCart(false);
     }
@@ -135,7 +141,7 @@ export default function ProductDetailPage() {
           <p className="text-gray-900 font-semibold mb-4">{error || "Product not found"}</p>
           <button
             onClick={() => router.push("/customer/products")}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
+            className="px-4 py-2 text-white font-semibold rounded-lg cursor-pointer hover:opacity-90"
             style={{ backgroundColor: "#1B2A5E" }}
           >
             ← Back to Products
@@ -161,12 +167,23 @@ export default function ProductDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-xl text-white text-sm font-semibold flex items-center gap-2`}
+          style={{ backgroundColor: toast.type === "error" ? "#B5535A" : "#1B2A5E", minWidth: 200 }}>
+          {toast.type === "success"
+            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          }
+          {toast.msg}
+        </div>
+      )}
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto flex items-center gap-4">
           <button
             onClick={() => router.push("/customer/products")}
-            className="text-gray-600 hover:text-gray-900 text-lg font-semibold"
+            className="text-gray-600 hover:text-gray-900 text-lg font-semibold cursor-pointer"
           >
             ← Back
           </button>
@@ -206,21 +223,21 @@ export default function ProductDetailPage() {
             </div>
 
             {/* Origin & Category */}
-            <div className="flex gap-4 flex-wrap">
+            <div className="flex gap-2 flex-wrap">
               {product.origin && (
-                <div className="bg-blue-50 px-3 py-1 rounded-lg">
-                  <p className="text-xs text-blue-600 font-semibold">Origin: {product.origin}</p>
-                </div>
+                <span className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ backgroundColor: "#EEF1F8", color: "#1B2A5E" }}>
+                  {product.origin}
+                </span>
               )}
               {product.category && (
-                <div className="bg-purple-50 px-3 py-1 rounded-lg">
-                  <p className="text-xs text-purple-600 font-semibold">Category: {product.category}</p>
-                </div>
+                <span className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ backgroundColor: "#EEF1F8", color: "#1B2A5E" }}>
+                  {product.category}
+                </span>
               )}
               {product.storageType && (
-                <div className="bg-amber-50 px-3 py-1 rounded-lg">
-                  <p className="text-xs text-amber-600 font-semibold">Storage: {product.storageType}</p>
-                </div>
+                <span className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ backgroundColor: "#EEF1F8", color: "#1B2A5E" }}>
+                  {product.storageType}
+                </span>
               )}
             </div>
 
@@ -234,7 +251,7 @@ export default function ProductDetailPage() {
 
             {/* Stock Status */}
             <div className={`text-sm font-semibold px-4 py-2 rounded-lg ${stockColor} w-fit`}>
-              {stockStatus} ({formatQty(product.currentStock)} available)
+              {stockStatus}
             </div>
 
             {/* Description */}
@@ -257,7 +274,7 @@ export default function ProductDetailPage() {
             {/* Continue Shopping Button */}
             <button
               onClick={() => router.push("/customer/products")}
-              className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition-colors"
+              className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition-colors cursor-pointer"
             >
               Continue Shopping
             </button>

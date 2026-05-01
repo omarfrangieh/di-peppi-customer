@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { formatQty } from "@/lib/formatters";
+import { showToast } from "@/lib/toast";
 import SearchInput from "@/components/SearchInput";
 import { AlertTriangle } from "lucide-react";
 
@@ -31,7 +32,7 @@ function AddSupplierForm({ onAdd, onCancel }: { onAdd: (data: any) => Promise<vo
 
   const handleAdd = async () => {
     const name = refs.name.current?.value.trim() || "";
-    if (!name) { alert("Supplier name is required"); return; }
+    if (!name) { showToast("Supplier name is required", "warning"); return; }
     setAdding(true);
     try {
       await onAdd({
@@ -160,8 +161,8 @@ export default function AdminSuppliersPage() {
   };
 
   const addContact = async (supplierId: string, currentContacts: any[]) => {
-    if (!newContact.name.trim()) { alert("Contact name is required."); return; }
-    if (!newContact.phone.trim() && !newContact.email.trim()) { alert("Contact must have a phone number or email address."); return; }
+    if (!newContact.name.trim()) { showToast("Contact name is required.", "warning"); return; }
+    if (!newContact.phone.trim() && !newContact.email.trim()) { showToast("Contact must have a phone number or email address.", "warning"); return; }
     setAddingContact(true);
     try {
       const updatedContacts = [...(currentContacts || []), { ...newContact, id: Date.now().toString() }];
@@ -179,7 +180,7 @@ export default function AdminSuppliersPage() {
 
   const setPrimaryContact = async (supplierId: string, contactId: string, currentContacts: any[]) => {
     const contact = currentContacts.find(c => c.id === contactId);
-    if (!contact?.phone && !contact?.email) { alert("PO Contact must have a phone number or email address."); return; }
+    if (!contact?.phone && !contact?.email) { showToast("PO Contact must have a phone number or email address.", "warning"); return; }
     const updatedContacts = currentContacts.map(c => ({ ...c, isPrimary: c.id === contactId }));
     await updateDoc(doc(db, "suppliers", supplierId), { contacts: updatedContacts });
     setSuppliers(prev => prev.map(s => s.id === supplierId ? { ...s, contacts: updatedContacts } : s));
@@ -311,7 +312,7 @@ export default function AdminSuppliersPage() {
                     <button onClick={() => {
                       const isOpen = showContactsFor === supplier.id;
                       if (isOpen && contactCount > 0 && !hasPrimary) {
-                        alert("Please add a contact and set a PO Contact before closing.");
+                        showToast("Please add a contact and set a PO Contact before closing.", "warning");
                         return;
                       }
                       setNewContact({ name: "", role: "", phone: "", email: "" });

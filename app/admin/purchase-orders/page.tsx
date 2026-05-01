@@ -5,6 +5,7 @@ import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from "
 import { db } from "@/lib/firebase";
 import { generatePOPDF } from "@/lib/generatePOPDF";
 import { formatPrice } from "@/lib/formatters";
+import { showToast } from "@/lib/toast";
 import SearchInput from "@/components/SearchInput";
 import { AlertTriangle } from "lucide-react";
 
@@ -79,11 +80,11 @@ export default function PurchaseOrdersPage() {
   };
 
   const shareViaPDF = async (po: any) => {
-    if (!po.poContactPhone) { alert("No PO contact phone found."); return; }
+    if (!po.poContactPhone) { showToast("No PO contact phone found.", "warning"); return; }
     setSharing(po.id);
     try {
       const url = await generatePOPDF(po, "share");
-      if (!url) { alert("Failed to generate PDF."); return; }
+      if (!url) { showToast("Failed to generate PDF.", "error"); return; }
       const phone = po.poContactPhone.replace(/[^0-9]/g, "");
       const msg = encodeURIComponent(
         `Hi ${po.poContactName || po.supplierName},\n\nPlease find our Purchase Order ${po.poNumber}.\nDelivery Date: ${po.deliveryDate || "TBD"}\n\nPO Total: ${formatPrice(po.poTotal)}\n\n📄 View PO: ${url}\n\nThank you,\nDi Peppi`
@@ -91,7 +92,7 @@ export default function PurchaseOrdersPage() {
       window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
       updateStatus(po.id, "Sent");
     } catch (e) {
-      alert("Error generating PDF.");
+      showToast("Error generating PDF.", "error");
       console.error(e);
     } finally {
       setSharing(null);
@@ -99,7 +100,7 @@ export default function PurchaseOrdersPage() {
   };
 
   const sendWhatsApp = (po: any) => {
-    if (!po.poContactPhone) { alert("No PO contact phone found."); return; }
+    if (!po.poContactPhone) { showToast("No PO contact phone found.", "warning"); return; }
     const phone = po.poContactPhone.replace(/[^0-9]/g, "");
     const msg = encodeURIComponent(
       `Hi ${po.poContactName || po.supplierName},\n\nPlease find below our Purchase Order ${po.poNumber}.\n\nDelivery Date: ${po.deliveryDate || "TBD"}\n\nItems:\n${(po.items || []).map((i: any) => `- ${i.productName}: ${i.quantity} x ${formatPrice(i.unitCostPrice)} = ${formatPrice(i.lineTotal)}`).join("\n")}\n\nTotal: ${formatPrice(po.poTotal)}\n\nThank you,\nDi Peppi`

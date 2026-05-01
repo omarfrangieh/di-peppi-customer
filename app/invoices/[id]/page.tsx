@@ -18,6 +18,7 @@ import {
   increment,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { showToast } from "@/lib/toast";
 import { generateInvoicePDF } from "@/lib/generateInvoicePDF";
 import { createPurchaseOrdersForInvoice } from "@/lib/createPurchaseOrders";
 import { formatQty, formatPrice } from "@/lib/formatters";
@@ -180,7 +181,7 @@ export default function InvoiceDetailPage() {
     try {
       const invoiceSnap = await getDoc(doc(db, "invoices", invoiceId));
       if (!invoiceSnap.exists()) {
-        alert("Invoice not found");
+        showToast("Invoice not found", "error");
         router.push("/");
         return;
       }
@@ -284,7 +285,7 @@ export default function InvoiceDetailPage() {
       await generateInvoicePDF(invoice, lines);
     } catch (err) {
       console.error(err);
-      alert('Error generating PDF');
+      showToast('Error generating PDF', "error");
     } finally {
       setGeneratingPDF(false);
     }
@@ -305,7 +306,7 @@ export default function InvoiceDetailPage() {
       setShowPayModal(false);
     } catch (err) {
       console.error(err);
-      alert("Error marking as paid");
+      showToast("Error marking as paid", "error");
     } finally {
       setMarkingPaid(false);
     }
@@ -316,7 +317,7 @@ export default function InvoiceDetailPage() {
 
   const handleAddPayment = async () => {
     if (!payAmount || Number(payAmount) <= 0) {
-      alert("Enter a valid amount");
+      showToast("Enter a valid amount", "warning");
       return;
     }
     setSavingPayment(true);
@@ -374,7 +375,7 @@ export default function InvoiceDetailPage() {
       setPayNotes("");
     } catch (err) {
       console.error(err);
-      alert("Error saving payment");
+      showToast("Error saving payment", "error");
     } finally {
       setSavingPayment(false);
     }
@@ -427,7 +428,7 @@ export default function InvoiceDetailPage() {
       setInvoice((prev) => prev ? { ...prev, paidAmount: newTotalPaid, status: newStatus } : prev);
     } catch (err) {
       console.error(err);
-      alert("Error applying wallet credit");
+      showToast("Error applying wallet credit", "error");
     } finally {
       setApplyingWallet(false);
     }
@@ -448,7 +449,7 @@ export default function InvoiceDetailPage() {
       setInvoice(prev => prev ? { ...prev, paidAmount: newTotalPaid, status: newStatus } : prev);
     } catch (err) {
       console.error(err);
-      alert("Error deleting payment");
+      showToast("Error deleting payment", "error");
     }
   };
 
@@ -477,7 +478,7 @@ export default function InvoiceDetailPage() {
       setEditingPayment(null);
     } catch (err) {
       console.error(err);
-      alert("Error updating payment");
+      showToast("Error updating payment", "error");
     } finally {
       setSavingEditPayment(false);
     }
@@ -496,7 +497,7 @@ export default function InvoiceDetailPage() {
       } catch (e) {}
     }
     if (!phone) {
-      alert("No phone number found for this customer. Please add it in Firestore.");
+      showToast("No phone number found for this customer. Please add it in Firestore.", "warning");
       return;
     }
     const date = invoice.invoiceDate
@@ -533,7 +534,7 @@ export default function InvoiceDetailPage() {
       // 2. Check for Paid POs — block cancellation
       const paidPOs = pos.filter((p: any) => p.status === "Paid");
       if (paidPOs.length > 0) {
-        alert(`Cannot cancel — ${paidPOs.length} PO(s) are already Paid. Please resolve them first.`);
+        showToast(`Cannot cancel — ${paidPOs.length} PO(s) are already Paid. Please resolve them first.`, "warning");
         setCancelling(false);
         return;
       }
@@ -555,8 +556,7 @@ export default function InvoiceDetailPage() {
       }
       if (sentPOs.length > 0) {
         const suppliers = [...new Set(sentPOs.map((p: any) => `${p.supplierName} (${p.poContactPhone || p.poContactEmail || "no contact"})`))].join(", ");
-        alert(`⚠️ ${sentPOs.length} PO(s) were Sent and are now marked Cancelled.
-Please call/message the supplier(s): ${suppliers}`);
+        showToast(`${sentPOs.length} PO(s) were Sent and are now marked Cancelled. Please call/message the supplier(s): ${suppliers}`, "warning");
       }
 
       // 5. Handle Generated POs — auto-delete with confirmation
@@ -582,7 +582,7 @@ Please call/message the supplier(s): ${suppliers}`);
       setShowCancelModal(false);
     } catch (err) {
       console.error(err);
-      alert("Error cancelling invoice");
+      showToast("Error cancelling invoice", "error");
     } finally {
       setCancelling(false);
     }
@@ -643,7 +643,7 @@ Please call/message the supplier(s): ${suppliers}`);
       setInvoice((prev) => prev ? { ...prev, status, dueDate, notes, includeDelivery } : prev);
     } catch (err) {
       console.error(err);
-      alert("Error saving changes");
+      showToast("Error saving changes", "error");
     } finally {
       setSaving(false);
     }
@@ -748,15 +748,15 @@ Please call/message the supplier(s): ${suppliers}`);
       setNewLineDiscount("0");
       await recalculateTotalsFromLines([...lines, { lineGross: net, vatRate } as any]);
     } catch(e) {
-      alert("Failed to add line item");
+      showToast("Failed to add line item", "error");
     } finally {
       setAddingLine(false);
     }
   };
 
   const handleGeneratePOs = async () => {
-    if (!invoice?.orderId) { alert("No order linked to this invoice."); return; }
-    if (lines.length === 0) { alert("Add line items to the invoice first."); return; }
+    if (!invoice?.orderId) { showToast("No order linked to this invoice.", "warning"); return; }
+    if (lines.length === 0) { showToast("Add line items to the invoice first.", "warning"); return; }
 
     setPoWarning(null);
 

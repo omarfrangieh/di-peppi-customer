@@ -39,20 +39,11 @@ export default function CartPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Shopping Cart</h1>
-            <p className="text-sm text-gray-600 mt-0.5">
-              {items.length} item{items.length !== 1 ? "s" : ""} in cart
-            </p>
-          </div>
-          <button
-            onClick={() => router.push("/customer/products")}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg transition-colors"
-            style={{ backgroundColor: "#1B2A5E" }}
-          >
-            ← Continue Shopping
-          </button>
+        <div className="max-w-7xl mx-auto">
+          <h1 className="text-xl font-bold text-gray-900">Shopping Cart</h1>
+          <p className="text-sm text-gray-600 mt-0.5">
+            {items.length} item{items.length !== 1 ? "s" : ""} in cart
+          </p>
         </div>
       </div>
 
@@ -65,7 +56,7 @@ export default function CartPage() {
             <p className="text-gray-600 mb-6">Add some products to get started!</p>
             <button
               onClick={() => router.push("/customer/products")}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+              className="px-6 py-3 text-white font-semibold rounded-lg transition-colors cursor-pointer hover:opacity-90"
               style={{ backgroundColor: "#1B2A5E" }}
             >
               Browse Products

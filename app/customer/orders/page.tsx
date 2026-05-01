@@ -2,211 +2,168 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { formatPrice } from "@/lib/formatters";
-import { httpsCallable } from "firebase/functions";
-import { functions } from "@/lib/firebase";
 
-interface OrderItem {
-  productId: string;
-  productName: string;
-  quantity: number;
-  priceAtTime: number;
+const STATUS_COLORS: Record<string, string> = {
+  Draft:        "bg-gray-100 text-gray-600",
+  Confirmed:    "bg-blue-100 text-blue-700",
+  Preparing:    "bg-yellow-100 text-yellow-800",
+  "To Deliver": "bg-orange-100 text-orange-700",
+  Delivered:    "bg-green-100 text-green-800",
+  Cancelled:    "bg-red-100 text-red-700",
+};
+
+function formatDate(val: any) {
+  if (!val) return "—";
+  let d = val;
+  if (val.toDate) d = val.toDate();
+  else if (typeof val === "string") d = new Date(val);
+  else if (typeof val === "number") d = new Date(val);
+  if (!(d instanceof Date) || isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-interface Order {
-  id: string;
-  name?: string;
-  customerId: string;
-  status: "Draft" | "Confirmed" | "Preparing" | "To Deliver" | "Delivered" | "Cancelled" | "pending" | "confirmed" | "delivered" | "cancelled";
-  items: OrderItem[] | number;  // Cloud Function returns item count as number
-  total: number;
-  deliveryDate: string;
-  paymentMethod: "wallet" | "cash";
-  createdAt: string;
-}
-
-export default function OrdersPage() {
+export default function CustomerOrdersPage() {
   const router = useRouter();
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchOrders = async () => {
-      setLoading(true);
-      setError(null);
+    const raw = localStorage.getItem("session");
+    if (!raw) { router.push("/customer/login"); return; }
+    const session = JSON.parse(raw);
 
-      try {
-        const sessionStr = localStorage.getItem("session");
-        if (!sessionStr) {
-          router.push("/customer/login");
-          return;
-        }
+    setLoading(true);
 
-        const session = JSON.parse(sessionStr);
-        const customerId = session.userId;
-
-        // Call Cloud Function to fetch order history
-        const getOrderHistory = httpsCallable(functions, "getOrderHistory");
-        const result: any = await getOrderHistory({ customerId });
-
-        const list = (result.data as any)?.orders ?? result.data;
-        if (Array.isArray(list)) {
-          setOrders(list);
-        } else {
-          setOrders([]);
-        }
-      } catch (err: any) {
-        console.error("Error fetching orders:", err);
-        setError(err.message || "Failed to load orders");
-      } finally {
-        setLoading(false);
-      }
+    // Merge results from multiple queries into a deduplicated sorted list
+    const orderMap = new Map<string, any>();
+    const flush = () => {
+      const sorted = Array.from(orderMap.values()).sort((a: any, b: any) => {
+        const ta = a.createdAt?.toDate?.() ?? new Date(a.createdAt ?? 0);
+        const tb = b.createdAt?.toDate?.() ?? new Date(b.createdAt ?? 0);
+        return tb.getTime() - ta.getTime();
+      });
+      setOrders(sorted);
+      setLoading(false);
     };
 
-    fetchOrders();
-  }, [router]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
-      </div>
+    // Query 1: by customerId (primary — matches what checkout saved)
+    const q1 = query(
+      collection(db, "orders"),
+      where("customerId", "==", session.userId)
     );
-  }
+    const unsub1 = onSnapshot(q1, (snap) => {
+      snap.docs.forEach(d => {
+        const data = d.data();
+        // Only show B2C orders
+        if (data.source === "b2c") orderMap.set(d.id, { id: d.id, ...data });
+      });
+      flush();
+    }, (err: any) => {
+      setError(err.message || "Failed to load orders");
+      setLoading(false);
+    });
 
-  const normalizeStatus = (status: string): string => {
-    const statusMap: Record<string, string> = {
-      "pending": "Draft",
-      "Draft": "Draft",
-      "confirmed": "Confirmed",
-      "Confirmed": "Confirmed",
-      "preparing": "Preparing",
-      "Preparing": "Preparing",
-      "to deliver": "To Deliver",
-      "To Deliver": "To Deliver",
-      "delivered": "Delivered",
-      "Delivered": "Delivered",
-      "cancelled": "Cancelled",
-      "Cancelled": "Cancelled",
-    };
-    return statusMap[status] || status;
-  };
+    // Query 2: by email (fallback — handles userId mismatch for email-login users)
+    let unsub2: () => void = () => {};
+    if (session.email) {
+      const q2 = query(
+        collection(db, "orders"),
+        where("email", "==", session.email)
+      );
+      unsub2 = onSnapshot(q2, (snap) => {
+        snap.docs.forEach(d => {
+          const data = d.data();
+          if (data.source === "b2c") orderMap.set(d.id, { id: d.id, ...data });
+        });
+        flush();
+      }, () => {});
+    }
 
-  const statusColors: Record<string, string> = {
-    Draft: "bg-gray-50 text-gray-600",
-    Confirmed: "bg-green-50 text-green-600",
-    Preparing: "bg-yellow-50 text-yellow-600",
-    "To Deliver": "bg-orange-50 text-orange-600",
-    Delivered: "bg-blue-50 text-blue-600",
-    Cancelled: "bg-red-50 text-red-600",
-  };
+    // Query 3: by deliveryPhone (fallback — handles WhatsApp-login users with no email in session)
+    let unsub3: () => void = () => {};
+    if (session.phone) {
+      const q3 = query(
+        collection(db, "orders"),
+        where("deliveryPhone", "==", session.phone)
+      );
+      unsub3 = onSnapshot(q3, (snap) => {
+        snap.docs.forEach(d => {
+          const data = d.data();
+          if (data.source === "b2c") orderMap.set(d.id, { id: d.id, ...data });
+        });
+        flush();
+      }, () => {});
+    }
 
-  const statusLabels: Record<string, string> = {
-    Draft: "Draft",
-    Confirmed: "Confirmed",
-    Preparing: "Preparing",
-    "To Deliver": "To Deliver",
-    Delivered: "Delivered",
-    Cancelled: "Cancelled",
-  };
+    return () => { unsub1(); unsub2(); unsub3(); };
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Order History</h1>
-            <p className="text-sm text-gray-600 mt-0.5">
-              {orders.length} order{orders.length !== 1 ? "s" : ""}
-            </p>
+            <p className="text-sm text-gray-500 mt-0.5">{orders.length} order{orders.length !== 1 ? "s" : ""}</p>
           </div>
           <button
             onClick={() => router.push("/customer/products")}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg transition-colors"
+            className="px-4 py-2 text-white text-sm font-semibold rounded-xl hover:opacity-90 cursor-pointer"
             style={{ backgroundColor: "#1B2A5E" }}
           >
-            ← Continue Shopping
+            Shop
           </button>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
         {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-600 font-semibold">{error}</p>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+            <p className="text-red-700 text-sm">{error}</p>
           </div>
         )}
 
-        {orders.length === 0 ? (
-          /* Empty State */
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+        {loading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="bg-white border border-gray-200 rounded-xl h-20 animate-pulse" />
+            ))}
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-16 text-center">
             <p className="text-4xl mb-4">📦</p>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">No orders yet</h2>
-            <p className="text-gray-600 mb-6">Start shopping to create your first order!</p>
-            <button
-              onClick={() => router.push("/customer/products")}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
-              style={{ backgroundColor: "#1B2A5E" }}
-            >
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">No orders yet</h2>
+            <p className="text-sm text-gray-500 mb-6">Start shopping to place your first order!</p>
+            <button onClick={() => router.push("/customer/products")} className="px-6 py-2.5 text-white font-semibold rounded-xl text-sm hover:opacity-90 cursor-pointer" style={{ backgroundColor: "#1B2A5E" }}>
               Browse Products
             </button>
           </div>
         ) : (
-          /* Orders List */
-          <div className="space-y-4">
+          <div className="space-y-3">
             {orders.map((order) => (
               <div
                 key={order.id}
                 onClick={() => router.push(`/customer/orders/${order.id}`)}
-                className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-lg transition-shadow cursor-pointer"
+                className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:shadow-sm hover:border-gray-300 transition-all flex items-center gap-4"
               >
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Order</p>
-                    <p className="text-lg font-bold text-gray-900">{order.name || order.id}</p>
-                    {order.name && <p className="text-xs text-gray-400">{order.id}</p>}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-bold text-gray-900 text-sm">{order.name || order.id}</span>
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600"}`}>
+                      {order.status}
+                    </span>
                   </div>
-                  <div className={`px-4 py-2 rounded-lg font-semibold text-sm ${statusColors[normalizeStatus(order.status)]}`}>
-                    {statusLabels[normalizeStatus(order.status)]}
-                  </div>
+                  <p className="text-xs text-gray-500">
+                    Delivery: {formatDate(order.deliveryDate)} · {order.itemCount || "?"} item{(order.itemCount || 0) !== 1 ? "s" : ""}
+                  </p>
                 </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-xs text-gray-600 uppercase tracking-wide">Order Date</p>
-                    <p className="text-gray-900 font-semibold">
-                      {new Date(order.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-600 uppercase tracking-wide">Items</p>
-                    <p className="text-gray-900 font-semibold">
-                      {typeof order.items === "number" ? order.items : (order.items as OrderItem[]).length}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-600 uppercase tracking-wide">Delivery Date</p>
-                    <p className="text-gray-900 font-semibold">
-                      {new Date(order.deliveryDate).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-600 uppercase tracking-wide">Total</p>
-                    <p className="text-2xl font-bold text-blue-600">${formatPrice(order.total)}</p>
-                  </div>
+                <div className="text-right shrink-0">
+                  <p className="font-bold text-gray-900">${formatPrice(order.total || 0)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{formatDate(order.createdAt)}</p>
                 </div>
-
-                {/* Items Preview */}
-                {Array.isArray(order.items) && order.items.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <p className="text-sm text-gray-600 mb-2">Items:</p>
-                    <p className="text-sm text-gray-900">
-                      {(order.items as OrderItem[]).map((item) => item.productName).join(", ")}
-                    </p>
-                  </div>
-                )}
+                <span className="text-gray-300 text-lg">›</span>
               </div>
             ))}
           </div>

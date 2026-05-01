@@ -46,6 +46,17 @@ export default function AdminCustomersPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [editMapLocation, setEditMapLocation] = useState<MapLocation | null>(null);
   const [showEditMap, setShowEditMap] = useState(false);
+  const [editMapFlyTo, setEditMapFlyTo] = useState<MapLocation | null>(null);
+
+  function parseMapsUrl(url: string): MapLocation | null {
+    const at = url.match(/@(-?\d+\.?\d+),(-?\d+\.?\d+)/);
+    if (at) return { lat: parseFloat(at[1]), lng: parseFloat(at[2]) };
+    const q = url.match(/[?&]q=(-?\d+\.?\d+),(-?\d+\.?\d+)/);
+    if (q) return { lat: parseFloat(q[1]), lng: parseFloat(q[2]) };
+    const ll = url.match(/[?&]ll=(-?\d+\.?\d+),(-?\d+\.?\d+)/);
+    if (ll) return { lat: parseFloat(ll[1]), lng: parseFloat(ll[2]) };
+    return null;
+  }
   const [docPreview, setDocPreview] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [newDocFile, setNewDocFile] = useState<File | null>(null);
@@ -118,7 +129,7 @@ export default function AdminCustomersPage() {
     setEditing(c.id);
     setEditData({ ...c });
     setEditMapLocation(c.mapLocation || null);
-    setShowEditMap(!!c.mapLocation);
+    setShowEditMap(true);
     const prices: Record<string, string> = {};
     if (c.specialPrices) {
       Object.entries(c.specialPrices).forEach(([pid, price]) => {
@@ -931,29 +942,45 @@ export default function AdminCustomersPage() {
                     <Field label="Street" value={editData.street} onChange={(v: string) => setEditData((p: any) => ({ ...p, street: v }))} />
                     <Field label="City" value={editData.city} onChange={(v: string) => setEditData((p: any) => ({ ...p, city: v }))} />
                     <Field label="Country" value={editData.country} onChange={(v: string) => setEditData((p: any) => ({ ...p, country: v }))} />
-                    <Field label="Google Maps Link" value={editData.mapsLink} onChange={(v: string) => setEditData((p: any) => ({ ...p, mapsLink: v }))} />
                     <Field label="Additional Instructions" value={editData.additionalInstructions} onChange={(v: string) => setEditData((p: any) => ({ ...p, additionalInstructions: v }))} />
                   </div>
-                  {/* Interactive map */}
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                        📍 Map Pin
-                        {editMapLocation && <span className="text-green-600 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full text-xs ml-1">✓ Pinned</span>}
+
+                  {/* Location block — matches customer profile design */}
+                  <div className="mt-4 border border-gray-100 dark:border-gray-700 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
+                        📍 Location
+                        {editMapLocation && (
+                          <span className="text-green-600 font-medium bg-green-50 border border-green-200 px-2 py-0.5 rounded-full normal-case tracking-normal">✓ Pinned</span>
+                        )}
                       </span>
                       <button type="button" onClick={() => setShowEditMap(v => !v)}
-                        className="text-xs px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400">
-                        {showEditMap ? "Hide Map" : "📍 Pin on Map"}
+                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-600 dark:text-gray-400">
+                        🗺️ {showEditMap ? "Hide Map" : "Show Map"}
                       </button>
                     </div>
                     {showEditMap && (
-                      <LocationPicker initial={editMapLocation} height={200} onChange={(loc) => setEditMapLocation(loc)} />
+                      <LocationPicker initial={editMapLocation} flyTo={editMapFlyTo} height={220} onChange={(loc) => { setEditMapLocation(loc); setEditMapFlyTo(null); }} />
                     )}
                     {!showEditMap && editMapLocation && (
                       <p className="text-xs text-gray-400">
-                        {editMapLocation.lat.toFixed(5)}, {editMapLocation.lng.toFixed(5)} —{" "}
-                        <button type="button" onClick={() => setEditMapLocation(null)} className="text-red-400 hover:text-red-600">Remove</button>
+                        📍 {editMapLocation.lat.toFixed(5)}, {editMapLocation.lng.toFixed(5)} —{" "}
+                        <button type="button" onClick={() => setEditMapLocation(null)} className="text-red-400 hover:text-red-600">Remove pin</button>
                       </p>
+                    )}
+                    <input
+                      type="url"
+                      value={editData.mapsLink || ""}
+                      onChange={e => {
+                        setEditData((p: any) => ({ ...p, mapsLink: e.target.value }));
+                        const coords = parseMapsUrl(e.target.value);
+                        if (coords) { setEditMapFlyTo(coords); setEditMapLocation(coords); }
+                      }}
+                      placeholder="Or paste a Google Maps link — https://maps.app.goo.gl/..."
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400"
+                    />
+                    {editData.mapsLink && !parseMapsUrl(editData.mapsLink) && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠️ Short link — coordinates can't be auto-read. Tap on the map above to pin the exact location.</p>
                     )}
                   </div>
 
@@ -1495,23 +1522,34 @@ export default function AdminCustomersPage() {
                   <div>
                     <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Recipients</p>
                     <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
-                      {customers.filter(c => isDormant(c)).map(c => (
-                        <label key={c.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-0">
-                          <input type="checkbox"
-                            checked={msgTargetIds.has(c.id)}
-                            onChange={e => setMsgTargetIds(prev => {
-                              const next = new Set(prev);
-                              if (e.target.checked) next.add(c.id); else next.delete(c.id);
-                              return next;
-                            })}
-                            className="w-4 h-4 rounded border-gray-300 accent-orange-500 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
-                            <p className="text-xs text-gray-400 truncate">{c.customerType} · {getDormantDays(c) >= 9000 ? "Never ordered" : `${getDormantDays(c)}d dormant`}</p>
-                          </div>
-                          {c.phoneNumber && <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{c.phoneNumber}</span>}
-                        </label>
-                      ))}
+                      {/* Show selected clients first, then dormant ones not already selected */}
+                      {[
+                        ...customers.filter(c => msgTargetIds.has(c.id)),
+                        ...customers.filter(c => !msgTargetIds.has(c.id) && isDormant(c)),
+                      ].map(c => {
+                        const isSelected = msgTargetIds.has(c.id);
+                        const dormant = isDormant(c);
+                        return (
+                          <label key={c.id} className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-0 ${isSelected ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}>
+                            <input type="checkbox"
+                              checked={isSelected}
+                              onChange={e => setMsgTargetIds(prev => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(c.id); else next.delete(c.id);
+                                return next;
+                              })}
+                              className="w-4 h-4 rounded border-gray-300 accent-orange-500 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
+                              <p className="text-xs text-gray-400 truncate">
+                                {c.customerType}
+                                {dormant ? ` · ${getDormantDays(c) >= 9000 ? "Never ordered" : `${getDormantDays(c)}d dormant`}` : ""}
+                              </p>
+                            </div>
+                            {c.phoneNumber && <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{c.phoneNumber}</span>}
+                          </label>
+                        );
+                      })}
                     </div>
                     <div className="flex items-center gap-3 mt-2">
                       <button onClick={() => setMsgTargetIds(new Set(customers.filter(c => isDormant(c)).map((c: any) => c.id)))}

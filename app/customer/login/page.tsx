@@ -38,13 +38,18 @@ export default function CustomerLoginPage() {
 
   const handleSendOTP = async () => {
     if (!email) {
-      setMessage("Please enter your email");
+      setMessage(otpMethod === "email" ? "Please enter your email" : "Please enter your phone number");
       return;
     }
 
-    // Basic email validation
-    if (!email.includes("@")) {
+    // Validate based on selected OTP method
+    if (otpMethod === "email" && !email.includes("@")) {
       setMessage("Please enter a valid email");
+      return;
+    }
+
+    if (otpMethod === "whatsapp" && !email.startsWith("+")) {
+      setMessage("Please enter a valid phone number with country code (e.g. +961...)");
       return;
     }
 
@@ -53,10 +58,11 @@ export default function CustomerLoginPage() {
 
     try {
       const sendOTPFn = httpsCallable(functions, "sendOTP");
-      await sendOTPFn({
-        email,
-        method: otpMethod,
-      });
+      await sendOTPFn(
+        otpMethod === "whatsapp"
+          ? { phone: email, method: otpMethod }
+          : { email, method: otpMethod }
+      );
       setMessage("");
       setOtpSuccess(true);
       setTimeout(() => {
@@ -93,8 +99,13 @@ export default function CustomerLoginPage() {
           await signInWithCustomToken(auth, result.data.customToken);
         }
 
+        // Enrich result with the identifier used so session has email or phone
+        const enriched = { ...result.data };
+        if (otpMethod === "whatsapp" && !enriched.phone) enriched.phone = email;
+        if (otpMethod === "email" && !enriched.email) enriched.email = email;
+
         setStep("verify");
-        setUserData(result.data);
+        setUserData(enriched);
       }
     } catch (err: any) {
       setMessage(`Failed: ${err.message}`);
@@ -107,10 +118,11 @@ export default function CustomerLoginPage() {
     try {
       const session = {
         userId: userData.userId,
-        email: userData.email || email,
+        email: userData.email || (otpMethod === "email" ? email : ""),
+        phone: userData.phone || (otpMethod === "whatsapp" ? email : ""),
         role: userData.role || "Customer",
         accountType: userData.accountType || "customer",
-        customerType: userData.customerType || "B2C", // Default to B2C for customer app
+        customerType: userData.customerType || "B2C",
         name: userData.name || "Customer",
       };
       localStorage.setItem("session", JSON.stringify(session));
@@ -201,7 +213,7 @@ export default function CustomerLoginPage() {
             value={otp}
             onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
             onKeyPress={(e) => e.key === "Enter" && handleVerifyOTP()}
-            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-center text-3xl font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all mb-6"
+            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-center text-3xl font-bold tracking-widest focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all mb-6"
             style={{color: "#1B2A5E"}}
           />
 
@@ -246,7 +258,7 @@ export default function CustomerLoginPage() {
 
         {otpSuccess && (
           <div className="mb-6 p-4 rounded-lg text-sm bg-green-50 text-green-700 text-center font-semibold">
-            ✓ OTP sent to your email
+            ✓ OTP sent to your {otpMethod === "whatsapp" ? "WhatsApp" : "email"}
           </div>
         )}
 
@@ -262,8 +274,8 @@ export default function CustomerLoginPage() {
               Email or Phone
             </label>
             <input
-              type="email"
-              placeholder="your@email.com or +1234567890"
+              type={otpMethod === "email" ? "email" : "tel"}
+              placeholder={otpMethod === "email" ? "your@email.com" : "+961123456"}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onKeyPress={(e) => e.key === "Enter" && handleSendOTP()}

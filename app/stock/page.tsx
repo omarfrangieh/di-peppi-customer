@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState, useMemo } from "react";
+import { showToast } from "@/lib/toast";
 import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { formatQty, formatPrice } from "@/lib/formatters";
@@ -146,6 +147,17 @@ export default function StockPage() {
 
   useEffect(() => { void load(); }, []);
 
+  // Deep-link: auto-open Receive modal when ?receiveProductId=X is in URL
+  useEffect(() => {
+    if (loading || products.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const productId = params.get("receiveProductId");
+    if (productId) {
+      const product = products.find(p => p.id === productId);
+      if (product) setStockInProduct(product);
+    }
+  }, [loading, products]);
+
   const load = async () => {
     setLoading(true);
     try {
@@ -265,7 +277,7 @@ export default function StockPage() {
       setShowNewCountModal(false);
       setNewCountNotes("");
     } catch (err) {
-      alert("Error creating count: " + (err instanceof Error ? err.message : "Unknown error"));
+      showToast("Error creating count: " + (err instanceof Error ? err.message : "Unknown error"), "error");
     } finally { setCountSaving(false); }
   };
 
@@ -274,7 +286,7 @@ export default function StockPage() {
     const counted = window.prompt("Enter counted quantity for " + product.name + ":", formatQty(product.currentStock));
     if (counted === null || !counted.trim()) return;
     const countedQty = Number(counted);
-    if (isNaN(countedQty) || countedQty < 0) { alert("Invalid quantity"); return; }
+    if (isNaN(countedQty) || countedQty < 0) { showToast("Invalid quantity", "warning"); return; }
     setReasonModalData({product, countedQty});
     setSelectedReason("error");
     setOtherReason("");
@@ -283,8 +295,8 @@ export default function StockPage() {
 
   const handleConfirmReason = async () => {
     if (!reasonModalData || !selectedReason) return;
-    if (selectedReason === "expired" && !expiredDate) { alert("Please select expiry date"); return; }
-    if (selectedReason === "other" && !otherReason) { alert("Please specify reason"); return; }
+    if (selectedReason === "expired" && !expiredDate) { showToast("Please select expiry date", "warning"); return; }
+    if (selectedReason === "other" && !otherReason) { showToast("Please specify reason", "warning"); return; }
 
     const {product, countedQty} = reasonModalData;
     const finalReason = selectedReason === "other" ? otherReason : selectedReason;
@@ -308,7 +320,7 @@ export default function StockPage() {
       setNotes("");
       setExpiredDate("");
     } catch (err) {
-      alert("Error adding item: " + (err instanceof Error ? err.message : "Unknown error"));
+      showToast("Error adding item: " + (err instanceof Error ? err.message : "Unknown error"), "error");
     } finally { setCountSaving(false); }
   };
 
@@ -333,7 +345,7 @@ export default function StockPage() {
     if (!currentCountId) return;
     const hasVariance = countItems.some(i => i.variance !== 0);
     if (!hasVariance) {
-      alert("No variances to consolidate. All counts match system stock.");
+      showToast("No variances to consolidate. All counts match system stock.", "info");
       return;
     }
     if (!window.confirm("Consolidate count? This will apply all adjustments to stock. This action cannot be undone.")) return;
@@ -343,14 +355,14 @@ export default function StockPage() {
       const { functions } = await import("@/lib/firebase");
       const consolidateInventoryCount = httpsCallable(functions, "consolidateInventoryCount");
       const result: any = await consolidateInventoryCount({countId: currentCountId});
-      alert("Count consolidated! Applied " + result.data.adjustmentsApplied + " adjustments.");
+      showToast("Count consolidated! Applied " + result.data.adjustmentsApplied + " adjustments.", "success");
       setCurrentCountId(null);
       setCountItems([]);
       setShowCountReview(false);
       setCountVarianceSummary({plus: 0, minus: 0});
       await load();
     } catch (err) {
-      alert("Error consolidating: " + (err instanceof Error ? err.message : "Unknown error"));
+      showToast("Error consolidating: " + (err instanceof Error ? err.message : "Unknown error"), "error");
     } finally { setCountSaving(false); }
   };
 
@@ -363,7 +375,7 @@ export default function StockPage() {
       setSelectedCountId(countId);
       setSelectedCountItems(items);
     } catch (err) {
-      alert("Error loading count details: " + (err instanceof Error ? err.message : "Unknown error"));
+      showToast("Error loading count details: " + (err instanceof Error ? err.message : "Unknown error"), "error");
     }
   };
 
@@ -379,7 +391,7 @@ export default function StockPage() {
   const handleSaveEdit = () => {
     if (!editingItem || !editQty) return;
     const editedQty = Number(editQty);
-    if (isNaN(editedQty) || editedQty < 0) { alert("Invalid quantity"); return; }
+    if (isNaN(editedQty) || editedQty < 0) { showToast("Invalid quantity", "warning"); return; }
 
     const newVariance = editedQty - editingItem.systemStock;
     const oldVariance = editingItem.variance;

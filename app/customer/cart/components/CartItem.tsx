@@ -27,7 +27,7 @@ export default function CartItem({ item }: CartItemProps) {
       <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-2 py-1">
         <button
           onClick={() => updateQty(item.productId, item.quantity - 1)}
-          className="px-2 text-gray-600 hover:bg-gray-100 font-semibold"
+          className="px-2 text-gray-600 hover:bg-gray-100 font-semibold cursor-pointer"
         >
           −
         </button>
@@ -43,7 +43,7 @@ export default function CartItem({ item }: CartItemProps) {
         />
         <button
           onClick={() => updateQty(item.productId, item.quantity + 1)}
-          className="px-2 text-gray-600 hover:bg-gray-100 font-semibold"
+          className="px-2 text-gray-600 hover:bg-gray-100 font-semibold cursor-pointer"
         >
           +
         </button>
@@ -62,7 +62,7 @@ export default function CartItem({ item }: CartItemProps) {
       {/* Remove Button */}
       <button
         onClick={() => removeItem(item.productId)}
-        className="ml-4 p-2 hover:bg-red-50 rounded-lg text-red-600 hover:text-red-700 transition-colors"
+        className="ml-4 p-2 hover:bg-red-50 rounded-lg text-red-600 hover:text-red-700 transition-colors cursor-pointer"
         title="Remove from cart"
       >
         🗑️

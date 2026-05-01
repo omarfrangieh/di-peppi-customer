@@ -5,6 +5,7 @@ import { collection, getDocs, query, doc, writeBatch, serverTimestamp, where, ad
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/formatters";
+import { showToast } from "@/lib/toast";
 import { X, Trash2, ArrowUpDown, ChevronRight } from "lucide-react";
 
 const STATUS_FLOW: Record<string, string> = {
@@ -136,7 +137,7 @@ export default function OrdersPage() {
       await updateDoc(doc(db, "orders", order.id), { status: next });
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: next } : o));
     } catch {
-      alert("Failed to update status");
+      showToast("Failed to update status", "error");
     } finally {
       setAdvancing(null);
     }
@@ -156,7 +157,7 @@ export default function OrdersPage() {
       } catch { /* non-blocking */ }
       setOrders(prev => prev.filter(o => o.id !== orderId));
     } catch (err: any) {
-      alert(`Failed to delete: ${err.message}`);
+      showToast(`Failed to delete: ${err.message}`, "error");
     }
   };
 
@@ -176,7 +177,7 @@ export default function OrdersPage() {
     return matchSearch && matchStatus && matchType;
   });
 
-  const filteredRevenue = filtered.reduce((s, o) => s + Number(o.finalTotal || 0), 0);
+  const filteredRevenue = filtered.reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0);
 
   // Group by delivery date
   const groups: Record<string, typeof filtered> = {};
@@ -289,7 +290,7 @@ export default function OrdersPage() {
             onClick={() => setFilterStatus("All")}
             className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
               filterStatus === "All"
-                ? "bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-gray-900"
+                ? "bg-[#1e3a5f] text-white border-[#1e3a5f] dark:bg-white dark:text-gray-900"
                 : "bg-white text-gray-600 border-gray-200 hover:border-gray-400 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700"
             }`}
           >
@@ -308,7 +309,7 @@ export default function OrdersPage() {
               o.status === status || (status === "Cancelled" && o.status === "Canceled")
             );
             const count = statusOrders.length;
-            const rev = statusOrders.reduce((s, o) => s + Number(o.finalTotal || 0), 0);
+            const rev = statusOrders.reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0);
             const active = filterStatus === status;
             return (
               <button
@@ -318,7 +319,7 @@ export default function OrdersPage() {
                   count === 0 ? "opacity-50 pointer-events-none" : ""
                 } ${
                   active
-                    ? "bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-gray-900"
+                    ? "bg-[#1e3a5f] text-white border-[#1e3a5f] dark:bg-white dark:text-gray-900"
                     : count === 0
                     ? "bg-white text-gray-300 border-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-600"
                     : "bg-white text-gray-600 border-gray-200 hover:border-gray-400 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700"
@@ -371,7 +372,7 @@ export default function OrdersPage() {
                 </span>
                 <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
                 <span className="text-xs text-gray-400">
-                  {money(groupOrders.reduce((s, o) => s + Number(o.finalTotal || 0), 0))}
+                  {money(groupOrders.reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0))}
                 </span>
               </div>
 
@@ -413,6 +414,11 @@ export default function OrdersPage() {
                             <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
                               {order.customerType || "B2C"}
                             </span>
+                            {(order.source === "b2c" || order.source === "b2b") && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 font-medium">
+                                🌐 Online
+                              </span>
+                            )}
                             {isOverdue && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium">
                                 ⚠️ Overdue
@@ -461,7 +467,7 @@ export default function OrdersPage() {
                       <div className="flex items-center gap-3 flex-shrink-0 ml-4">
                         <div className="flex flex-col items-end gap-1">
                           <p className="font-bold text-gray-900 dark:text-white text-base">
-                            ${formatPrice(order.finalTotal || 0)}
+                            ${formatPrice(order.finalTotal || order.total || order.grandTotal || 0)}
                           </p>
                           {(() => {
                             const paid = order.invoiceStatus === "paid" || order.isPaid === true;

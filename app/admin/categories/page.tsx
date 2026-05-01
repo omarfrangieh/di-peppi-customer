@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -13,7 +14,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import SearchInput from "@/components/SearchInput";
-import { AlertTriangle, Check, X } from "lucide-react";
+import { AlertTriangle, Check, X, Pencil } from "lucide-react";
 
 interface Category {
   id: string;
@@ -25,6 +26,7 @@ interface Category {
 }
 
 export default function CategoriesPage() {
+  const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +38,10 @@ export default function CategoriesPage() {
   // Delete confirmation modal state
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Products list (for inline expand)
+  const [allProducts, setAllProducts] = useState<{ id: string; name: string; active: boolean; category: string }[]>([]);
+  const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
 
   // Inline rename state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -63,14 +69,18 @@ export default function CategoriesPage() {
         getDocs(collection(db, "products")),
       ]);
 
-      // Build count map by category name
+      // Build count map by category name + store products for expand
       const countByName: Record<string, number> = {};
+      const prodList: { id: string; name: string; active: boolean; category: string }[] = [];
       prodSnap.docs.forEach((d) => {
-        const cat = d.data().category;
+        const p = d.data();
+        const cat = p.category;
+        prodList.push({ id: d.id, name: p.name || "", active: p.active !== false, category: cat || "" });
         if (cat && typeof cat === "string") {
           countByName[cat] = (countByName[cat] ?? 0) + 1;
         }
       });
+      setAllProducts(prodList);
 
       const loaded = catSnap.docs
         .map((d) => ({
@@ -341,8 +351,12 @@ export default function CategoriesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {filtered.map((cat) => (
-                  <tr key={cat.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                {filtered.map((cat) => {
+                  const catProducts = allProducts.filter(p => p.category.toLowerCase() === cat.name.toLowerCase());
+                  const isExpanded = expandedCategoryId === cat.id;
+                  return (
+                  <React.Fragment key={cat.id}>
+                  <tr className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors ${isExpanded ? "bg-blue-50/40 dark:bg-blue-950/20" : ""}`}>
                     <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">
                       {editingId === cat.id ? (
                         <div className="flex items-center gap-1">
@@ -378,12 +392,7 @@ export default function CategoriesPage() {
                           </button>
                         </div>
                       ) : (
-                        <span
-                          onClick={() => handleStartRename(cat)}
-                          className="cursor-pointer hover:underline hover:underline-offset-2"
-                          style={{ textTransform: "capitalize" }}
-                          title="Click to rename"
-                        >
+                        <span style={{ textTransform: "capitalize" }}>
                           {cat.name.toLowerCase()}
                         </span>
                       )}
@@ -401,7 +410,16 @@ export default function CategoriesPage() {
                     <td className="px-6 py-4 text-sm">
                       {(cat.productCount ?? 0) === 0
                         ? <span className="text-gray-400 dark:text-gray-500">—</span>
-                        : <span className="text-gray-700 dark:text-gray-300">{cat.productCount}</span>
+                        : (
+                          <button
+                            onClick={() => setExpandedCategoryId(isExpanded ? null : cat.id)}
+                            className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 font-medium hover:underline"
+                            title="Click to view products"
+                          >
+                            {cat.productCount}
+                            <span className={`text-xs transition-transform inline-block ${isExpanded ? "rotate-180" : ""}`}>▾</span>
+                          </button>
+                        )
                       }
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-400 dark:text-gray-500">
@@ -409,6 +427,13 @@ export default function CategoriesPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleStartRename(cat)}
+                          className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                          title="Rename"
+                        >
+                          <Pencil size={13} strokeWidth={2} />
+                        </button>
                         <button
                           onClick={() => handleToggleActive(cat.id, cat.active)}
                           className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
@@ -428,7 +453,35 @@ export default function CategoriesPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  {isExpanded && (
+                    <tr className="bg-blue-50/40 dark:bg-blue-950/20 border-t border-blue-100 dark:border-blue-900">
+                      <td colSpan={5} className="px-6 py-3">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Products in {cat.name.toLowerCase()}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {catProducts.length === 0
+                            ? <span className="text-xs text-gray-400">No products found</span>
+                            : catProducts.sort((a, b) => a.name.localeCompare(b.name)).map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => router.push(`/admin/products?search=${encodeURIComponent(p.name)}`)}
+                                className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-all ${
+                                  p.active
+                                    ? "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-blue-400 hover:text-blue-600 hover:shadow-sm cursor-pointer"
+                                    : "bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-400 line-through hover:border-gray-400 cursor-pointer"
+                                }`}
+                                title="View in Products"
+                              >
+                                {p.name}
+                              </button>
+                            ))
+                          }
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}

@@ -1,279 +1,327 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { formatPrice } from "@/lib/formatters";
+import { use, useEffect, useState, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  doc, getDoc, updateDoc, addDoc,
+  collection, query, where, getDocs, serverTimestamp,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { formatPrice } from "@/lib/formatters";
 
-interface OrderItem {
-  productId: string;
-  productName: string;
-  quantity: number;
-  priceAtTime: number;
+const STATUS_COLORS: Record<string, string> = {
+  Draft:        "bg-gray-100 text-gray-600",
+  Confirmed:    "bg-blue-100 text-blue-700",
+  Preparing:    "bg-yellow-100 text-yellow-800",
+  "To Deliver": "bg-orange-100 text-orange-700",
+  Delivered:    "bg-green-100 text-green-800",
+  Cancelled:    "bg-red-100 text-red-700",
+};
+
+function formatDate(val: any) {
+  if (!val) return "—";
+  let d = val;
+  if (val.toDate) d = val.toDate();
+  else if (typeof val === "string") d = new Date(val);
+  else if (typeof val === "number") d = new Date(val);
+  if (!(d instanceof Date) || isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-interface Order {
-  id: string;
-  name?: string;
-  customerId: string;
-  status: "pending" | "confirmed" | "delivered" | "cancelled";
-  items: OrderItem[];
-  subtotal: number;
-  deliveryFee: number;
-  total: number;
-  deliveryDate: string;
-  paymentMethod: "wallet" | "cash";
-  specialInstructions?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+const CANCEL_WINDOW_SECS = 10;
 
-export default function OrderDetailPage() {
+export default function CustomerOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const router = useRouter();
-  const params = useParams();
   const searchParams = useSearchParams();
-  const orderId = params.id as string;
   const isConfirmed = searchParams.get("confirmed") === "true";
 
-  const [order, setOrder] = useState<Order | null>(null);
+  const [order, setOrder] = useState<any>(null);
+  const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  // Cancel state
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 10-second cancel window right after checkout
+  useEffect(() => {
+    if (!isConfirmed) return;
+    setCountdown(CANCEL_WINDOW_SECS);
+    timerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev === null || prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [isConfirmed]);
 
   useEffect(() => {
-    const fetchOrder = async () => {
+    const load = async () => {
       setLoading(true);
-      setError(null);
-
       try {
-        const sessionStr = localStorage.getItem("session");
-        if (!sessionStr) {
-          router.push("/customer/login");
-          return;
-        }
+        const raw = localStorage.getItem("session");
+        if (!raw) { router.push("/customer/login"); return; }
 
-        // Fetch order document
-        const orderSnap = await getDoc(doc(db, "orders", orderId));
-        if (!orderSnap.exists()) {
-          setError("Order not found");
-          return;
-        }
-        const orderData = orderSnap.data();
+        const orderDoc = await getDoc(doc(db, "orders", id));
+        if (!orderDoc.exists()) { router.push("/customer/orders"); return; }
+        setOrder({ id: orderDoc.id, ...orderDoc.data() });
 
-        // Items are stored directly on the order document as an array
-        const items: OrderItem[] = Array.isArray(orderData.items)
-          ? orderData.items.map((item: any) => ({
-              productId: item.productId,
-              productName: item.productName,
-              quantity: item.quantity,
-              priceAtTime: item.priceAtTime ?? item.unitPrice ?? 0,
-            }))
-          : [];
-
-        // Convert Firestore Timestamps to strings
-        const toDateStr = (val: any) => {
-          if (!val) return new Date().toISOString();
-          if (typeof val?.toDate === "function") return val.toDate().toISOString();
-          if (typeof val === "object" && val.seconds) return new Date(val.seconds * 1000).toISOString();
-          return String(val);
-        };
-
-        const subtotal = items.reduce((s, i) => s + i.priceAtTime * i.quantity, 0);
-
-        setOrder({
-          id: orderId,
-          name: orderData.name || orderData.orderNumber || undefined,
-          customerId: orderData.customerId,
-          status: (orderData.status || "confirmed").toLowerCase() as any,
-          items,
-          subtotal: orderData.subtotal ?? subtotal,
-          deliveryFee: orderData.deliveryFee ?? 0,
-          total: orderData.grandTotal ?? orderData.total ?? subtotal,
-          deliveryDate: toDateStr(orderData.deliveryDate),
-          paymentMethod: orderData.paymentMethod?.toLowerCase() ?? "wallet",
-          specialInstructions: orderData.specialInstructions || orderData.notes || "",
-          createdAt: toDateStr(orderData.createdAt),
-          updatedAt: toDateStr(orderData.updatedAt || orderData.createdAt),
-        });
-      } catch (err: any) {
-        console.error("Error loading order:", err);
-        setError("Failed to load order details");
+        const itemsSnap = await getDocs(
+          query(collection(db, "orderItems"), where("orderId", "==", id))
+        );
+        setItems(itemsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } finally {
         setLoading(false);
       }
     };
+    load();
+  }, [id, router]);
 
-    fetchOrder();
-  }, [orderId, router]);
+  const handleCancel = async () => {
+    if (!order) return;
+    // Re-fetch to guard against race (e.g. admin confirmed while timer was running)
+    const fresh = await getDoc(doc(db, "orders", id));
+    if (!fresh.exists() || fresh.data()?.status !== "Draft") {
+      setCancelError("This order can no longer be cancelled — it has already been processed.");
+      setShowConfirm(false);
+      setOrder((prev: any) => fresh.exists() ? { ...prev, ...fresh.data() } : prev);
+      return;
+    }
+
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      // Cancel the order
+      await updateDoc(doc(db, "orders", id), {
+        status: "Cancelled",
+        cancelledAt: serverTimestamp(),
+        cancelledBy: "customer",
+        updatedAt: serverTimestamp(),
+      });
+
+      // Wallet refund if paid via wallet
+      const orderTotal = order.total || order.finalTotal || order.grandTotal || 0;
+      if (order.paymentMethod === "wallet" && orderTotal > 0 && order.customerId) {
+        try {
+          const custSnap = await getDoc(doc(db, "customers", order.customerId));
+          if (custSnap.exists()) {
+            const currentBalance = custSnap.data().walletBalance || 0;
+            await updateDoc(doc(db, "customers", order.customerId), {
+              walletBalance: currentBalance + orderTotal,
+            });
+            await addDoc(collection(db, "walletTransactions"), {
+              customerId: order.customerId,
+              orderId: id,
+              amount: orderTotal,
+              type: "credit",
+              description: `Refund for cancelled order ${order.name || id}`,
+              createdAt: serverTimestamp(),
+            });
+          }
+        } catch (refundErr) {
+          console.error("Wallet refund failed:", refundErr);
+          // Order is already cancelled — refund failure is logged but doesn't block the UI
+        }
+      }
+
+      // Stop the countdown
+      if (timerRef.current) clearInterval(timerRef.current);
+      setCountdown(null);
+      setShowConfirm(false);
+      setOrder((prev: any) => prev ? { ...prev, status: "Cancelled" } : prev);
+    } catch (err: any) {
+      setCancelError(err.message || "Failed to cancel order. Please try again.");
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "#1B2A5E", borderTopColor: "transparent" }} />
       </div>
     );
   }
 
-  if (error || !order) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-2xl mb-4">❌</p>
-          <p className="text-gray-900 font-semibold mb-4">{error || "Order not found"}</p>
-          <button
-            onClick={() => router.push("/customer/products")}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
-            style={{ backgroundColor: "#1B2A5E" }}
-          >
-            ← Back to Products
-          </button>
-        </div>
-      </div>
-    );
-  }
+  if (!order) return null;
 
-  const statusColors = {
-    pending: "bg-yellow-50 text-yellow-600",
-    confirmed: "bg-green-50 text-green-600",
-    delivered: "bg-blue-50 text-blue-600",
-    cancelled: "bg-red-50 text-red-600",
-  };
-
-  const statusLabels = {
-    pending: "Pending Confirmation",
-    confirmed: "Confirmed",
-    delivered: "Delivered",
-    cancelled: "Cancelled",
-  };
+  const canCancel = order.status === "Draft";
+  const orderTotal = order.total || order.finalTotal || order.grandTotal || 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto flex items-center gap-4">
-          <h1 className="text-xl font-bold text-gray-900">Order Details</h1>
-        </div>
-      </div>
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
 
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        {/* Confirmation Banner */}
-        {isConfirmed && (
-          <div className="mb-8 bg-green-50 border border-green-200 rounded-lg p-6 text-center">
-            <p className="text-3xl mb-2">✅</p>
-            <h2 className="text-2xl font-bold text-green-600 mb-2">Order Confirmed!</h2>
-            <p className="text-gray-600">
-              Your order has been successfully placed. You will receive updates about your delivery via email and SMS.
-            </p>
+        {/* Post-checkout confirmation banner */}
+        {isConfirmed && order.status !== "Cancelled" && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-5 mb-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-xl">✅</p>
+                  <h2 className="font-bold text-green-800 text-base">Order Placed!</h2>
+                </div>
+                <p className="text-green-700 text-sm">
+                  Your order <strong>{order.name}</strong> has been received. We'll confirm it shortly.
+                </p>
+              </div>
+              {/* 10-second cancel window — only available while order is still Draft */}
+              {countdown !== null && order.status === "Draft" && (
+                <button
+                  onClick={() => setShowConfirm(true)}
+                  className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white border border-red-200 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                >
+                  <span className="w-5 h-5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold flex items-center justify-center">
+                    {countdown}
+                  </span>
+                  Undo
+                </button>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Order Header */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <p className="text-sm text-gray-600">Order</p>
-              <p className="text-2xl font-bold text-gray-900">{order.name || order.id}</p>
-              {order.name && <p className="text-xs text-gray-400 mt-0.5">{order.id}</p>}
-            </div>
-            <div className={`px-4 py-2 rounded-lg font-semibold ${statusColors[order.status]}`}>
-              {statusLabels[order.status]}
+        {/* Cancelled banner */}
+        {order.status === "Cancelled" && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 text-center">
+            <p className="text-lg mb-1">❌</p>
+            <p className="font-semibold text-red-800 text-sm">Order Cancelled</p>
+            {order.paymentMethod === "wallet" && (
+              <p className="text-xs text-red-600 mt-1">
+                ${formatPrice(orderTotal)} has been refunded to your wallet.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Cancel error */}
+        {cancelError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+            <p className="text-red-700 text-sm">{cancelError}</p>
+          </div>
+        )}
+
+        {/* Cancel confirmation dialog */}
+        {showConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+              <h3 className="font-bold text-gray-900 text-lg mb-1">Cancel this order?</h3>
+              <p className="text-sm text-gray-500 mb-1">
+                Order <strong>{order.name}</strong> will be cancelled.
+              </p>
+              {order.paymentMethod === "wallet" && orderTotal > 0 && (
+                <p className="text-sm text-green-700 font-medium mb-4">
+                  💰 ${formatPrice(orderTotal)} will be refunded to your wallet.
+                </p>
+              )}
+              {!order.paymentMethod?.includes("wallet") && <div className="mb-4" />}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  disabled={cancelling}
+                  className="flex-1 py-2.5 border border-gray-200 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 cursor-pointer disabled:opacity-50"
+                >
+                  Keep Order
+                </button>
+                <button
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                  className="flex-1 py-2.5 bg-red-500 text-white font-semibold rounded-xl text-sm hover:bg-red-600 cursor-pointer disabled:opacity-60"
+                >
+                  {cancelling ? "Cancelling…" : "Yes, Cancel"}
+                </button>
+              </div>
             </div>
           </div>
+        )}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <p className="text-sm text-gray-600">Order Date</p>
-              <p className="text-gray-900 font-semibold">
-                {new Date(order.createdAt).toLocaleDateString()}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Delivery Date</p>
-              <p className="text-gray-900 font-semibold">
-                {new Date(order.deliveryDate).toLocaleDateString()}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Payment Method</p>
-              <p className="text-gray-900 font-semibold capitalize">{order.paymentMethod}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Total Amount</p>
-              <p className="text-2xl font-bold text-blue-600">${formatPrice(order.total)}</p>
-            </div>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <button onClick={() => router.push("/customer/orders")} className="text-sm text-gray-500 hover:text-gray-700 font-medium mb-1 block cursor-pointer">← All Orders</button>
+            <h1 className="text-xl font-bold text-gray-900">{order.name}</h1>
           </div>
+          <span className={`text-sm font-semibold px-3 py-1.5 rounded-full ${STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600"}`}>
+            {order.status}
+          </span>
         </div>
 
-        {/* Order Items */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Items</h2>
-          {order.items.length > 0 ? (
-            <div className="space-y-4">
-              {order.items.map((item) => (
-                <div key={item.productId} className="flex justify-between items-center pb-4 border-b border-gray-200 last:border-0">
-                  <div>
-                    <p className="font-semibold text-gray-900">{item.productName}</p>
-                    <p className="text-sm text-gray-600">
-                      {item.quantity} × ${formatPrice(item.priceAtTime)}
-                    </p>
-                  </div>
-                  <p className="text-lg font-bold text-gray-900">
-                    ${formatPrice(item.priceAtTime * item.quantity)}
-                  </p>
-                </div>
-              ))}
+        <div className="space-y-4">
+          {/* Order info */}
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <h2 className="font-semibold text-gray-900 mb-4 text-sm">Order Details</h2>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div><p className="text-xs text-gray-400 mb-0.5">Delivery Date</p><p className="font-medium text-gray-900">{formatDate(order.deliveryDate)}</p></div>
+              <div><p className="text-xs text-gray-400 mb-0.5">Payment</p><p className="font-medium text-gray-900 capitalize">{order.paymentMethod}</p></div>
+              <div><p className="text-xs text-gray-400 mb-0.5">Placed</p><p className="font-medium text-gray-900">{formatDate(order.createdAt)}</p></div>
+              {order.deliveryPhone && <div><p className="text-xs text-gray-400 mb-0.5">Phone</p><p className="font-medium text-gray-900">{order.deliveryPhone}</p></div>}
             </div>
-          ) : (
-            <p className="text-gray-600">No items in this order</p>
-          )}
-        </div>
-
-        {/* Order Summary */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Summary</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Subtotal:</span>
-              <span className="font-semibold text-gray-900">${formatPrice(order.subtotal)}</span>
-            </div>
-            {order.deliveryFee > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Delivery Fee:</span>
-                <span className="font-semibold text-gray-900">
-                  ${formatPrice(order.deliveryFee)}
-                </span>
+            {order.deliveryAddress && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-xs text-gray-400 mb-0.5">Delivery Address</p>
+                <p className="text-sm text-gray-900">{order.deliveryAddress}</p>
               </div>
             )}
-            <div className="border-t border-gray-200 pt-3 flex justify-between">
-              <span className="font-bold text-gray-900">Total:</span>
-              <span className="text-2xl font-bold text-blue-600">${formatPrice(order.total)}</span>
+            {order.specialInstructions && (
+              <div className="mt-3">
+                <p className="text-xs text-gray-400 mb-0.5">Special Instructions</p>
+                <p className="text-sm text-gray-900">{order.specialInstructions}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Items */}
+          {items.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100">
+                <h2 className="font-semibold text-gray-900 text-sm">{items.length} Item{items.length !== 1 ? "s" : ""}</h2>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {items.map((item) => (
+                  <div key={item.id} className="px-5 py-4 flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-gray-900 text-sm">{item.productName}</p>
+                      <p className="text-xs text-gray-500">{item.quantity} × ${formatPrice(item.priceAtTime || item.unitPrice || 0)}</p>
+                    </div>
+                    <p className="font-semibold text-gray-900 text-sm">${formatPrice(item.lineTotal || item.priceAtTime * item.quantity || 0)}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="px-5 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
+                <span className="font-bold text-gray-900 text-sm">Total</span>
+                <span className="text-xl font-bold" style={{ color: "#1B2A5E" }}>${formatPrice(orderTotal)}</span>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* Special Instructions */}
-        {order.specialInstructions && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Special Instructions</h2>
-            <p className="text-gray-600">{order.specialInstructions}</p>
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button onClick={() => router.push("/customer/products")} className="flex-1 py-3 text-white font-semibold rounded-xl text-sm hover:opacity-90 cursor-pointer" style={{ backgroundColor: "#1B2A5E" }}>
+              Shop
+            </button>
+            <button onClick={() => router.push("/customer/orders")} className="flex-1 py-3 border border-gray-200 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 cursor-pointer">
+              All Orders
+            </button>
           </div>
-        )}
 
-        {/* Action Buttons */}
-        <div className="flex gap-4">
-          <button
-            onClick={() => router.push("/customer/products")}
-            className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
-            style={{ backgroundColor: "#1B2A5E" }}
-          >
-            Continue Shopping
-          </button>
-          <button
-            onClick={() => router.push("/customer/orders")}
-            className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition-colors"
-          >
-            View All Orders
-          </button>
+          {/* Cancel button — only for Draft orders not yet being prepared */}
+          {canCancel && (
+            <button
+              onClick={() => setShowConfirm(true)}
+              disabled={cancelling}
+              className="w-full py-3 border border-red-200 text-red-600 font-semibold rounded-xl text-sm hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Cancel Order
+            </button>
+          )}
         </div>
       </div>
     </div>

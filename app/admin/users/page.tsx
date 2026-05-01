@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { collection, getDocs, doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
+import { showToast } from "@/lib/toast";
 import SearchInput from "@/components/SearchInput";
 import { useAuth } from "@/components/AuthWrapper";
 
@@ -163,7 +164,7 @@ export default function UsersPage() {
       });
       await load();
     } catch (err: any) {
-      alert(err.message || "Failed to deactivate user");
+      showToast(err.message || "Failed to deactivate user", "error");
     } finally {
       setDeactivateTarget(null);
     }
@@ -475,7 +476,7 @@ export default function UsersPage() {
 
                 {/* Info note */}
                 <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2">
-                  A login code will be sent to the user&apos;s email each time they sign in. No password setup is required.
+                  A one-time password (OTP) will be sent to the user&apos;s email each time they sign in. No password setup is required.
                 </p>
 
                 {/* Actions */}

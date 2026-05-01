@@ -35,8 +35,14 @@ export default function AuthWrapper({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const isLoginPage = pathname === "/login" || pathname === "/admin/login" || pathname === "/customer/login";
-  const publicPages = ["/login", "/admin/login", "/customer/login"];
+  const isLoginPage = pathname === "/login" || pathname === "/admin/login" || pathname === "/customer/login" || pathname === "/b2b/login";
+  const publicPages = ["/login", "/admin/login", "/customer/login", "/b2b/login"];
+
+  const getLoginRedirect = () => {
+    if (pathname.startsWith("/customer")) return "/customer/login";
+    if (pathname.startsWith("/b2b")) return "/b2b/login";
+    return "/admin/login";
+  };
 
   useEffect(() => {
     let unsubscribe: any = null;
@@ -64,7 +70,7 @@ export default function AuthWrapper({ children }: { children: ReactNode }) {
         localStorage.removeItem("session");
         localStorage.removeItem("customToken");
         await signOut(auth).catch(() => {});
-        router.push("/admin/login");
+        router.push(getLoginRedirect());
         setLoading(false);
         return;
       }
@@ -75,7 +81,7 @@ export default function AuthWrapper({ children }: { children: ReactNode }) {
         if (!user && !isLoginPage) {
           localStorage.removeItem("session");
           localStorage.removeItem("customToken");
-          router.push("/admin/login");
+          router.push(getLoginRedirect());
         }
       });
     };

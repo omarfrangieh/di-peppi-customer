@@ -38,14 +38,15 @@ export default function CartSummary({
       {/* Total */}
       <div className="border-t border-gray-200 pt-4 flex justify-between">
         <span className="font-bold text-gray-900">Total:</span>
-        <span className="text-2xl font-bold text-blue-600">${formatPrice(total)}</span>
+        <span className="text-2xl font-bold" style={{ color: "#1B2A5E" }}>${formatPrice(total)}</span>
       </div>
 
       {/* Checkout Button */}
       <button
         onClick={onCheckout}
         disabled={items.length === 0 || isLoading}
-        className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
+        className="w-full py-3 disabled:bg-gray-300 disabled:cursor-not-allowed cursor-pointer text-white font-bold rounded-lg hover:opacity-90 transition-opacity"
+        style={{ backgroundColor: "#1B2A5E" }}
       >
         {isLoading ? "Processing..." : "Proceed to Checkout"}
       </button>
@@ -53,7 +54,7 @@ export default function CartSummary({
       {/* Continue Shopping Link */}
       <button
         onClick={() => window.location.href = "/customer/products"}
-        className="w-full py-2 text-gray-600 hover:text-blue-600 font-semibold text-sm transition-colors"
+        className="w-full py-2 text-gray-500 hover:text-gray-800 font-semibold text-sm transition-colors cursor-pointer"
       >
         Continue Shopping
       </button>

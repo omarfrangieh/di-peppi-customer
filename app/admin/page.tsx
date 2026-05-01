@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { formatPrice, formatQty } from "@/lib/formatters";
 import { showToast } from "@/lib/toast";
+import { deductStockForOrder, restoreStockForOrder } from "@/lib/fifoDeduction";
 
 /* ─── helpers ─── */
 
@@ -156,8 +157,7 @@ export default function Dashboard() {
 
   // UI state
   const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "all">("today");
-  const [dragOrderId, setDragOrderId] = useState<string | null>(null);
-  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const [movingOrder, setMovingOrder] = useState<string | null>(null);
   const [searchOpen, setSearchOpen]   = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showLowStockPOModal, setShowLowStockPOModal] = useState(false);
@@ -446,16 +446,53 @@ export default function Dashboard() {
       .slice(0, 3).map(c => ({ id: "c-" + c.name, icon: "👥", label: c.name, sub: `${c.count} orders · $${formatPrice(c.total)}`, href: "/admin/customers" })),
   ] : [];
 
-  // Drag & drop
-  const handleDrop = async (colKey: string, dropStatus: string) => {
-    if (!dragOrderId) return;
-    const order = orders.find(o => o.id === dragOrderId);
-    if (!order || order.status === dropStatus) { setDragOrderId(null); setDragOverCol(null); return; }
+  // Click-to-advance status
+  const STATUS_NEXT: Record<string, string> = {
+    "Draft":      "To Deliver",
+    "Confirmed":  "To Deliver",
+    "Preparing":  "To Deliver",
+    "To Deliver": "Delivered",
+  };
+  const advanceStatus = async (order: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = STATUS_NEXT[order.status];
+    if (!next || movingOrder === order.id) return;
+    setMovingOrder(order.id);
     try {
-      await updateDoc(doc(db, "orders", dragOrderId), { status: dropStatus, updatedAt: new Date().toISOString() });
-      setOrders(prev => prev.map(o => o.id === dragOrderId ? { ...o, status: dropStatus } : o));
+      await updateDoc(doc(db, "orders", order.id), { status: next, updatedAt: new Date().toISOString() });
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: next } : o));
+      // Deduct stock FIFO when order is first dispatched
+      if (next === "To Deliver") {
+        deductStockForOrder(order.id).catch(err => console.error("FIFO deduction failed:", err));
+      }
     } catch { showToast("Failed to update status", "error"); }
-    finally { setDragOrderId(null); setDragOverCol(null); }
+    finally { setMovingOrder(null); }
+  };
+
+  const undoDelivered = async (order: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (movingOrder === order.id) return;
+    setMovingOrder(order.id);
+    try {
+      await updateDoc(doc(db, "orders", order.id), { status: "To Deliver", updatedAt: new Date().toISOString() });
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: "To Deliver" } : o));
+      showToast("↩ Order moved back to To Deliver", "success");
+    } catch { showToast("Failed to undo", "error"); }
+    finally { setMovingOrder(null); }
+  };
+
+  const undoToDeliver = async (order: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (movingOrder === order.id) return;
+    setMovingOrder(order.id);
+    try {
+      await updateDoc(doc(db, "orders", order.id), { status: "Preparing", updatedAt: new Date().toISOString() });
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: "Preparing" } : o));
+      showToast("↩ Order moved back to Preparing", "success");
+      // Restore stock FIFO if it was previously deducted
+      restoreStockForOrder(order.id).catch(err => console.error("FIFO restore failed:", err));
+    } catch { showToast("Failed to undo", "error"); }
+    finally { setMovingOrder(null); }
   };
 
 
@@ -483,14 +520,13 @@ export default function Dashboard() {
 
   const OrderCard = ({ order }: { order: any }) => {
     const isOverdue  = order.deliveryDate && order.deliveryDate <= todayISO && !["Delivered", "Cancelled", "Canceled"].includes(order.status);
-    const isDragging = dragOrderId === order.id;
+    const isMoving   = movingOrder === order.id;
+    const canAdvance = !!STATUS_NEXT[order.status];
 
     return (
-      <div draggable
-        onDragStart={e => { e.dataTransfer.effectAllowed = "move"; setDragOrderId(order.id); }}
-        onDragEnd={() => { setDragOrderId(null); setDragOverCol(null); }}
+      <div
         onClick={() => router.push(`/admin/orders/${order.id}`)}
-        className={`rounded-lg border px-4 py-3 cursor-grab active:cursor-grabbing hover:shadow-sm select-none ${isDragging ? "opacity-40" : ""} ${
+        className={`rounded-lg border px-4 py-3 cursor-pointer hover:shadow-sm transition-shadow ${
           order.status === "Draft"      ? "bg-gray-50 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600" :
           order.status === "Preparing"  ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200" :
           order.status === "To Deliver" ? "bg-orange-50 dark:bg-orange-900/20 border-orange-200" :
@@ -507,14 +543,44 @@ export default function Dashboard() {
             </div>
             <p className="text-xs text-gray-400 mt-0.5">{order.name}</p>
             <div className="flex items-center gap-2 mt-1">
-              <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium ${
-                order.status === "Draft"      ? "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300" :
-                order.status === "Preparing"  ? "bg-yellow-50 text-yellow-700" :
-                order.status === "To Deliver" ? "bg-orange-50 text-orange-600" :
-                order.status === "Delivered"  ? "bg-green-50 text-green-700" :
-                order.status === "Cancelled"  ? "bg-red-50 text-red-500" :
-                "bg-gray-100 dark:bg-gray-700 text-gray-500"
-              }`}>{order.status || "Draft"}</span>
+              {/* Clickable status badge — advances to next status */}
+              <button
+                onClick={e => advanceStatus(order, e)}
+                disabled={!canAdvance || isMoving}
+                title={canAdvance ? `Tap to move → ${STATUS_NEXT[order.status]}` : order.status}
+                className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium border transition-all ${
+                  canAdvance ? "active:scale-95" : ""
+                } ${
+                  order.status === "Draft"      ? "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-500" :
+                  order.status === "Preparing"  ? "bg-yellow-50 text-yellow-700 border-yellow-300" :
+                  order.status === "To Deliver" ? "bg-orange-50 text-orange-600 border-orange-300" :
+                  order.status === "Delivered"  ? "bg-green-50 text-green-700 border-green-300" :
+                  order.status === "Cancelled"  ? "bg-red-50 text-red-500 border-red-200" :
+                  "bg-gray-100 dark:bg-gray-700 text-gray-500 border-gray-200"
+                } disabled:opacity-50`}>
+                {isMoving
+                  ? <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                  : <>{order.status || "Draft"}{canAdvance && <span className="ml-1 font-bold">›</span>}</>
+                }
+              </button>
+              {order.status === "To Deliver" && (
+                <button
+                  onClick={e => undoToDeliver(order, e)}
+                  disabled={isMoving}
+                  title="Couldn't deliver — move back to Preparing"
+                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 active:scale-95 transition-all disabled:opacity-50">
+                  {isMoving ? <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> : "↩ Undo"}
+                </button>
+              )}
+              {order.status === "Delivered" && (
+                <button
+                  onClick={e => undoDelivered(order, e)}
+                  disabled={isMoving}
+                  title="Undo — move back to To Deliver"
+                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 active:scale-95 transition-all disabled:opacity-50">
+                  {isMoving ? <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> : "↩ Undo"}
+                </button>
+              )}
               {weighingOrderIds.has(order.id) && ["Draft", "Confirmed", "Preparing"].includes(order.status) && (
                 <span className="inline-block text-xs px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-600 border border-red-300">⚖️ Weigh!</span>
               )}
@@ -601,7 +667,7 @@ export default function Dashboard() {
               <button key={r} onClick={() => setDateRange(r)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   dateRange === r
-                    ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900"
+                    ? "bg-[#1e3a5f] dark:bg-white text-white dark:text-gray-900"
                     : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
                 }`}>
                 {r === "today" ? "Today" : r === "week" ? "This Week" : r === "month" ? "This Month" : "All Time"}
@@ -892,18 +958,8 @@ export default function Dashboard() {
           <div className="grid grid-cols-3 gap-4">
             {PIPELINE_COLS.map(col => {
               const list = colOrders[col.key] || [];
-              const isDragTarget = dragOverCol === col.key && dragOrderId !== null;
               return (
-                <div key={col.key}
-                  onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverCol(col.key); }}
-                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null); }}
-                  onDrop={e => { e.preventDefault(); handleDrop(col.key, col.dropStatus); }}
-                  className={`rounded-2xl border p-4 space-y-3 ${
-                    isDragTarget
-                      ? "border-blue-400 ring-2 ring-blue-300 dark:ring-blue-700 bg-blue-50 dark:bg-blue-900/20"
-                      : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                  }`}
-                  style={{ minHeight: 80 }}>
+                <div key={col.key} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <h2 className="font-bold text-gray-900 dark:text-white text-sm">{col.label}</h2>
                     <div className="flex items-center gap-1.5">
@@ -915,12 +971,7 @@ export default function Dashboard() {
                       )}
                     </div>
                   </div>
-                  {isDragTarget && (
-                    <div className="border-2 border-dashed border-blue-300 dark:border-blue-600 rounded-lg py-5 text-center text-sm font-semibold text-blue-500 dark:text-blue-400 pointer-events-none">
-                      ↓ Drop here
-                    </div>
-                  )}
-                  {list.length === 0 && !isDragTarget && (
+                  {list.length === 0 && (
                     <p className="text-xs text-gray-400 text-center py-6">{col.emptyMsg}</p>
                   )}
                   {list.map(o => <OrderCard key={o.id} order={o} />)}

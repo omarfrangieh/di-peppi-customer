@@ -38,13 +38,13 @@ export default function QuantitySelector({
       {/* Quantity Input */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Quantity ({quantity} of {maxQuantity} available)
+          Quantity
         </label>
         <div className="flex items-center gap-3">
           <button
             onClick={() => handleQuantityChange(quantity - 1)}
             disabled={quantity === 1}
-            className="w-10 h-10 flex items-center justify-center border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-lg font-semibold"
+            className="w-10 h-10 flex items-center justify-center border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-lg font-semibold"
           >
             −
           </button>
@@ -58,13 +58,13 @@ export default function QuantitySelector({
               const val = parseInt(e.target.value) || 1;
               handleQuantityChange(val);
             }}
-            className="w-20 text-center text-lg font-semibold border border-gray-300 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-20 text-center text-lg font-semibold border border-gray-300 rounded-lg px-2 py-2 focus:outline-none focus:ring-1 focus:ring-gray-400"
           />
 
           <button
             onClick={() => handleQuantityChange(quantity + 1)}
             disabled={quantity >= maxQuantity}
-            className="w-10 h-10 flex items-center justify-center border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-lg font-semibold"
+            className="w-10 h-10 flex items-center justify-center border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-lg font-semibold"
           >
             +
           </button>
@@ -83,7 +83,7 @@ export default function QuantitySelector({
         </div>
         <div className="border-t border-gray-200 pt-2 flex justify-between">
           <span className="font-semibold text-gray-900">Line Total:</span>
-          <span className="text-lg font-bold text-blue-600">${formatPrice(lineTotal)}</span>
+          <span className="text-lg font-bold" style={{ color: "#1B2A5E" }}>${formatPrice(lineTotal)}</span>
         </div>
       </div>
 
@@ -91,7 +91,8 @@ export default function QuantitySelector({
       <button
         onClick={handleAddToCart}
         disabled={isLoading || maxQuantity === 0}
-        className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors text-lg"
+        className="w-full py-3 disabled:bg-gray-300 disabled:cursor-not-allowed cursor-pointer text-white font-semibold rounded-lg transition-opacity text-lg hover:opacity-90"
+        style={{ backgroundColor: "#1B2A5E" }}
       >
         {isLoading ? "Adding..." : maxQuantity === 0 ? "Out of Stock" : "✓ Add to Cart"}
       </button>

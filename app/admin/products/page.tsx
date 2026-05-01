@@ -2,7 +2,8 @@
 import React from "react";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { collection, getDocs, doc, updateDoc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { showToast } from "@/lib/toast";
 import { db, storage } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { formatQty, formatPrice } from "@/lib/formatters";
@@ -67,6 +68,8 @@ export default function AdminProductsPage() {
   const [showMarginsFor, setShowMarginsFor] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const [selectedForPrint, setSelectedForPrint] = useState<Set<string>>(new Set());
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
@@ -156,14 +159,14 @@ export default function AdminProductsPage() {
 
   const printSingleBarcode = async (product: any) => {
     if (!product.barcodeNumber) {
-      alert("No barcode to print");
+      showToast("No barcode to print", "warning");
       return;
     }
 
     // Validate barcode is proper EAN-13 format (13 digits)
     const barcode = String(product.barcodeNumber).trim();
     if (!/^\d{13}$/.test(barcode)) {
-      alert(`Invalid barcode format: "${barcode}". Must be 13 digits for EAN-13.`);
+      showToast(`Invalid barcode format: "${barcode}". Must be 13 digits for EAN-13.`, "warning");
       return;
     }
 
@@ -284,7 +287,7 @@ export default function AdminProductsPage() {
 
   const exportBarcodesPDF = async () => {
     if (selectedForPrint.size === 0) {
-      alert("Please select products to print");
+      showToast("Please select products to print", "warning");
       return;
     }
 
@@ -305,7 +308,7 @@ export default function AdminProductsPage() {
       });
 
       if (productsToExport.length === 0) {
-        alert("No products with valid EAN-13 barcodes to export");
+        showToast("No products with valid EAN-13 barcodes to export", "warning");
         return;
       }
 
@@ -418,10 +421,10 @@ export default function AdminProductsPage() {
 
       pdf.save("barcodes.pdf");
       setSelectedForPrint(new Set());
-      alert(`Exported ${productsToExport.length} barcode(s) successfully`);
+      showToast(`Exported ${productsToExport.length} barcode(s) successfully`, "success");
     } catch (err) {
       console.error("Error exporting PDF:", err);
-      alert("Failed to export PDF");
+      showToast("Failed to export PDF", "error");
     } finally {
       setIsPrinting(false);
     }
@@ -441,7 +444,7 @@ export default function AdminProductsPage() {
       }
     } catch (err) {
       console.error("Error uploading image:", err);
-      alert("Failed to upload image");
+      showToast("Failed to upload image", "error");
     } finally {
       setUploadingImage(null);
     }
@@ -449,6 +452,9 @@ export default function AdminProductsPage() {
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("search");
+    if (q) setSearch(q);
     void load();
   }, []);
 
@@ -523,7 +529,7 @@ export default function AdminProductsPage() {
 
     const text = await file.text();
     const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-    if (lines.length < 2) { alert("CSV has no data rows."); return; }
+    if (lines.length < 2) { showToast("CSV has no data rows.", "warning"); return; }
 
     const headers = lines[0].split(",").map(h => h.trim());
     const rows = lines.slice(1).map(line => {
@@ -534,7 +540,7 @@ export default function AdminProductsPage() {
     });
 
     const invalid = rows.filter(r => !r.name);
-    if (invalid.length) { alert(`${invalid.length} row(s) are missing a product name. Fix and re-import.`); return; }
+    if (invalid.length) { showToast(`${invalid.length} row(s) are missing a product name. Fix and re-import.`, "warning"); return; }
 
     const confirmed = confirm(`Import ${rows.length} products? This will add them to the database.`);
     if (!confirmed) return;
@@ -572,14 +578,14 @@ export default function AdminProductsPage() {
       }
     }
 
-    alert(`Import complete: ${imported} added${failed ? `, ${failed} failed` : ""}.`);
+    showToast(`Import complete: ${imported} added${failed ? `, ${failed} failed` : ""}.`, "success");
     // Reload products
     const snap = await getDocs(collection(db, "products"));
     setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   };
 
   const saveNewProduct = async () => {
-    if (!newProduct.name.trim()) { alert("Product name is required"); return; }
+    if (!newProduct.name.trim()) { showToast("Product name is required", "warning"); return; }
     setAddingSaving(true);
     try {
       await addDoc(collection(db, "products"), {
@@ -607,7 +613,7 @@ export default function AdminProductsPage() {
         updatedAt: new Date().toISOString(),
       });
       setShowAddProduct(false);
-      setNewProduct({ name: "", productSubName: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "", barcodeNumber: "", vatRate: "" });
+      setNewProduct({ name: "", productSubName: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "", barcodeNumber: "", vatRate: "", initialExpiry: "" });
       await load();
     } finally {
       setAddingSaving(false);
@@ -635,7 +641,7 @@ export default function AdminProductsPage() {
       setEditData({});
       setDeleteTarget(null);
     } catch (err: any) {
-      alert(err.message || "Failed to delete product");
+      showToast(err.message || "Failed to delete product", "error");
     } finally {
       setDeleting(false);
     }
@@ -643,12 +649,13 @@ export default function AdminProductsPage() {
 
   const saveProduct = async (id: string) => {
     setSaving(id);
+    const intendedActive = Boolean(editData.active);
     try {
       const { id: _, ...data } = editData;
       // supplierId and supplier name both saved
       await updateDoc(doc(db, "products", id), {
         ...data,
-        active: Boolean(editData.active),
+        active: intendedActive,
         minStock: Number(editData.minStock || 0),
         minWeightPerUnit: editData.minWeightPerUnit ? Number(editData.minWeightPerUnit) : null,
         maxWeightPerUnit: editData.maxWeightPerUnit ? Number(editData.maxWeightPerUnit) : null,
@@ -656,8 +663,21 @@ export default function AdminProductsPage() {
         trackExpiry: Boolean(editData.trackExpiry || false),
         updatedAt: new Date().toISOString(),
       });
-      setProducts(prev => prev.map(p => p.id === id ? { ...editData } : p));
+
+      // Verify the write actually persisted — catches silent permission errors
+      // and external services (e.g. AppSheet) that immediately overwrite
+      const verify = await getDoc(doc(db, "products", id));
+      const verifiedActive = verify.exists() ? Boolean(verify.data()?.active) : intendedActive;
+      if (verifiedActive !== intendedActive) {
+        showToast(`Save conflict detected! You set "${editData.name || id}" to ${intendedActive ? "Active" : "Inactive"}, but Firestore now shows it as ${verifiedActive ? "Active" : "Inactive"}. An external service may be overwriting this field.`, "warning");
+      }
+
+      // Use the verified data from Firestore so local state is truthful
+      const savedData = verify.exists() ? { id, ...verify.data() } : { ...editData };
+      setProducts(prev => prev.map(p => p.id === id ? savedData : p));
       setEditing(null);
+    } catch (err: any) {
+      showToast(`Failed to save product: ${err.message || String(err)}`, "error");
     } finally {
       setSaving(null);
     }
@@ -721,7 +741,7 @@ export default function AdminProductsPage() {
       setStockInNotes("");
     } catch(e) {
       console.error(e);
-      alert("Error adding stock");
+      showToast("Error adding stock", "error");
     } finally {
       setStockInSaving(false);
     }
@@ -742,7 +762,62 @@ export default function AdminProductsPage() {
     await saveOptions(field, list);
   };
 
-  const uniqueSupplierNames = Array.from(new Set(products.map(p => p.supplier).filter(Boolean))).sort() as string[];
+  /* ── Bulk selection helpers ── */
+  const toggleSelectProduct = (id: string) => {
+    setSelectedProducts(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+  const handleBulkActivate = async () => {
+    if (!selectedProducts.size) return;
+    setBulkLoading(true);
+    try {
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+      selectedProducts.forEach(id => batch.update(doc(db, "products", id), { active: true, updatedAt: now }));
+      await batch.commit();
+      setProducts(prev => prev.map(p => selectedProducts.has(p.id) ? { ...p, active: true } : p));
+      setSelectedProducts(new Set());
+    } finally { setBulkLoading(false); }
+  };
+  const handleBulkDeactivate = async () => {
+    if (!selectedProducts.size) return;
+    setBulkLoading(true);
+    try {
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+      selectedProducts.forEach(id => batch.update(doc(db, "products", id), { active: false, updatedAt: now }));
+      await batch.commit();
+      setProducts(prev => prev.map(p => selectedProducts.has(p.id) ? { ...p, active: false } : p));
+      setSelectedProducts(new Set());
+    } finally { setBulkLoading(false); }
+  };
+  const handleBulkDelete = async () => {
+    if (!selectedProducts.size) return;
+    if (!window.confirm(`Permanently delete ${selectedProducts.size} product${selectedProducts.size !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+    setBulkLoading(true);
+    try {
+      const batch = writeBatch(db);
+      selectedProducts.forEach(id => batch.delete(doc(db, "products", id)));
+      await batch.commit();
+      setProducts(prev => prev.filter(p => !selectedProducts.has(p.id)));
+      setSelectedProducts(new Set());
+    } finally { setBulkLoading(false); }
+  };
+
+  const knownSupplierNames = new Set(suppliers.map(s => (s.name || "").trim().toLowerCase()).filter(Boolean));
+  const uniqueSupplierNames = Array.from(
+    new Set(
+      products
+        .map(p => p.supplier)
+        .filter((s): s is string => {
+          if (!s || typeof s !== "string") return false;
+          const trimmed = s.trim();
+          if (!trimmed) return false;
+          // Hide raw Firestore IDs: short hex-like strings not matching any known supplier name
+          if (/^[0-9a-f]{6,20}$/i.test(trimmed) && !knownSupplierNames.has(trimmed.toLowerCase())) return false;
+          return true;
+        })
+    )
+  ).sort() as string[];
 
   const filtered = products
     .filter(p => {
@@ -763,6 +838,11 @@ export default function AdminProductsPage() {
 
   const inactiveCount = filtered.filter(p => p.active === false).length;
   const inactiveStartIndex = filtered.findIndex(p => p.active === false);
+  const isAllSelected = filtered.length > 0 && filtered.every(p => selectedProducts.has(p.id));
+  const toggleSelectAll = () => {
+    if (isAllSelected) setSelectedProducts(new Set());
+    else setSelectedProducts(new Set(filtered.map(p => p.id)));
+  };
 
   const storageColor: Record<string, string> = {
     Frozen: "bg-blue-100 text-blue-700",
@@ -804,7 +884,7 @@ export default function AdminProductsPage() {
                 return /^\d{13}$/.test(barcode);
               });
               if (productsToExport.length === 0) {
-                alert("No products with valid EAN-13 barcodes to print");
+                showToast("No products with valid EAN-13 barcodes to print", "warning");
                 return;
               }
               const printWindow = window.open("", "_blank");
@@ -851,6 +931,32 @@ export default function AdminProductsPage() {
         </div>
       )}
 
+      {/* Bulk Actions Bar */}
+      {selectedProducts.size > 0 && (
+        <div className="bg-indigo-50 dark:bg-indigo-950/40 border-b border-indigo-200 dark:border-indigo-800 px-6 py-3 flex items-center justify-between sticky top-0 z-20">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+              {selectedProducts.size} product{selectedProducts.size !== 1 ? "s" : ""} selected
+            </span>
+            <button onClick={() => setSelectedProducts(new Set())} className="text-xs text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300">✕ Clear</button>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleBulkActivate} disabled={bulkLoading}
+              className="px-3 py-1.5 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+              ✅ Activate
+            </button>
+            <button onClick={handleBulkDeactivate} disabled={bulkLoading}
+              className="px-3 py-1.5 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors">
+              ⛔ Deactivate
+            </button>
+            <button onClick={handleBulkDelete} disabled={bulkLoading}
+              className="px-3 py-1.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">
+              🗑 Delete
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
 
@@ -869,14 +975,14 @@ export default function AdminProductsPage() {
           {inactiveCount > 0 && (
             <button
               onClick={() => inactiveStartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              className="px-3 py-1.5 text-xs border border-amber-300 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 font-medium"
+              className="px-3 py-1.5 text-xs border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/40 font-medium"
             >
               ↓ Inactive ({inactiveCount})
             </button>
           )}
           <button
             onClick={() => setShowOptionsFor(showOptionsFor ? null : "unit")}
-            className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:text-gray-300"
+            className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-300"
           >
             ⚙️ Manage Dropdowns
           </button>
@@ -890,16 +996,14 @@ export default function AdminProductsPage() {
           <div className="flex items-center gap-1">
             <button
               onClick={() => document.getElementById("csv-import-input")?.click()}
-              className="px-3 py-1.5 text-sm rounded-lg font-medium border"
-              style={{borderColor: "#1B2A5E", color: "#1B2A5E"}}
+              className="px-3 py-1.5 text-sm rounded-lg font-medium border border-[#1B2A5E] dark:border-blue-400 text-[#1B2A5E] dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
               title="Import products from CSV"
             >
               ↑ Import CSV
             </button>
             <button
               onClick={downloadCsvTemplate}
-              className="px-2 py-1.5 text-sm rounded-lg border"
-              style={{borderColor: "#1B2A5E", color: "#1B2A5E"}}
+              className="px-2 py-1.5 text-sm rounded-lg border border-[#1B2A5E] dark:border-blue-400 text-[#1B2A5E] dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
               title="Download CSV template"
             >
               ⬇
@@ -907,8 +1011,7 @@ export default function AdminProductsPage() {
           </div>
           <button
             onClick={() => setShowAddProduct(true)}
-            className="px-4 py-1.5 text-sm text-white rounded-lg font-medium"
-            style={{backgroundColor: "#1B2A5E"}}
+            className="px-4 py-1.5 text-sm text-white rounded-lg font-medium bg-[#1B2A5E] dark:bg-blue-600 hover:bg-[#152348] dark:hover:bg-blue-700"
           >
             + Add Product
           </button>
@@ -918,45 +1021,20 @@ export default function AdminProductsPage() {
             onChange={setSearch}
             className="w-48"
           />
-          <div className="flex items-center gap-1 border border-gray-200 dark:border-gray-700 rounded-lg p-0.5">
+          <div className="flex items-center gap-1 border border-gray-200 dark:border-gray-600 rounded-lg p-0.5">
             <button
               onClick={() => { setViewMode("grid"); localStorage.setItem("dp-products-view", "grid"); }}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${viewMode === "grid" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${viewMode === "grid" ? "bg-gray-900 dark:bg-gray-500 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
               title="Grid view"
             >⊞</button>
             <button
               onClick={() => { setViewMode("list"); localStorage.setItem("dp-products-view", "list"); }}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${viewMode === "list" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${viewMode === "list" ? "bg-gray-900 dark:bg-gray-500 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
               title="List view"
             >☰</button>
           </div>
         </div>
       </div>
-
-      {/* Supplier filter chips */}
-      {uniqueSupplierNames.length > 0 && (
-        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-2 flex items-center gap-2 overflow-x-auto">
-          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">Supplier:</span>
-          {uniqueSupplierNames.map(s => (
-            <button
-              key={s}
-              onClick={() => setSelectedSuppliers(prev => {
-                const next = new Set(prev);
-                if (next.has(s)) next.delete(s); else next.add(s);
-                return next;
-              })}
-              className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                selectedSuppliers.has(s)
-                  ? "bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-gray-900 dark:border-white"
-                  : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500"
-              }`}
-            >{s}</button>
-          ))}
-          {selectedSuppliers.size > 0 && (
-            <button onClick={() => setSelectedSuppliers(new Set())} className="shrink-0 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-1">✕ Clear</button>
-          )}
-        </div>
-      )}
 
       {/* Options Manager */}
       {showOptionsFor && (
@@ -998,6 +1076,10 @@ export default function AdminProductsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
+                  <th className="px-4 py-2 w-8">
+                    <input type="checkbox" checked={isAllSelected} onChange={toggleSelectAll}
+                      className="w-3.5 h-3.5 rounded accent-indigo-600 cursor-pointer" />
+                  </th>
                   <th className="text-left px-4 py-2 w-12"></th>
                   <th className="text-left px-4 py-2">Name</th>
                   <th className="text-left px-4 py-2">Supplier</th>
@@ -1012,8 +1094,13 @@ export default function AdminProductsPage() {
                   return (
                     <tr
                       key={product.id}
-                      className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 ${product.active === false ? "opacity-50" : ""} ${isLowStock ? "border-l-4 border-orange-400" : ""}`}
+                      className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 ${selectedProducts.has(product.id) ? "bg-indigo-50/60 dark:bg-indigo-950/20" : ""} ${product.active === false ? "opacity-50" : ""} ${isLowStock ? "border-l-4 border-orange-400" : ""}`}
                     >
+                      <td className="px-4 py-2">
+                        <input type="checkbox" checked={selectedProducts.has(product.id)}
+                          onChange={() => toggleSelectProduct(product.id)}
+                          className="w-3.5 h-3.5 rounded accent-indigo-600 cursor-pointer" />
+                      </td>
                       <td className="px-4 py-2">
                         <div className="w-10 h-10 rounded overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
                           <ProductImage src={product.productImage} alt={product.name} className="w-full h-full object-contain" />
@@ -1024,9 +1111,6 @@ export default function AdminProductsPage() {
                         <p className="font-semibold text-gray-900 dark:text-white capitalize">{product.name}</p>
                         {product.productSubName && <p className="text-xs text-gray-400">{product.productSubName}</p>}
                         {isLowStock && <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded mt-0.5">⚠ Low Stock</span>}
-                      </td>
-                      <td className="px-4 py-2">
-                        {product.supplier && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">🏭 {product.supplier}</span>}
                       </td>
                       <td className="px-4 py-2 text-right">
                         <span className={`text-sm font-semibold ${isLowStock ? "text-orange-600 dark:text-orange-400" : "text-gray-900 dark:text-white"}`}>
@@ -1060,9 +1144,28 @@ export default function AdminProductsPage() {
             <div
               key={product.id}
               ref={index === inactiveStartIndex && inactiveStartIndex !== -1 ? inactiveStartRef : null}
-              className={`bg-white dark:bg-gray-800 rounded-lg border transition-colors ${isLowStock && editing !== product.id ? "border-l-4 border-l-orange-400" : ""} ${
-              editing === product.id ? "border-blue-300 bg-blue-50 dark:bg-blue-900/20" : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+              className={`relative bg-white dark:bg-gray-800 rounded-lg border transition-colors ${isLowStock && editing !== product.id ? "border-l-4 border-l-orange-400" : ""} ${
+              editing === product.id ? "border-blue-300 bg-blue-50 dark:bg-blue-900/20" : selectedProducts.has(product.id) ? "border-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800" : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
             } ${product.active === false ? "opacity-50" : ""}`}>
+              {/* Bulk select checkbox */}
+              {editing !== product.id && (
+                <div className="absolute top-2 left-2 z-10" onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => toggleSelectProduct(product.id)}
+                    className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                      selectedProducts.has(product.id)
+                        ? "bg-indigo-600 border-indigo-600 text-white"
+                        : "bg-white dark:bg-gray-800/60 border-gray-300 dark:border-gray-500 hover:border-indigo-400"
+                    }`}
+                  >
+                    {selectedProducts.has(product.id) && (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              )}
 
               {editing === product.id ? (
                 /* EDIT MODE */
@@ -1139,7 +1242,17 @@ export default function AdminProductsPage() {
                     </button>
                   </div>
 
-                  {editData.barcodeNumber && /^\d{13}$/.test(String(editData.barcodeNumber).trim()) && <BarcodeDisplay barcodeNumber={editData.barcodeNumber} size="md" showNumber={true} />}
+                  {editData.barcodeNumber && /^\d{13}$/.test(String(editData.barcodeNumber).trim()) && (
+                    <div className="flex flex-col items-center gap-2">
+                      <BarcodeDisplay barcodeNumber={editData.barcodeNumber} size="md" showNumber={true} />
+                      <button
+                        onClick={() => printSingleBarcode(editData)}
+                        className="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 flex items-center gap-1.5"
+                      >
+                        🖨️ Print Label
+                      </button>
+                    </div>
+                  )}
                   {editData.barcodeNumber && !/^\d{13}$/.test(String(editData.barcodeNumber).trim()) && <div className="text-xs text-red-500 font-medium">⚠️ Invalid barcode (must be 13 digits). Click Generate for a valid EAN-13.</div>}
 
                   <div className="border-t dark:border-gray-700 pt-3">
@@ -1208,6 +1321,17 @@ export default function AdminProductsPage() {
                       <span className="font-medium">📦 FIFO / Track Expiry</span>
                     </label>
                   </div>
+                  {editData.trackExpiry && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-lg p-3">
+                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                        📅 Next Expiry Date <span className="text-gray-400 dark:text-gray-500">(set per batch when adding stock)</span>
+                      </label>
+                      <input type="date" value={editData.nextExpiryDate || ""}
+                        onChange={e => setEditData((p: any) => ({ ...p, nextExpiryDate: e.target.value }))}
+                        className="w-full border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                      <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">Expiry is required each time you receive stock via +Stock.</p>
+                    </div>
+                  )}
 
                   <div className="flex gap-2 pt-2">
                     <button onClick={() => saveProduct(product.id)} disabled={saving === product.id}
@@ -1265,9 +1389,9 @@ export default function AdminProductsPage() {
                     </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {product.supplier && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">🏭 {product.supplier}</span>}
                     {product.category && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{product.category}</span>}
                     {product.origin && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{product.origin}</span>}
+                    {product.supplier && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">🏭 {product.supplier}</span>}
                   </div>
 
                   {product.barcodeNumber && (
@@ -1286,8 +1410,16 @@ export default function AdminProductsPage() {
                     </>
                   )}
 
-                  {product.requiresWeighing && <span className="text-xs text-purple-600 block">⚖️ Requires weighing</span>}
-                  {product.trackExpiry && <span className="text-xs text-blue-600 block">📅 Track expiry</span>}
+                  {product.requiresWeighing && (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 px-2 py-0.5 rounded-full">
+                      ⚖️ Requires weighing
+                    </span>
+                  )}
+                  {product.trackExpiry && (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded-full">
+                      📅 Track expiry
+                    </span>
+                  )}
 
                   {productBatches[product.id]?.length > 0 && (
                     <div className="space-y-1">
@@ -1539,7 +1671,12 @@ export default function AdminProductsPage() {
                       Generate
                     </button>
                   </div>
-                  {newProduct.barcodeNumber && !/^\d{13}$/.test(String(newProduct.barcodeNumber).trim()) && <div className="text-xs text-red-500 font-medium">⚠️ Invalid barcode (must be 13 digits)</div>}
+                  {newProduct.barcodeNumber && /^\d{13}$/.test(String(newProduct.barcodeNumber).trim()) && (
+                    <div className="mt-2 flex justify-center p-2 bg-white border border-gray-100 dark:border-gray-700 rounded-lg">
+                      <BarcodeDisplay barcodeNumber={newProduct.barcodeNumber} size="sm" showNumber={true} />
+                    </div>
+                  )}
+                  {newProduct.barcodeNumber && !/^\d{13}$/.test(String(newProduct.barcodeNumber).trim()) && <div className="text-xs text-red-500 font-medium mt-1">⚠️ Invalid barcode (must be 13 digits)</div>}
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Cost Price ($)</label>
@@ -1579,9 +1716,9 @@ export default function AdminProductsPage() {
                 </div>
               </div>
               {(newProduct.unit === "KG" || newProduct.unit === "Piece") && (
-                <div className="bg-amber-50 rounded-lg p-3 space-y-2">
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 rounded-lg p-3 space-y-2">
                   <div className="flex items-center gap-4">
-                    <span className="text-xs font-medium text-amber-700">Weight range (kg):</span>
+                    <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Weight range (kg):</span>
                     <div className="flex items-center gap-2">
                       <label className="text-xs text-gray-500 dark:text-gray-400">Min</label>
                       <input type="number" step="0.01" value={newProduct.minWeightPerUnit}
@@ -1595,20 +1732,32 @@ export default function AdminProductsPage() {
                         className="w-20 border border-amber-200 dark:border-amber-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="e.g. 1.4" />
                     </div>
                   </div>
-                  <div className="flex items-center gap-6">
-                    <label className="flex items-center gap-1.5 text-xs text-purple-700 cursor-pointer">
-                      <input type="checkbox" checked={!!newProduct.requiresWeighing}
-                        onChange={e => setNewProduct((p:any) => ({...p, requiresWeighing: e.target.checked}))} />
-                      ⚖️ Requires weighing at delivery
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs text-blue-700 cursor-pointer">
-                      <input type="checkbox" checked={!!newProduct.trackExpiry}
-                        onChange={e => setNewProduct((p:any) => ({...p, trackExpiry: e.target.checked}))} />
-                      📅 Track expiry / FIFO
-                    </label>
-                  </div>
+                  <label className="flex items-center gap-1.5 text-xs text-purple-700 dark:text-purple-400 cursor-pointer">
+                    <input type="checkbox" checked={!!newProduct.requiresWeighing}
+                      onChange={e => setNewProduct((p:any) => ({...p, requiresWeighing: e.target.checked}))} />
+                    ⚖️ Requires weighing at delivery
+                  </label>
                 </div>
               )}
+              {/* Track expiry — always visible for any unit type */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-lg p-3 space-y-2">
+                <label className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-400 cursor-pointer font-medium">
+                  <input type="checkbox" checked={!!newProduct.trackExpiry}
+                    onChange={e => setNewProduct((p:any) => ({...p, trackExpiry: e.target.checked}))} />
+                  📅 Track expiry / FIFO
+                </label>
+                {newProduct.trackExpiry && (
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                      Initial Expiry Date <span className="text-gray-400 dark:text-gray-500">(optional — set when adding stock)</span>
+                    </label>
+                    <input type="date" value={newProduct.initialExpiry || ""}
+                      onChange={e => setNewProduct((p:any) => ({...p, initialExpiry: e.target.value}))}
+                      className="w-full border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                    <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">You can also set expiry when receiving stock via +Stock.</p>
+                  </div>
+                )}
+              </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowAddProduct(false)}
                   className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">Cancel</button>
