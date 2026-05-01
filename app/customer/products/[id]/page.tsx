@@ -256,7 +256,7 @@ export default function ProductDetailPage() {
                   <p className="text-4xl font-bold text-gray-900">
                     ${formatPrice(product.price)} <span className="text-xl font-medium text-gray-500">/kg</span>
                   </p>
-                  <p className="text-sm font-medium mt-1" style={{ color: "#B5535A" }}>Final price based on confirmed weight at delivery</p>
+                  <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full mt-1" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>Final price based on confirmed weight at delivery</span>
                 </>
               ) : (
                 <p className="text-4xl font-bold text-gray-900">

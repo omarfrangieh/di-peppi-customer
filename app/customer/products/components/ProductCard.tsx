@@ -125,7 +125,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
             <p className="text-lg font-bold text-gray-900">
               ${formatPrice(product.price)} <span className="text-sm font-medium text-gray-500">/kg</span>
             </p>
-            <p className="text-xs font-medium" style={{ color: "#B5535A" }}>Final price based on confirmed weight</p>
+            <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>Final price based on confirmed weight</span>
           </div>
         ) : (
           <p className="text-lg font-bold text-gray-900 mb-2">
