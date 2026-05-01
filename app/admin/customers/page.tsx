@@ -8,6 +8,8 @@ import { formatPrice } from "@/lib/formatters";
 import { showToast } from "@/lib/toast";
 import { useRouter } from "next/navigation";
 import SearchInput from "@/components/SearchInput";
+import LocationPicker from "../../customer/components/LocationPicker";
+import type { MapLocation } from "../../customer/components/LocationPicker";
 
 const CUSTOMER_TYPES = ["B2B", "B2C", "Blogger", "Owner"];
 
@@ -42,6 +44,8 @@ export default function AdminCustomersPage() {
   const [newCustomer, setNewCustomer] = useState<any>({ customerType: "", country: "Lebanon" });
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [editMapLocation, setEditMapLocation] = useState<MapLocation | null>(null);
+  const [showEditMap, setShowEditMap] = useState(false);
   const [docPreview, setDocPreview] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [newDocFile, setNewDocFile] = useState<File | null>(null);
@@ -113,6 +117,8 @@ export default function AdminCustomersPage() {
   const startEdit = (c: any) => {
     setEditing(c.id);
     setEditData({ ...c });
+    setEditMapLocation(c.mapLocation || null);
+    setShowEditMap(!!c.mapLocation);
     const prices: Record<string, string> = {};
     if (c.specialPrices) {
       Object.entries(c.specialPrices).forEach(([pid, price]) => {
@@ -123,7 +129,7 @@ export default function AdminCustomersPage() {
     setPriceSearch("");
   };
 
-  const cancelEdit = () => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(false); setPendingHold(false); };
+  const cancelEdit = () => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(false); setPendingHold(false); setEditMapLocation(null); setShowEditMap(false); };
 
   const openWallet = async (customerId: string) => {
     setShowWalletFor(customerId);
@@ -256,6 +262,7 @@ export default function AdminCustomersPage() {
         clientMargin: Number(editData.clientMargin || 0),
         clientDiscount: Number(editData.clientDiscount || 0),
         specialPrices,
+        mapLocation: editMapLocation || null,
         updatedAt: new Date().toISOString(),
       });
       setCustomers(prev => prev.map(c => c.id === id ? { ...editData, specialPrices } : c));
@@ -870,32 +877,32 @@ export default function AdminCustomersPage() {
               <div className={`bg-white dark:bg-gray-800 rounded-xl overflow-hidden ${isHold ? "border-l-4 border-amber-400 border border-gray-200 dark:border-gray-700" : "border border-gray-200 dark:border-gray-700"} ${customer.active === false ? "opacity-50" : ""}`}>
               {editing === customer.id ? (
                 <div className="p-5 bg-white dark:bg-gray-800">
-                  {/* Logo */}
-                  <div className="flex items-center gap-5 mb-5 pb-5 border-b border-gray-100 dark:border-gray-700">
-                    <div className="relative flex-shrink-0">
+                  {/* Edit header — avatar + name prominently shown */}
+                  <div className="flex items-center gap-3 mb-5 pb-4 border-b border-gray-100 dark:border-gray-700">
+                    <input ref={logoInputRef} type="file" accept="image/*,.heic" className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f, customer.id); }} />
+                    <button
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={uploadingLogo}
+                      title="Click to change photo"
+                      className="relative flex-shrink-0 group cursor-pointer disabled:opacity-50">
                       {editData.logoUrl ? (
                         <img src={editData.logoUrl} alt={editData.name}
-                          className="w-24 h-24 rounded-xl object-contain border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 p-1" />
+                          className="w-12 h-12 rounded-xl object-contain border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 p-0.5" />
                       ) : (
-                        <div className="w-24 h-24 rounded-xl bg-gray-100 dark:bg-gray-700 border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
-                          <span className="text-3xl font-bold text-gray-300">
-                            {(editData.name || "?").charAt(0).toUpperCase()}
+                        <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center">
+                          <span className="text-lg font-bold text-gray-400">
+                            {(editData.name || customer.name || "?").charAt(0).toUpperCase()}
                           </span>
                         </div>
                       )}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Customer Photo / Logo</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">JPG, PNG, HEIC accepted</p>
-                      <input ref={logoInputRef} type="file" accept="image/*,.heic"
-                        className="hidden"
-                        onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f, customer.id); }} />
-                      <button onClick={() => logoInputRef.current?.click()} disabled={uploadingLogo}
-                        className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50 flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
-                        {uploadingLogo
-                          ? <><span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin inline-block" /> Uploading...</>
-                          : <><span>⬆</span> {editData.logoUrl ? "Change Photo" : "Upload Photo"}</>}
-                      </button>
+                      <span className="absolute inset-0 rounded-xl bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
+                        {uploadingLogo ? "…" : "📷"}
+                      </span>
+                    </button>
+                    <div className="min-w-0">
+                      <p className="text-base font-bold text-gray-900 dark:text-white truncate">{customer.name}</p>
+                      <p className="text-xs text-gray-400">{customer.customerType} · Editing</p>
                     </div>
                   </div>
 
@@ -926,6 +933,28 @@ export default function AdminCustomersPage() {
                     <Field label="Country" value={editData.country} onChange={(v: string) => setEditData((p: any) => ({ ...p, country: v }))} />
                     <Field label="Google Maps Link" value={editData.mapsLink} onChange={(v: string) => setEditData((p: any) => ({ ...p, mapsLink: v }))} />
                     <Field label="Additional Instructions" value={editData.additionalInstructions} onChange={(v: string) => setEditData((p: any) => ({ ...p, additionalInstructions: v }))} />
+                  </div>
+                  {/* Interactive map */}
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                        📍 Map Pin
+                        {editMapLocation && <span className="text-green-600 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full text-xs ml-1">✓ Pinned</span>}
+                      </span>
+                      <button type="button" onClick={() => setShowEditMap(v => !v)}
+                        className="text-xs px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400">
+                        {showEditMap ? "Hide Map" : "📍 Pin on Map"}
+                      </button>
+                    </div>
+                    {showEditMap && (
+                      <LocationPicker initial={editMapLocation} height={200} onChange={(loc) => setEditMapLocation(loc)} />
+                    )}
+                    {!showEditMap && editMapLocation && (
+                      <p className="text-xs text-gray-400">
+                        {editMapLocation.lat.toFixed(5)}, {editMapLocation.lng.toFixed(5)} —{" "}
+                        <button type="button" onClick={() => setEditMapLocation(null)} className="text-red-400 hover:text-red-600">Remove</button>
+                      </p>
+                    )}
                   </div>
 
                   {/* Pricing */}
@@ -978,55 +1007,91 @@ export default function AdminCustomersPage() {
                   </div>
 
                   {/* Special Prices */}
-                  <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Special Prices</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Set a custom selling price for this customer. Overrides the standard B2B/B2C price.</p>
-                  <SearchInput
-                    placeholder="Search products..."
-                    value={priceSearch}
-                    onChange={setPriceSearch}
-                    className="mb-3 w-64"
-                  />
-                  {/* Column header */}
-                  <div className="flex items-center gap-2 px-3 mb-1">
-                    <span className="flex-1 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">Product</span>
-                    <span className="w-20 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider text-left hidden">Margin</span>
-                    <span className="w-32 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider text-right">Special Price (override)</span>
-                  </div>
-                  <div className="flex flex-col gap-1 max-h-64 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-lg dark:bg-gray-900/30">
-                    {filteredProducts.map(product => {
-                      const sp = Number(editPrices[product.id] || 0);
-                      const cost = Number(product.costPrice || 0);
-                      const margin = sp > 0 ? ((sp - cost) / sp) * 100 : null;
-                      const hasOverride = Boolean(editPrices[product.id]);
-                      return (
-                        <div key={product.id}
-                          className={`flex items-center gap-2 px-3 py-2 ${hasOverride ? "border-l-2 border-green-400 bg-green-50/50 dark:bg-green-900/10" : "border-l-2 border-transparent"}`}>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{product.name}</p>
-                            <p className="text-xs text-gray-400 dark:text-gray-500">Selling: ${formatPrice(editData.customerType === "B2B" ? product.b2bPrice : product.b2cPrice || 0)} · Cost: ${formatPrice(cost)}</p>
+                  {(() => {
+                    const setPricesCount = Object.values(editPrices).filter(v => v !== "").length;
+                    const setPriceProducts = products.filter(p => editPrices[p.id]);
+                    return (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Special Prices</p>
+                            {setPricesCount > 0 && <p className="text-xs text-green-600 mt-0.5">{setPricesCount} override{setPricesCount > 1 ? "s" : ""} active</p>}
                           </div>
-                          <div className="flex items-center gap-3 justify-end">
-                            {margin !== null && (
-                              <span className={`text-xs font-semibold w-20 text-left ${margin < 0 ? "text-red-500" : margin < 15 ? "text-yellow-600" : "text-green-600"}`}>
-                                {margin < 0 ? "⛔" : margin < 15 ? "⚠️" : "✅"} {margin.toFixed(1)}%
-                              </span>
-                            )}
-                            <input
-                              type="number"
-                              placeholder="e.g. 12.00"
-                              value={editPrices[product.id] || ""}
-                              onChange={e => setEditPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
-                              className={`w-28 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-gray-900 dark:text-white ${editPrices[product.id] ? "border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-600" : "border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700"}`}
-                            />
-                          </div>
+                          <button type="button" onClick={() => setPricingOpen(v => !v)}
+                            className="text-xs px-2.5 py-1 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400">
+                            {pricingOpen ? "▲ Collapse" : `▼ ${setPricesCount > 0 ? "Edit prices" : "Add prices"}`}
+                          </button>
                         </div>
-                      );
-                    })}
-                    {filteredProducts.length === 0 && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 p-3">No products match your search.</p>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{Object.values(editPrices).filter(v => v !== "").length} special prices set</p>
+
+                        {/* Always show set prices as compact pills */}
+                        {setPricesCount > 0 && !pricingOpen && (
+                          <div className="flex flex-col gap-1 mb-2">
+                            {setPriceProducts.map(product => {
+                              const sp = Number(editPrices[product.id]);
+                              const cost = Number(product.costPrice || 0);
+                              const margin = sp > 0 ? ((sp - cost) / sp) * 100 : null;
+                              return (
+                                <div key={product.id} className="flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-800 rounded-lg">
+                                  <p className="flex-1 text-xs text-gray-700 dark:text-gray-300 truncate">{product.name}</p>
+                                  <span className="text-xs font-bold text-green-700">${formatPrice(sp)}</span>
+                                  {margin !== null && (
+                                    <span className={`text-xs ${margin < 0 ? "text-red-500" : margin < 15 ? "text-yellow-600" : "text-green-600"}`}>
+                                      {margin.toFixed(1)}%
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Full editor when expanded */}
+                        {pricingOpen && (
+                          <>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Set a custom selling price for this customer. Overrides the standard B2B/B2C price.</p>
+                            <SearchInput placeholder="Search products..." value={priceSearch} onChange={setPriceSearch} className="mb-3 w-64" />
+                            <div className="flex items-center gap-2 px-3 mb-1">
+                              <span className="flex-1 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">Product</span>
+                              <span className="w-32 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider text-right">Special Price</span>
+                            </div>
+                            <div className="flex flex-col gap-1 max-h-64 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-lg dark:bg-gray-900/30">
+                              {filteredProducts.map(product => {
+                                const sp = Number(editPrices[product.id] || 0);
+                                const cost = Number(product.costPrice || 0);
+                                const margin = sp > 0 ? ((sp - cost) / sp) * 100 : null;
+                                const hasOverride = Boolean(editPrices[product.id]);
+                                return (
+                                  <div key={product.id}
+                                    className={`flex items-center gap-2 px-3 py-2 ${hasOverride ? "border-l-2 border-green-400 bg-green-50/50 dark:bg-green-900/10" : "border-l-2 border-transparent"}`}>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{product.name}</p>
+                                      <p className="text-xs text-gray-400 dark:text-gray-500">Selling: ${formatPrice(editData.customerType === "B2B" ? product.b2bPrice : product.b2cPrice || 0)} · Cost: ${formatPrice(cost)}</p>
+                                    </div>
+                                    <div className="flex items-center gap-3 justify-end">
+                                      {margin !== null && (
+                                        <span className={`text-xs font-semibold w-20 text-left ${margin < 0 ? "text-red-500" : margin < 15 ? "text-yellow-600" : "text-green-600"}`}>
+                                          {margin < 0 ? "⛔" : margin < 15 ? "⚠️" : "✅"} {margin.toFixed(1)}%
+                                        </span>
+                                      )}
+                                      <input type="number" placeholder="e.g. 12.00"
+                                        value={editPrices[product.id] || ""}
+                                        onChange={e => setEditPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
+                                        className={`w-28 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-gray-900 dark:text-white ${editPrices[product.id] ? "border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-600" : "border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700"}`}
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {filteredProducts.length === 0 && (
+                                <p className="text-xs text-gray-400 dark:text-gray-500 p-3">No products match.</p>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{setPricesCount} special {setPricesCount === 1 ? "price" : "prices"} set</p>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Official Document — B2B only */}
                   {editData.customerType === "B2B" && (
