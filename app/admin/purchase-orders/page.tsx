@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { generatePOPDF } from "@/lib/generatePOPDF";
 import { formatPrice } from "@/lib/formatters";
@@ -36,8 +36,12 @@ export default function PurchaseOrdersPage() {
   const [previewPO, setPreviewPO] = useState<any | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; poNumber: string; supplierName: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [warehousePhone, setWarehousePhone] = useState("");
+  const [showWarehouseSetup, setShowWarehouseSetup] = useState(false);
+  const [warehousePhoneInput, setWarehousePhoneInput] = useState("");
+  const [savingWarehouse, setSavingWarehouse] = useState(false);
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); void loadWarehousePhone(); }, []);
 
   const load = async () => {
     setLoading(true);

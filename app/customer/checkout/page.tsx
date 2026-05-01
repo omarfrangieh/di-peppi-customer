@@ -117,7 +117,14 @@ export default function CheckoutPage() {
 
         let firestoreData: any = {};
         try {
-          const snap = await getDoc(doc(db, "customers", session.userId));
+          // Race against a 5s timeout — prevents infinite hang if Firebase Auth
+          // is stuck retrying an invalid token (403 from securetoken.googleapis.com)
+          const snap = await Promise.race([
+            getDoc(doc(db, "customers", session.userId)),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("timeout")), 5000)
+            ),
+          ]) as Awaited<ReturnType<typeof getDoc>>;
           if (snap.exists()) firestoreData = snap.data();
         } catch {}
 
