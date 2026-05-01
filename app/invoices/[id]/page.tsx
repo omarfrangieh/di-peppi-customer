@@ -157,6 +157,9 @@ export default function InvoiceDetailPage() {
   const [payReference, setPayReference] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [generatingPOs, setGeneratingPOs] = useState(false);
+  const [syncingLines, setSyncingLines] = useState(false);
+  const [showSyncConfirm, setShowSyncConfirm] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
   const [poWarning, setPoWarning] = useState<{ type: "missing-suppliers" | "no-pos-created" | "error"; products?: string[]; message?: string } | null>(null);
   const [walletBalance, setWalletBalance] = useState(0);
   const [applyingWallet, setApplyingWallet] = useState(false);
@@ -434,23 +437,28 @@ export default function InvoiceDetailPage() {
     }
   };
 
-  const handleDeletePayment = async (paymentId: string) => {
-    if (!confirm("Delete this payment? This cannot be undone.")) return;
-    try {
-      const { deleteDoc } = await import("firebase/firestore");
-      await deleteDoc(doc(db, "payments", paymentId));
-      const updatedPayments = payments.filter(p => p.id !== paymentId);
-      setPayments(updatedPayments);
-      const newTotalPaid = updatedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-      const newBalance = (invoice?.finalTotal || 0) - newTotalPaid;
-      let newStatus = newTotalPaid <= 0 ? "issued" : newBalance <= 0 ? "paid" : "partly_paid";
-      await updateDoc(doc(db, "invoices", invoiceId), { paidAmount: newTotalPaid, status: newStatus, updatedAt: new Date().toISOString() });
-      setStatus(newStatus);
-      setInvoice(prev => prev ? { ...prev, paidAmount: newTotalPaid, status: newStatus } : prev);
-    } catch (err) {
-      console.error(err);
-      showToast("Error deleting payment", "error");
-    }
+  const handleDeletePayment = (paymentId: string) => {
+    setConfirmDialog({
+      title: "Delete Payment",
+      message: "Delete this payment? This cannot be undone.",
+      onConfirm: async () => {
+        try {
+          const { deleteDoc } = await import("firebase/firestore");
+          await deleteDoc(doc(db, "payments", paymentId));
+          const updatedPayments = payments.filter(p => p.id !== paymentId);
+          setPayments(updatedPayments);
+          const newTotalPaid = updatedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+          const newBalance = (invoice?.finalTotal || 0) - newTotalPaid;
+          const newStatus = newTotalPaid <= 0 ? "issued" : newBalance <= 0 ? "paid" : "partly_paid";
+          await updateDoc(doc(db, "invoices", invoiceId), { paidAmount: newTotalPaid, status: newStatus, updatedAt: new Date().toISOString() });
+          setStatus(newStatus);
+          setInvoice(prev => prev ? { ...prev, paidAmount: newTotalPaid, status: newStatus } : prev);
+        } catch (err) {
+          console.error(err);
+          showToast("Error deleting payment", "error");
+        }
+      },
+    });
   };
 
   const handleEditPayment = async () => {
@@ -542,8 +550,8 @@ export default function InvoiceDetailPage() {
       // 3. Check for Delivered POs — warn but allow
       const deliveredPOs = pos.filter((p: any) => p.status === "Delivered");
       if (deliveredPOs.length > 0) {
-        const proceed = confirm(`⚠️ ${deliveredPOs.length} PO(s) are already Delivered — stock has been received. You will need to manually adjust stock. Proceed with cancellation?`);
-        if (!proceed) { setCancelling(false); return; }
+        // Non-blocking warning toast — user already confirmed cancel via the Cancel Modal
+        showToast(`⚠️ ${deliveredPOs.length} PO(s) already Delivered — adjust stock manually.`, "warning");
       }
 
       // 4. Handle Sent POs — mark as Cancelled
@@ -562,11 +570,8 @@ export default function InvoiceDetailPage() {
       // 5. Handle Generated POs — auto-delete with confirmation
       const generatedPOs = pos.filter((p: any) => p.status === "Generated");
       if (generatedPOs.length > 0) {
-        const proceed = confirm(`${generatedPOs.length} Generated PO(s) will be deleted. Proceed?`);
-        if (proceed) {
-          for (const po of generatedPOs) {
-            await deleteDoc(doc(db, "purchaseOrders", po.id));
-          }
+        for (const po of generatedPOs) {
+          await deleteDoc(doc(db, "purchaseOrders", po.id));
         }
       }
 
@@ -588,12 +593,17 @@ export default function InvoiceDetailPage() {
     }
   };
 
-  const handleDeleteLine = async (lineId: string) => {
-    if (!confirm("Remove this item from the invoice?")) return;
-    await deleteDoc(doc(db, "invoiceLines", lineId));
-    const updated = lines.filter(l => l.id !== lineId);
-    setLines(updated);
-    await recalculateTotalsFromLines(updated);
+  const handleDeleteLine = (lineId: string) => {
+    setConfirmDialog({
+      title: "Remove Line Item",
+      message: "Remove this item from the invoice?",
+      onConfirm: async () => {
+        await deleteDoc(doc(db, "invoiceLines", lineId));
+        const updated = lines.filter(l => l.id !== lineId);
+        setLines(updated);
+        await recalculateTotalsFromLines(updated);
+      },
+    });
   };
 
   const handleSaveLine = async (line: InvoiceLine) => {
@@ -754,6 +764,102 @@ export default function InvoiceDetailPage() {
     }
   };
 
+  /**
+   * Sync invoice lines from the linked order's orderItems.
+   * Handles both field naming conventions:
+   *   - Customer checkout:   priceAtTime, lineTotal
+   *   - Admin order builder: unitPrice,   totalPrice
+   */
+  const handleSyncLinesFromOrder = async () => {
+    if (!invoice?.orderId) { showToast("No order linked to this invoice.", "warning"); return; }
+    setShowSyncConfirm(false);
+    setSyncingLines(true);
+    try {
+      // 1. Fetch order items
+      const itemsSnap = await getDocs(
+        query(collection(db, "orderItems"), where("orderId", "==", invoice.orderId))
+      );
+      const orderItems = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      if (orderItems.length === 0) { showToast("No order items found.", "warning"); return; }
+
+      // 2. Fetch product data (name, VAT, cost, and current B2C price as fallback)
+      const productIds = [...new Set(orderItems.map((i: any) => i.productId).filter(Boolean))] as string[];
+      const productData: Record<string, { name: string; vatRate: number; unitCostPrice: number; b2cPrice: number }> = {};
+      await Promise.all(productIds.map(async (pid) => {
+        const snap = await getDoc(doc(db, "products", pid));
+        if (snap.exists()) {
+          const d = snap.data();
+          productData[pid] = {
+            name: d.name || pid,
+            vatRate: d.vatRate ?? 0,
+            unitCostPrice: d.unitCostPrice ?? 0,
+            // Fall back chain: b2cPrice → price → 0
+            b2cPrice: Number(d.b2cPrice ?? d.price ?? 0),
+          };
+        }
+      }));
+
+      // 3. Delete existing invoice lines
+      const existingSnap = await getDocs(query(collection(db, "invoiceLines"), where("invoiceId", "==", invoiceId)));
+      await Promise.all(existingSnap.docs.map(d => deleteDoc(d.ref)));
+
+      // 4. Recreate lines with normalised fields
+      let newSubtotal = 0;
+      const newLines = await Promise.all(orderItems.map(async (item: any) => {
+        const pd        = productData[item.productId] || { name: "", vatRate: 0, unitCostPrice: 0, b2cPrice: 0 };
+        const qty       = Number(item.quantity || 1);
+        // Use stored price; if 0 (wasn't set when ordered), fall back to current product b2cPrice
+        const storedPrice = Number(item.unitPrice ?? item.priceAtTime ?? 0);
+        const unitPrice = storedPrice > 0 ? storedPrice : pd.b2cPrice;
+        const lineTotal = unitPrice * qty;
+        newSubtotal    += lineTotal;
+
+        const ref      = await addDoc(collection(db, "invoiceLines"), {
+          invoiceId,
+          orderId:            invoice.orderId,
+          orderItemId:        item.id,
+          productId:          item.productId || "",
+          productName:        pd.name || item.productName || item.name || "",
+          quantity:           qty,
+          unitPrice,
+          unitCostPrice:      pd.unitCostPrice || Number(item.unitCostPrice || 0),
+          itemDiscountPercent: Number(item.itemDiscountPercent || 0),
+          itemDiscountAmount: Number(item.itemDiscountAmount || 0),
+          lineGross:          lineTotal,
+          lineNet:            lineTotal,
+          profit:             Number(item.profit || 0),
+          totalCostPrice:     Number(item.totalCostPrice || 0),
+          vatRate:            pd.vatRate ?? null,
+          notes:              item.notes || "",
+          preparation:        item.preparation || "",
+          sample:             Boolean(item.sample),
+          gift:               Boolean(item.gift),
+          createdAt:          serverTimestamp(),
+          updatedAt:          serverTimestamp(),
+        });
+        return { id: ref.id, productName: pd.name || item.productName || "", quantity: qty, unitPrice, lineGross: lineTotal, lineNet: lineTotal,
+          unitCostPrice: pd.unitCostPrice || 0, itemDiscountPercent: 0, itemDiscountAmount: 0, profit: 0, notes: "", sample: false, gift: false };
+      }));
+
+      // 5. Update invoice header totals
+      const deliveryFee = Number(invoice.deliveryFee || 0);
+      await updateDoc(doc(db, "invoices", invoiceId), {
+        subtotalGross: newSubtotal,
+        subtotalNet:   newSubtotal,
+        finalTotal:    newSubtotal + deliveryFee,
+        updatedAt:     serverTimestamp(),
+      });
+
+      setLines(newLines as any);
+      setInvoice(prev => prev ? { ...prev, subtotalGross: newSubtotal, subtotalNet: newSubtotal, finalTotal: newSubtotal + deliveryFee } : prev);
+      showToast("Lines synced from order ✓", "success");
+    } catch (e: any) {
+      showToast(`Sync failed: ${e.message}`, "error");
+    } finally {
+      setSyncingLines(false);
+    }
+  };
+
   const handleGeneratePOs = async () => {
     if (!invoice?.orderId) { showToast("No order linked to this invoice.", "warning"); return; }
     if (lines.length === 0) { showToast("Add line items to the invoice first.", "warning"); return; }
@@ -785,8 +891,8 @@ export default function InvoiceDetailPage() {
     }
 
     if (invoicePOs.some(p => ["Sent", "Delivered", "Paid"].includes(p.status))) {
-      if (!confirm("Some POs have already been sent or delivered. Regenerating will only replace 'Generated' POs. Continue?")) return;
-    } else if (!confirm("Generate Purchase Orders from this invoice's line items?")) return;
+      showToast("Note: Only 'Generated' POs will be replaced — Sent/Delivered/Paid POs are untouched.", "warning");
+    }
 
     setGeneratingPOs(true);
     try {
@@ -1080,15 +1186,24 @@ export default function InvoiceDetailPage() {
           <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
             <div className="flex items-center justify-between w-full">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Line Items</h3>
+              <div className="flex gap-2">
+                {invoice?.orderId && (
+                  <button
+                    onClick={() => setShowSyncConfirm(true)}
+                    disabled={syncingLines}
+                    title="Replace lines with values from the linked order"
+                    className="text-xs px-3 py-1.5 rounded-lg font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
+                    {syncingLines ? "Syncing…" : "↺ Sync from Order"}
+                  </button>
+                )}
               {!isLocked && (
-                <div className="flex gap-2">
-<button onClick={() => setShowAddLine(!showAddLine)}
+                <button onClick={() => setShowAddLine(!showAddLine)}
                     className="text-xs px-3 py-1.5 text-white rounded-lg font-medium"
                     style={{backgroundColor: "#1B2A5E"}}>
                     + Add Line
                   </button>
-                </div>
               )}
+              </div>
             </div>
           </div>
           {lines.length === 0 ? (
@@ -1542,6 +1657,53 @@ export default function InvoiceDetailPage() {
                   {savingEditPayment ? "Saving..." : "Save Changes"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sync from Order Confirm Modal */}
+      {showSyncConfirm && (
+        <div className="fixed inset-0 bg-black/60 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+            <div className="flex flex-col items-center mb-4">
+              <span className="text-3xl mb-3">↺</span>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white text-center">Sync Lines from Order?</h3>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">
+              This will replace all current line items with values from the original order. If the stored price was $0, it will use the product's current B2C price.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowSyncConfirm(false)}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleSyncLinesFromOrder}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-xl hover:opacity-90 transition-opacity"
+                style={{ backgroundColor: "#1B2A5E" }}>
+                Sync Lines
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generic Confirm Modal */}
+      {confirmDialog && (
+        <div className="fixed inset-0 bg-black/60 dark:bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">{confirmDialog.title}</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{confirmDialog.message}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDialog(null)}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                Cancel
+              </button>
+              <button onClick={() => { const fn = confirmDialog.onConfirm; setConfirmDialog(null); fn(); }}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-xl hover:opacity-90 transition-opacity"
+                style={{ backgroundColor: "#1B2A5E" }}>
+                Confirm
+              </button>
             </div>
           </div>
         </div>

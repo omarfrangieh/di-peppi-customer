@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/formatters";
 import { showToast } from "@/lib/toast";
 import { X, Trash2, ArrowUpDown, ChevronRight } from "lucide-react";
+import { tryCreateInvoiceFromOrder } from "@/lib/createInvoiceFromOrder";
 
 const STATUS_FLOW: Record<string, string> = {
   Draft:        "Confirmed",
@@ -75,6 +76,8 @@ export default function OrdersPage() {
   const [itemCounts, setItemCounts] = useState<Record<string, number>>({});
   const [customers, setCustomers] = useState<string[]>([]);
   const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => { void load(); }, []);
 
@@ -161,6 +164,14 @@ export default function OrdersPage() {
           }).catch(() => {});
         }
       }
+      // Auto-generate invoice for online B2C orders on delivery
+      if (next === "Delivered") {
+        tryCreateInvoiceFromOrder(order).then(invoiceId => {
+          if (invoiceId) {
+            setOrders(prev => prev.map(o => o.id === order.id ? { ...o, invoiceId } : o));
+          }
+        });
+      }
     } catch {
       showToast("Failed to update status", "error");
     } finally {
@@ -168,21 +179,29 @@ export default function OrdersPage() {
     }
   };
 
-  const handleDeleteOrder = async (e: React.MouseEvent, orderId: string, orderName: string) => {
+  const handleDeleteOrder = (e: React.MouseEvent, orderId: string, orderName: string) => {
     e.stopPropagation();
-    if (!confirm(`Delete order ${orderName}? This removes all items and cannot be undone.`)) return;
+    setDeleteConfirm({ id: orderId, name: orderName });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
     try {
       const batch = writeBatch(db);
-      const itemsSnap = await getDocs(query(collection(db, "orderItems"), where("orderId", "==", orderId)));
+      const itemsSnap = await getDocs(query(collection(db, "orderItems"), where("orderId", "==", deleteConfirm.id)));
       itemsSnap.docs.forEach(d => batch.delete(d.ref));
-      batch.delete(doc(db, "orders", orderId));
+      batch.delete(doc(db, "orders", deleteConfirm.id));
       await batch.commit();
       try {
-        await addDoc(collection(db, "auditLog"), { action: "deleted_order", orderId, timestamp: serverTimestamp() });
+        await addDoc(collection(db, "auditLog"), { action: "deleted_order", orderId: deleteConfirm.id, timestamp: serverTimestamp() });
       } catch { /* non-blocking */ }
-      setOrders(prev => prev.filter(o => o.id !== orderId));
+      setOrders(prev => prev.filter(o => o.id !== deleteConfirm.id));
+      setDeleteConfirm(null);
     } catch (err: any) {
       showToast(`Failed to delete: ${err.message}`, "error");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -225,6 +244,40 @@ export default function OrdersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <span className="text-red-600 text-lg">🗑️</span>
+              </div>
+              <h3 className="font-bold text-gray-900 dark:text-white text-base">Delete order?</h3>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+              <strong className="text-gray-800 dark:text-gray-200">{deleteConfirm.name}</strong> and all its items will be permanently removed.
+            </p>
+            <p className="text-xs text-red-500 mb-5">This cannot be undone.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl text-sm cursor-pointer disabled:opacity-60 transition-colors"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sticky header */}
       <div className="bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700 px-6 py-4 sticky top-0 z-10">

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { formatPrice, formatQty } from "@/lib/formatters";
 import { showToast } from "@/lib/toast";
 import { deductStockForOrder, restoreStockForOrder } from "@/lib/fifoDeduction";
+import { tryCreateInvoiceFromOrder } from "@/lib/createInvoiceFromOrder";
 
 /* ─── helpers ─── */
 
@@ -394,7 +395,18 @@ export default function Dashboard() {
 
   // Active Orders = ALL non-completed orders regardless of date filter
   const activeOrders    = orders.filter(o => !["Delivered", "Cancelled", "Canceled"].includes(o.status));
-  const deliveredOrders = filteredOrders.filter(o => o.status === "Delivered");
+  // Delivered orders filtered by when they were actually delivered (updatedAt), not scheduled delivery date
+  const allDelivered    = orders.filter(o => o.status === "Delivered");
+  const deliveredOrders = (() => {
+    if (dateRange === "all") return allDelivered;
+    return allDelivered.filter(o => {
+      const d = String(o.updatedAt || o.deliveryDate || o.createdAt || "").slice(0, 10);
+      if (dateRange === "today") return d === todayISO;
+      if (dateRange === "week")  return d >= twISO.slice(0, 10);
+      if (dateRange === "month") return d >= firstOfMonth;
+      return true;
+    });
+  })();
   // Pipeline always shows ALL orders by status — date filter only applies to KPI cards
   const colOrders = {
     preparing: orders.filter(o => ["Draft", "Confirmed", "Preparing"].includes(o.status)).sort((a, b) => (a.deliveryDate || "").localeCompare(b.deliveryDate || "")),
@@ -483,8 +495,8 @@ export default function Dashboard() {
         read:       false,
         createdAt:  serverTimestamp(),
       });
-    } catch (err) {
-      console.error("Failed to send notification:", err);
+    } catch {
+      // non-blocking — notification failure must never crash the status update
     }
   };
 
@@ -501,6 +513,14 @@ export default function Dashboard() {
       // Deduct stock FIFO when order is dispatched
       if (next === "To Deliver") {
         deductStockForOrder(order.id).catch(err => console.error("FIFO deduction failed:", err));
+      }
+      // Auto-generate invoice for online B2C orders on delivery
+      if (next === "Delivered") {
+        tryCreateInvoiceFromOrder(order).then(invoiceId => {
+          if (invoiceId) {
+            setOrders(prev => prev.map(o => o.id === order.id ? { ...o, invoiceId } : o));
+          }
+        });
       }
     } catch { showToast("Failed to update status", "error"); }
     finally { setMovingOrder(null); }

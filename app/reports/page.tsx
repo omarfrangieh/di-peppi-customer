@@ -22,7 +22,8 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const now = new Date();
   const [fromDate, setFromDate] = useState(new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10));
-  const [toDate, setToDate] = useState(now.toISOString().slice(0, 10));
+  // Default toDate = 30 days from now so current & upcoming orders are always visible
+  const [toDate, setToDate] = useState(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30).toISOString().slice(0, 10));
   const [period, setPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("monthly");
   const [customerTypeFilter, setCustomerTypeFilter] = useState<"All" | "B2B" | "B2C">("All");
   const [showExport, setShowExport] = useState(false);
@@ -50,8 +51,11 @@ export default function ReportsPage() {
   };
 
   const filteredOrders = useMemo(() => orders.filter(o => {
-    const d = o.deliveryDate || o.orderDate || "";
-    const matchDate = d >= fromDate && d <= toDate && o.status !== "Cancelled";
+    // Use createdAt as the primary date (when the sale was made),
+    // fall back to deliveryDate / orderDate for legacy records
+    const d = String(o.createdAt || o.deliveryDate || o.orderDate || "").slice(0, 10);
+    const matchDate = d >= fromDate && d <= toDate
+      && o.status !== "Cancelled" && o.status !== "Canceled";
     const matchType = customerTypeFilter === "All" || o.customerType === customerTypeFilter;
     return matchDate && matchType;
   }), [orders, fromDate, toDate, customerTypeFilter]);
@@ -61,12 +65,15 @@ export default function ReportsPage() {
     return items.filter(i => ids.has(i.orderId));
   }, [items, filteredOrders]);
 
-  const totalRevenue = useMemo(() => filteredOrders.reduce((s, o) => s + Number(o.finalTotal || 0), 0), [filteredOrders]);
+  // Revenue = only Delivered orders; pipeline = all non-cancelled (shows order volume)
+  const deliveredOrders = useMemo(() => filteredOrders.filter(o => o.status === "Delivered"), [filteredOrders]);
+  const totalRevenue = useMemo(() => deliveredOrders.reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0), [deliveredOrders]);
   const totalProfit = useMemo(() => filteredItems.reduce((s, i) => s + Number(i.profit || 0), 0), [filteredItems]);
   const ytdRevenue = useMemo(() => orders.filter(o => {
-    const d = o.deliveryDate || o.orderDate || "";
-    return d >= `${new Date().getFullYear()}-01-01` && o.status !== "Cancelled";
-  }).reduce((s, o) => s + Number(o.finalTotal || 0), 0), [orders]);
+    const d = String(o.createdAt || o.deliveryDate || o.orderDate || "").slice(0, 10);
+    return d >= `${new Date().getFullYear()}-01-01`
+      && o.status !== "Cancelled" && o.status !== "Canceled";
+  }).reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0), [orders]);
 
   const salesByPeriod = useMemo(() => {
     const map: Record<string, { revenue: number; profit: number; orders: number }> = {};
