@@ -5,6 +5,7 @@ import { collection, getDocs, doc, updateDoc, addDoc, runTransaction } from "fir
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { formatPrice, formatQty } from "@/lib/formatters";
+import { showToast } from "@/lib/toast";
 
 /* ─── helpers ─── */
 
@@ -22,9 +23,17 @@ function trendLabel(cur: number, prev: number, period = "last week"): { text: st
   return { text: `${pct > 0 ? "▲" : "▼"}${Math.abs(pct)}% vs ${period}`, up: pct > 0 };
 }
 
-function timeAgo(iso: string) {
-  if (!iso) return "—";
-  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+function timeAgo(val: any) {
+  if (!val) return "—";
+  // Handle Firestore Timestamp objects (seconds/nanoseconds or _seconds/_nanoseconds)
+  let ms: number;
+  if (typeof val === "object" && (val.seconds || val._seconds)) {
+    ms = (val.seconds ?? val._seconds) * 1000;
+  } else {
+    ms = new Date(val).getTime();
+  }
+  if (isNaN(ms)) return "—";
+  const m = Math.floor((Date.now() - ms) / 60000);
   if (m < 1) return "just now";
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
@@ -143,10 +152,10 @@ export default function Dashboard() {
   const [topProducts, setTopProducts]         = useState<{ name: string; qty: number; orders: number }[]>([]);
   const [revDays, setRevDays]                 = useState<{ label: string; value: number }[]>([]);
   const [allProducts, setAllProducts]         = useState<{ id: string; name: string }[]>([]);
+  const [dormantStats, setDormantStats]       = useState<{ total: number; b2b: number; b2c: number } | null>(null);
 
   // UI state
-  const [density, setDensity]     = useState<"comfortable" | "compact">("comfortable");
-  const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "all">("all");
+  const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "all">("today");
   const [dragOrderId, setDragOrderId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [searchOpen, setSearchOpen]   = useState(false);
@@ -186,6 +195,29 @@ export default function Dashboard() {
         data = await res.json();
       }
       const orderArr: any[] = Array.isArray(data) ? data : [];
+
+      // ── Auto-promote: delivery date = today & still in pre-delivery status ──
+      const todayISO2 = new Date().toISOString().slice(0, 10);
+      const AUTO_PROMOTE_FROM = ["Draft", "Confirmed", "Preparing"];
+      const toPromote = orderArr.filter(o =>
+        o.deliveryDate === todayISO2 && AUTO_PROMOTE_FROM.includes(o.status)
+      );
+      if (toPromote.length > 0) {
+        await Promise.all(
+          toPromote.map(o =>
+            updateDoc(doc(db, "orders", o.id), {
+              status: "To Deliver",
+              updatedAt: new Date().toISOString(),
+            })
+          )
+        );
+        toPromote.forEach(o => { o.status = "To Deliver"; o.updatedAt = todayISO2; });
+        showToast(
+          `🚚 ${toPromote.length} order${toPromote.length > 1 ? "s" : ""} moved to To Deliver for today`,
+          "success"
+        );
+      }
+
       setOrders(orderArr);
 
       const [productsSnap, itemsSnap] = await Promise.all([
@@ -230,10 +262,12 @@ export default function Dashboard() {
       movementsSnap.forEach((d: any) => {
         const m = d.data();
         if (!m.expiryDate) return;
+        // Skip movements for products that no longer exist
+        if (!productNames[m.productId]) return;
         const expiry = new Date(m.expiryDate);
         if (expiry <= in90Days && m.movementType === "In" && Number(m.quantity || 0) > 0) {
           batches.push({
-            id: d.id, productName: productNames[m.productId] || m.productName || "Unknown",
+            id: d.id, productName: productNames[m.productId],
             quantity: m.quantity, expiryDate: m.expiryDate,
             expired: expiry < now,
             critical: expiry < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -274,8 +308,14 @@ export default function Dashboard() {
       });
       setInvoiceStats({ outstanding, overdueCount });
 
+      const toIsoStr = (val: any): string => {
+        if (!val) return "";
+        if (typeof val === "string") return val;
+        if (typeof val === "object" && (val.seconds || val._seconds)) return new Date((val.seconds ?? val._seconds) * 1000).toISOString();
+        return String(val);
+      };
       const orderActivity = orderArr.filter(o => o.updatedAt || o.createdAt).map(o => ({
-        id: o.id, type: "order", text: `${o.name || "Order"} → ${o.status}`, sub: o.customerName || "", at: o.updatedAt || o.createdAt,
+        id: o.id, type: "order", text: `${o.name || "Order"} → ${o.status}`, sub: o.customerName || "", at: toIsoStr(o.updatedAt || o.createdAt),
       }));
       setRecentActivity([...orderActivity, ...invoiceActivity].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 10));
 
@@ -284,7 +324,7 @@ export default function Dashboard() {
       orderArr.forEach(o => {
         const n = o.customerName || "Unknown";
         if (!custMap[n]) custMap[n] = { total: 0, count: 0 };
-        custMap[n].total += Number(o.finalTotal || 0);
+        custMap[n].total += Number(o.finalTotal || o.total || o.grandTotal || 0);
         custMap[n].count += 1;
       });
       setTopCustomers(Object.entries(custMap).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total).slice(0, 5));
@@ -296,9 +336,39 @@ export default function Dashboard() {
         const iso = d.toISOString().slice(0, 10);
         const label = d.toLocaleDateString("en-US", { weekday: "short" })[0];
         const value = delivered.filter(o => (o.deliveryDate || o.updatedAt || "").slice(0, 10) === iso)
-          .reduce((s: number, o: any) => s + Number(o.finalTotal || 0), 0);
+          .reduce((s: number, o: any) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0);
         return { label, value };
       }));
+
+      // Dormant clients (30+ days without an order)
+      try {
+        const custSnap = await getDocs(collection(db, "customers"));
+        const custArr = custSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+        const DORMANT_DAYS = 30;
+        const nowMs2 = Date.now();
+        const lastOrderMapDB: Record<string, string> = {};
+        orderArr.forEach((o: any) => {
+          const name = (o.customerName || "").trim();
+          const date = o.createdAt || o.deliveryDate || "";
+          if (!name || !date) return;
+          if (!lastOrderMapDB[name] || date > lastOrderMapDB[name]) lastOrderMapDB[name] = date;
+        });
+        const dormant = custArr.filter(c => {
+          if (c.manualHold || c.active === false) return false;
+          const last = lastOrderMapDB[(c.name || "").trim()];
+          if (!last) {
+            const ts = c.createdAt?.seconds ? c.createdAt.seconds * 1000 : null;
+            if (!ts) return false;
+            return Math.floor((nowMs2 - ts) / 86400000) >= DORMANT_DAYS;
+          }
+          return Math.floor((nowMs2 - new Date(last).getTime()) / 86400000) >= DORMANT_DAYS;
+        });
+        setDormantStats({
+          total: dormant.length,
+          b2b: dormant.filter(c => c.customerType === "B2B").length,
+          b2c: dormant.filter(c => c.customerType === "B2C").length,
+        });
+      } catch { /* non-critical */ }
     } finally {
       setLoading(false);
     }
@@ -324,14 +394,15 @@ export default function Dashboard() {
 
   const activeOrders    = filteredOrders.filter(o => !["Delivered", "Cancelled", "Canceled"].includes(o.status));
   const deliveredOrders = filteredOrders.filter(o => o.status === "Delivered");
+  // Pipeline always shows ALL orders by status — date filter only applies to KPI cards
   const colOrders = {
-    preparing: filteredOrders.filter(o => ["Draft", "Confirmed", "Preparing"].includes(o.status)).sort((a, b) => (a.deliveryDate || "").localeCompare(b.deliveryDate || "")),
-    toDeliver: filteredOrders.filter(o => o.status === "To Deliver").sort((a, b) => (a.deliveryDate || "").localeCompare(b.deliveryDate || "")),
-    delivered: filteredOrders.filter(o => o.status === "Delivered"),
+    preparing: orders.filter(o => ["Draft", "Confirmed", "Preparing"].includes(o.status)).sort((a, b) => (a.deliveryDate || "").localeCompare(b.deliveryDate || "")),
+    toDeliver: orders.filter(o => o.status === "To Deliver").sort((a, b) => (a.deliveryDate || "").localeCompare(b.deliveryDate || "")),
+    delivered: orders.filter(o => o.status === "Delivered"),
   } as Record<string, any[]>;
 
   // Period-aware trends
-  const revTotal       = deliveredOrders.reduce((s, o) => s + Number(o.finalTotal || 0), 0);
+  const revTotal       = deliveredOrders.reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0);
   const yesterdayISO   = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().slice(0, 10);
   const lastMonthEnd   = new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().slice(0, 10);
@@ -343,12 +414,12 @@ export default function Dashboard() {
   const activeThisMonth = orders.filter(o => String(o.createdAt || "").slice(0, 10) >= firstOfMonth).length;
   const activeLastMonth = orders.filter(o => { const d = String(o.createdAt || "").slice(0, 10); return d >= lastMonthStart && d <= lastMonthEnd; }).length;
 
-  const revThisWeek  = orders.filter(o => o.status === "Delivered" && (o.updatedAt || o.createdAt || "") >= twISO).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
-  const revLastWeek  = orders.filter(o => { const d = o.updatedAt || o.createdAt || ""; return o.status === "Delivered" && d >= lwISO && d < twISO; }).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
-  const revToday     = orders.filter(o => o.status === "Delivered" && String(o.deliveryDate || o.updatedAt || "").slice(0, 10) === todayISO).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
-  const revYesterday = orders.filter(o => o.status === "Delivered" && String(o.deliveryDate || o.updatedAt || "").slice(0, 10) === yesterdayISO).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
-  const revThisMonth = orders.filter(o => o.status === "Delivered" && String(o.deliveryDate || o.updatedAt || "").slice(0, 10) >= firstOfMonth).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
-  const revLastMonth = orders.filter(o => { const d = String(o.deliveryDate || o.updatedAt || "").slice(0, 10); return o.status === "Delivered" && d >= lastMonthStart && d <= lastMonthEnd; }).reduce((s, o) => s + Number(o.finalTotal || 0), 0);
+  const revThisWeek  = orders.filter(o => o.status === "Delivered" && (o.updatedAt || o.createdAt || "") >= twISO).reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0);
+  const revLastWeek  = orders.filter(o => { const d = o.updatedAt || o.createdAt || ""; return o.status === "Delivered" && d >= lwISO && d < twISO; }).reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0);
+  const revToday     = orders.filter(o => o.status === "Delivered" && String(o.deliveryDate || o.updatedAt || "").slice(0, 10) === todayISO).reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0);
+  const revYesterday = orders.filter(o => o.status === "Delivered" && String(o.deliveryDate || o.updatedAt || "").slice(0, 10) === yesterdayISO).reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0);
+  const revThisMonth = orders.filter(o => o.status === "Delivered" && String(o.deliveryDate || o.updatedAt || "").slice(0, 10) >= firstOfMonth).reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0);
+  const revLastMonth = orders.filter(o => { const d = String(o.deliveryDate || o.updatedAt || "").slice(0, 10); return o.status === "Delivered" && d >= lastMonthStart && d <= lastMonthEnd; }).reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0);
 
   const orderTrend = dateRange === "today" ? trendLabel(activeToday, activeYesterday, "yesterday") :
                      dateRange === "week"  ? trendLabel(activeThisWeek, activeLastWeek, "last week") :
@@ -383,7 +454,7 @@ export default function Dashboard() {
     try {
       await updateDoc(doc(db, "orders", dragOrderId), { status: dropStatus, updatedAt: new Date().toISOString() });
       setOrders(prev => prev.map(o => o.id === dragOrderId ? { ...o, status: dropStatus } : o));
-    } catch { alert("Failed to update status"); }
+    } catch { showToast("Failed to update status", "error"); }
     finally { setDragOrderId(null); setDragOverCol(null); }
   };
 
@@ -410,44 +481,16 @@ export default function Dashboard() {
     </div>
   );
 
-  const isCompact = density === "compact";
-
   const OrderCard = ({ order }: { order: any }) => {
     const isOverdue  = order.deliveryDate && order.deliveryDate <= todayISO && !["Delivered", "Cancelled", "Canceled"].includes(order.status);
     const isDragging = dragOrderId === order.id;
-    const statusDot: Record<string, string> = {
-      Draft: "bg-gray-400", Confirmed: "bg-blue-400", Preparing: "bg-yellow-400",
-      "To Deliver": "bg-orange-400", Delivered: "bg-green-500", Cancelled: "bg-red-400",
-    };
-
-    if (isCompact) {
-      return (
-        <div draggable
-          onDragStart={() => setDragOrderId(order.id)}
-          onDragEnd={() => { setDragOrderId(null); setDragOverCol(null); }}
-          onClick={() => router.push(`/admin/orders/${order.id}`)}
-          className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 cursor-grab active:cursor-grabbing hover:shadow-sm transition-all select-none text-xs ${isDragging ? "opacity-40" : ""} ${
-            order.status === "Draft"      ? "bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600" :
-            order.status === "Preparing"  ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200" :
-            order.status === "To Deliver" ? "bg-orange-50 dark:bg-orange-900/20 border-orange-200" :
-            order.status === "Delivered"  ? "bg-green-50 dark:bg-green-900/20 border-green-200" :
-            "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-          }`}>
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDot[order.status] || "bg-gray-400"}`} />
-          <span className="font-medium text-gray-900 dark:text-white truncate flex-1">{order.customerName || order.name}</span>
-          {weighingOrderIds.has(order.id) && <span className="text-red-500 flex-shrink-0">⚖️</span>}
-          {isOverdue && <span className="text-red-400 flex-shrink-0">⚠️</span>}
-          <span className="font-semibold text-gray-700 dark:text-gray-300 flex-shrink-0">${formatPrice(order.finalTotal || 0)}</span>
-        </div>
-      );
-    }
 
     return (
       <div draggable
-        onDragStart={() => setDragOrderId(order.id)}
+        onDragStart={e => { e.dataTransfer.effectAllowed = "move"; setDragOrderId(order.id); }}
         onDragEnd={() => { setDragOrderId(null); setDragOverCol(null); }}
         onClick={() => router.push(`/admin/orders/${order.id}`)}
-        className={`rounded-lg border px-4 py-3 cursor-grab active:cursor-grabbing hover:shadow-sm transition-all select-none ${isDragging ? "opacity-40" : ""} ${
+        className={`rounded-lg border px-4 py-3 cursor-grab active:cursor-grabbing hover:shadow-sm select-none ${isDragging ? "opacity-40" : ""} ${
           order.status === "Draft"      ? "bg-gray-50 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600" :
           order.status === "Preparing"  ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200" :
           order.status === "To Deliver" ? "bg-orange-50 dark:bg-orange-900/20 border-orange-200" :
@@ -478,7 +521,7 @@ export default function Dashboard() {
             </div>
           </div>
           <p className="text-sm font-bold text-gray-900 dark:text-white flex-shrink-0 ml-2">
-            ${formatPrice(order.finalTotal || 0)}
+            ${formatPrice(order.finalTotal || order.total || order.grandTotal || 0)}
           </p>
         </div>
         {order.deliveryDate && (
@@ -515,14 +558,7 @@ export default function Dashboard() {
           </button>
 
           <div className="flex items-center gap-2">
-            {/* Density toggle */}
-            <button onClick={() => setDensity(d => d === "comfortable" ? "compact" : "comfortable")}
-              title={density === "comfortable" ? "Switch to compact" : "Switch to comfortable"}
-              className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-xs font-medium">
-              {density === "comfortable" ? "⊞ Compact" : "⊟ Comfy"}
-            </button>
-
-<button onClick={() => router.push("/admin/orders/new")}
+            <button onClick={() => router.push("/admin/orders/new")}
               className="px-4 py-1.5 text-sm text-white rounded-xl font-bold flex-shrink-0"
               style={{ backgroundColor: "#1B2A5E" }}>
               + New Order
@@ -592,6 +628,7 @@ export default function Dashboard() {
               sub={`${deliveredOrders.length} delivered orders`}
               color="text-green-700 dark:text-green-400" bg="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-900"
               trend={revTrend}
+              href="/admin/orders"
               chart={<Sparkline days={revDays} />} />
             <KPICard
               label="Outstanding Invoices"
@@ -631,6 +668,38 @@ export default function Dashboard() {
                   </p>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Dormant Clients Alert */}
+        {dormantStats && dormantStats.total > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-orange-200 dark:border-orange-900 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="font-bold text-gray-900 dark:text-white text-sm">💤 Dormant Clients</h2>
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400">
+                  {dormantStats.total} client{dormantStats.total !== 1 ? "s" : ""}
+                </span>
+                {dormantStats.b2b > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                    {dormantStats.b2b} B2B
+                  </span>
+                )}
+                {dormantStats.b2c > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400">
+                    {dormantStats.b2c} B2C
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <p className="text-xs text-gray-400 dark:text-gray-500">No orders in 30+ days</p>
+                <button
+                  onClick={() => router.push("/admin/customers")}
+                  className="text-xs px-3 py-1 rounded-lg border border-orange-200 dark:border-orange-800 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors font-medium">
+                  View & Send Promo →
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -724,7 +793,7 @@ export default function Dashboard() {
                         }
                         setShowLowStockPOModal(false);
                         router.push("/admin/purchase-orders");
-                      } catch { alert("Failed to create POs"); }
+                      } catch { showToast("Failed to create POs", "error"); }
                       finally { setCreatingPOs(false); }
                     }}
                     disabled={creatingPOs || lowStockModalItems.filter((i: any) => i.checked).length === 0}
@@ -774,7 +843,9 @@ export default function Dashboard() {
               {lowStockProducts.slice(0, 12).map(p => {
                 const fillPct = p.currentStock <= 0 ? 0 : Math.min(100, Math.round((p.currentStock / p.minStock) * 100));
                 return (
-                  <div key={p.id} className={`relative rounded-xl overflow-hidden border text-xs flex flex-col gap-1 ${
+                  <div key={p.id}
+                    onClick={() => router.push(`/stock?receiveProductId=${p.id}`)}
+                    className={`relative rounded-xl overflow-hidden border text-xs flex flex-col gap-1 cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${
                     p.tier === 0 ? "bg-red-50 dark:bg-red-900/20 border-red-300" :
                     p.tier === 1 ? "bg-red-50 dark:bg-red-900/10 border-red-200" :
                     "bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200"
@@ -818,32 +889,35 @@ export default function Dashboard() {
             <div className="w-8 h-8 border-2 border-gray-900 dark:border-white border-t-transparent dark:border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <div className={`grid grid-cols-3 ${isCompact ? "gap-2" : "gap-4"}`}>
+          <div className="grid grid-cols-3 gap-4">
             {PIPELINE_COLS.map(col => {
               const list = colOrders[col.key] || [];
               const isDragTarget = dragOverCol === col.key && dragOrderId !== null;
               return (
                 <div key={col.key}
-                  onDragOver={e => { e.preventDefault(); setDragOverCol(col.key); }}
+                  onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverCol(col.key); }}
                   onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null); }}
-                  onDrop={() => handleDrop(col.key, col.dropStatus)}
-                  className={`bg-white dark:bg-gray-800 rounded-2xl border transition-all min-h-[80px] ${isCompact ? "p-2 space-y-1" : "p-4 space-y-3"} ${
-                    isDragTarget ? "border-blue-400 ring-2 ring-blue-200 bg-blue-50/30 dark:bg-blue-900/10" : "border-gray-200 dark:border-gray-700"
-                  }`}>
+                  onDrop={e => { e.preventDefault(); handleDrop(col.key, col.dropStatus); }}
+                  className={`rounded-2xl border p-4 space-y-3 ${
+                    isDragTarget
+                      ? "border-blue-400 ring-2 ring-blue-300 dark:ring-blue-700 bg-blue-50 dark:bg-blue-900/20"
+                      : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                  }`}
+                  style={{ minHeight: 80 }}>
                   <div className="flex items-center justify-between">
                     <h2 className="font-bold text-gray-900 dark:text-white text-sm">{col.label}</h2>
                     <div className="flex items-center gap-1.5">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${col.badge}`}>{list.length}</span>
                       {list.length > 0 && (
                         <span className="text-xs text-gray-400 dark:text-gray-500">
-                          · ${formatPrice(list.reduce((s, o) => s + Number(o.finalTotal || 0), 0))}
+                          · ${formatPrice(list.reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0))}
                         </span>
                       )}
                     </div>
                   </div>
                   {isDragTarget && (
-                    <div className="border-2 border-dashed border-blue-300 rounded-lg py-4 text-center text-xs text-blue-400 font-medium">
-                      Drop → {col.dropStatus}
+                    <div className="border-2 border-dashed border-blue-300 dark:border-blue-600 rounded-lg py-5 text-center text-sm font-semibold text-blue-500 dark:text-blue-400 pointer-events-none">
+                      ↓ Drop here
                     </div>
                   )}
                   {list.length === 0 && !isDragTarget && (

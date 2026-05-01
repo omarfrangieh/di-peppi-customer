@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp, query, where, orderBy, increment } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { formatPrice } from "@/lib/formatters";
+import { showToast } from "@/lib/toast";
 import { useRouter } from "next/navigation";
 import SearchInput from "@/components/SearchInput";
 
@@ -44,12 +45,31 @@ export default function AdminCustomersPage() {
   const [docPreview, setDocPreview] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [newDocFile, setNewDocFile] = useState<File | null>(null);
+  const [showWalletFor, setShowWalletFor] = useState<string | null>(null);
+  const [walletTxMap, setWalletTxMap] = useState<Record<string, any[]>>({});
+  const [walletTxLoading, setWalletTxLoading] = useState(false);
+  const [walletAdjAmount, setWalletAdjAmount] = useState("");
+  const [walletAdjDesc, setWalletAdjDesc] = useState("");
+  const [walletAdjType, setWalletAdjType] = useState<"credit" | "debit">("credit");
+  const [savingWallet, setSavingWallet] = useState(false);
   const [viewMode, setViewMode] = useState<"cards" | "list">(() => {
     try { return (localStorage.getItem("dp-customers-view") as "cards" | "list") || "cards"; } catch { return "cards"; }
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const newDocInputRef = useRef<HTMLInputElement>(null);
+
+  // ── DORMANT CLIENTS ──
+  const [orders, setOrders] = useState<any[]>([]);
+  const [showMsgDrawer, setShowMsgDrawer] = useState(false);
+  const [msgTargetIds, setMsgTargetIds] = useState<Set<string>>(new Set());
+  const [msgText, setMsgText] = useState("");
+  const [msgChannels, setMsgChannels] = useState<string[]>(["whatsapp"]);
+  const [msgPromoFile, setMsgPromoFile] = useState<File | null>(null);
+  const [msgPromoUrl, setMsgPromoUrl] = useState<string | null>(null);
+  const [sendingMsg, setSendingMsg] = useState(false);
+  const [msgSent, setMsgSent] = useState(false);
+  const msgPromoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { void load(); }, []);
 
@@ -74,6 +94,19 @@ export default function AdminCustomersPage() {
     } catch (err) {
       console.warn("Failed to load products:", err);
     }
+    // Fetch orders to compute lastOrderDate per customer
+    try {
+      const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
+      let orderData: any[] = [];
+      try {
+        const res = await fetch(isLocal
+          ? "http://localhost:5001/di-peppi/us-central1/getOrders"
+          : "https://us-central1-di-peppi.cloudfunctions.net/getOrders");
+        if (res.ok) orderData = await res.json();
+      } catch { /* emulator not running */ }
+      setOrders(Array.isArray(orderData) ? orderData : []);
+    } catch { /* skip — dormancy will show "never ordered" */ }
+
     setLoading(false);
   };
 
@@ -91,6 +124,80 @@ export default function AdminCustomersPage() {
   };
 
   const cancelEdit = () => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(false); setPendingHold(false); };
+
+  const openWallet = async (customerId: string) => {
+    setShowWalletFor(customerId);
+    setWalletAdjAmount("");
+    setWalletAdjDesc("");
+    setWalletAdjType("credit");
+    if (walletTxMap[customerId]) return; // already loaded
+    setWalletTxLoading(true);
+    try {
+      const txQuery = query(
+        collection(db, "walletTransactions"),
+        where("customerId", "==", customerId)
+      );
+      const snap = await getDocs(txQuery);
+      const sorted = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a: any, b: any) => {
+          const at = a.createdAt?.toDate?.()?.getTime() ?? 0;
+          const bt = b.createdAt?.toDate?.()?.getTime() ?? 0;
+          return bt - at;
+        });
+      setWalletTxMap(prev => ({
+        ...prev,
+        [customerId]: sorted,
+      }));
+    } catch (err) {
+      console.error("Failed to load wallet transactions", err);
+      setWalletTxMap(prev => ({ ...prev, [customerId]: [] }));
+    } finally {
+      setWalletTxLoading(false);
+    }
+  };
+
+  const handleWalletAdjust = async (customer: any) => {
+    const amount = parseFloat(walletAdjAmount);
+    if (!amount || amount <= 0 || !walletAdjDesc.trim()) return;
+    setSavingWallet(true);
+    try {
+      const delta = walletAdjType === "credit" ? amount : -amount;
+      await updateDoc(doc(db, "customers", customer.id), {
+        walletBalance: increment(delta),
+      });
+      const txRef = await addDoc(collection(db, "walletTransactions"), {
+        customerId: customer.id,
+        customerName: customer.name,
+        amount,
+        type: walletAdjType,
+        description: walletAdjDesc.trim(),
+        createdAt: serverTimestamp(),
+      });
+      // Optimistically update local state
+      const newTx = {
+        id: txRef.id,
+        customerId: customer.id,
+        customerName: customer.name,
+        amount,
+        type: walletAdjType,
+        description: walletAdjDesc.trim(),
+        createdAt: { toDate: () => new Date() },
+      };
+      setWalletTxMap(prev => ({
+        ...prev,
+        [customer.id]: [newTx, ...(prev[customer.id] || [])],
+      }));
+      const newBalance = Math.round(((customer.walletBalance ?? 0) + delta) * 100) / 100;
+      setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, walletBalance: newBalance } : c));
+      setWalletAdjAmount("");
+      setWalletAdjDesc("");
+    } catch (err: any) {
+      showToast("Failed to adjust wallet: " + err.message, "error");
+    } finally {
+      setSavingWallet(false);
+    }
+  };
 
   const closeAddDrawer = () => {
     setShowAdd(false);
@@ -173,7 +280,7 @@ export default function AdminCustomersPage() {
       setEditData((p: any) => ({ ...p, logoUrl: url }));
       setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, logoUrl: url } : c));
     } catch (err: any) {
-      alert("Logo upload failed: " + err.message);
+      showToast("Logo upload failed: " + err.message, "error");
     } finally {
       setUploadingLogo(false);
     }
@@ -196,9 +303,51 @@ export default function AdminCustomersPage() {
       setEditData((p: any) => ({ ...p, documentUrl: url, documentPath: storagePath, documentType: file.type }));
       setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, documentUrl: url } : c));
     } catch (err: any) {
-      alert("Upload failed: " + err.message);
+      showToast("Upload failed: " + err.message, "error");
     } finally {
       setUploadingDoc(false);
+    }
+  };
+
+  const handlePromoUpload = async (file: File): Promise<string> => {
+    const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    const storagePath = `campaigns/promos/${Date.now()}.${ext}`;
+    const storageRef = ref(storage, storagePath);
+    await uploadBytes(storageRef, file, { contentType: file.type });
+    return getDownloadURL(storageRef);
+  };
+
+  const sendCampaign = async () => {
+    if (!msgText.trim() && !msgPromoFile) {
+      showToast("Please add a message or promo image", "error"); return;
+    }
+    if (msgChannels.length === 0) {
+      showToast("Please select at least one channel", "error"); return;
+    }
+    setSendingMsg(true);
+    try {
+      let promoImageUrl: string | null = null;
+      if (msgPromoFile) promoImageUrl = await handlePromoUpload(msgPromoFile);
+      const recipients = customers
+        .filter(c => msgTargetIds.has(c.id))
+        .map(c => ({ id: c.id, name: c.name, phone: c.phoneNumber || c.phone || "", type: c.customerType }));
+      await addDoc(collection(db, "campaigns"), {
+        type: "dormant_reactivation",
+        message: msgText.trim(),
+        promoImageUrl,
+        channels: msgChannels,
+        recipients,
+        recipientCount: recipients.length,
+        status: "pending",
+        createdAt: serverTimestamp(),
+        createdBy: "admin",
+      });
+      setMsgSent(true);
+      showToast(`Campaign queued for ${recipients.length} client${recipients.length !== 1 ? "s" : ""}`, "success");
+    } catch (err: any) {
+      showToast("Failed to send campaign: " + err.message, "error");
+    } finally {
+      setSendingMsg(false);
     }
   };
 
@@ -211,6 +360,34 @@ export default function AdminCustomersPage() {
 
   const activeFiltered = filtered.filter(c => !c.manualHold);
   const holdFiltered = filtered.filter(c => c.manualHold);
+
+  // ── Dormancy (30+ days without an order) ──
+  const DORMANT_DAYS = 30;
+  const nowMs = Date.now();
+  const lastOrderMap: Record<string, string> = {};
+  orders.forEach(o => {
+    const name = (o.customerName || "").trim();
+    const date = o.createdAt || o.deliveryDate || "";
+    if (!name || !date) return;
+    if (!lastOrderMap[name] || date > lastOrderMap[name]) lastOrderMap[name] = date;
+  });
+  const getDormantDays = (c: any): number => {
+    const last = lastOrderMap[(c.name || "").trim()];
+    if (!last) {
+      // Never ordered — dormant since creation if >30 days ago
+      const created = c.createdAt?.toDate?.()?.getTime() ?? c.createdAt?.seconds ? c.createdAt.seconds * 1000 : null;
+      if (!created) return 9999;
+      return Math.floor((nowMs - created) / 86400000);
+    }
+    return Math.floor((nowMs - new Date(last).getTime()) / 86400000);
+  };
+  const isDormant = (c: any) => !c.manualHold && getDormantDays(c) >= DORMANT_DAYS;
+  // All dormant customers (not on hold), across all filter types
+  const allDormant = customers.filter(isDormant);
+  const dormantB2B = allDormant.filter(c => c.customerType === "B2B");
+  const dormantB2C = allDormant.filter(c => c.customerType === "B2C");
+  // Dormant within the current search/type filter
+  const dormantFiltered = filtered.filter(c => isDormant(c));
 
   const filteredProducts = products.filter(p => {
     const sellingPrice = Number(p.b2bPrice || p.b2cPrice || 0);
@@ -324,6 +501,13 @@ export default function AdminCustomersPage() {
               ⚠️ On Hold <span className="bg-red-200 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded-full">{holdFiltered.length}</span>
             </button>
           )}
+          {allDormant.length > 0 && (
+            <button
+              onClick={() => document.getElementById("dormant-section")?.scrollIntoView({ behavior: "smooth" })}
+              className="px-4 py-2 text-sm border border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg font-medium flex items-center gap-1.5">
+              💤 Dormant <span className="bg-orange-200 text-orange-700 text-xs font-bold px-1.5 py-0.5 rounded-full">{allDormant.length}</span>
+            </button>
+          )}
           <SearchInput
             placeholder="Search customers..."
             value={search}
@@ -332,6 +516,46 @@ export default function AdminCustomersPage() {
           />
         </div>
       </div>
+
+      {/* ── DORMANT ALERT BANNER ── */}
+      {allDormant.length > 0 && (
+        <div className="mx-6 mt-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <span className="text-xl">💤</span>
+            <div>
+              <p className="text-sm font-semibold text-orange-800 dark:text-orange-300">
+                {allDormant.length} dormant client{allDormant.length !== 1 ? "s" : ""} — no orders in 30+ days
+              </p>
+              <p className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
+                {dormantB2B.length > 0 && <span>{dormantB2B.length} B2B</span>}
+                {dormantB2B.length > 0 && dormantB2C.length > 0 && <span> · </span>}
+                {dormantB2C.length > 0 && <span>{dormantB2C.length} B2C</span>}
+                {" — Consider reaching out with a promotion to re-engage them."}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => document.getElementById("dormant-section")?.scrollIntoView({ behavior: "smooth" })}
+              className="px-3 py-1.5 text-xs font-medium border border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/40 transition-colors">
+              View Dormant ↓
+            </button>
+            <button
+              onClick={() => {
+                setMsgTargetIds(new Set(allDormant.map((c: any) => c.id)));
+                setMsgText("");
+                setMsgPromoFile(null);
+                setMsgPromoUrl(null);
+                setMsgSent(false);
+                setShowMsgDrawer(true);
+              }}
+              className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors"
+              style={{ backgroundColor: "#1B2A5E" }}>
+              📣 Send Campaign
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── NEW CUSTOMER DRAWER ── */}
       {showAdd && (
@@ -629,7 +853,7 @@ export default function AdminCustomersPage() {
         )}
 
         {/* ── CARDS VIEW ── */}
-        {viewMode === "cards" && [...activeFiltered, ...(holdFiltered.length > 0 ? [{ __divider: true } as any] : []), ...holdFiltered].map((customer, idx) => {
+        {viewMode === "cards" && [...activeFiltered.filter(c => !isDormant(c)), ...(holdFiltered.length > 0 ? [{ __divider: true } as any] : []), ...holdFiltered].map((customer, idx) => {
           if (customer.__divider) return (
             <div key="hold-divider" id="hold-section" className="flex items-center gap-3 pt-4">
               <div className="flex-1 h-px bg-red-100" />
@@ -876,6 +1100,7 @@ export default function AdminCustomersPage() {
                           <p className="font-medium text-gray-900 dark:text-white">{customer.name || "—"}</p>
                           <TypeBadge type={customer.customerType} />
                           {isHold && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">⚠️ On Hold</span>}
+                          {isDormant(customer) && !isHold && (() => { const d = getDormantDays(customer); return <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 font-medium">💤 Dormant {d >= 9000 ? "(never ordered)" : `${d}d`}</span>; })()}
                           {customer.active === false && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">Inactive</span>}
                         </div>
                         {customer.companyName && <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mt-0.5">{customer.companyName}</p>}
@@ -886,7 +1111,7 @@ export default function AdminCustomersPage() {
                       <div className="hidden md:flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 flex-wrap">
                         {(customer.phoneNumber || customer.phone) && <a href={"https://wa.me/" + String(customer.phoneNumber || customer.phone).replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">📞 {customer.phoneNumber || customer.phone}</a>}
                         {customer.deliveryFee > 0 && <span className="text-xs text-gray-500 dark:text-gray-400">🚚 Delivery: ${customer.deliveryFee}</span>}
-                        {customer.walletBalance > 0 && <span className="text-blue-600 font-medium">💰 Wallet: ${formatPrice(customer.walletBalance)}</span>}
+                        {customer.customerType === "B2C" && <span className={`text-xs font-medium ${(customer.walletBalance ?? 0) > 0 ? "" : "text-gray-400 dark:text-gray-500"}`} style={(customer.walletBalance ?? 0) > 0 ? { color: "#1B2A5E" } : {}}>💳 ${formatPrice(customer.walletBalance ?? 0)}</span>}
                         {customer.clientMargin > 0 && <span>📊 {customer.clientMargin}% margin</span>}
                         {customer.clientDiscount > 0 && <span>🏷️ {customer.clientDiscount}% disc</span>}
                         {customer.mapsLink && <a href={customer.mapsLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs">📍 Maps</a>}
@@ -901,6 +1126,27 @@ export default function AdminCustomersPage() {
                       <button onClick={() => { setShowAdd(false); startEdit(customer); }}
                         className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300">
                         Edit
+                      </button>
+                      {customer.customerType === "B2C" && (
+                        <button
+                          onClick={() => showWalletFor === customer.id ? setShowWalletFor(null) : openWallet(customer.id)}
+                          className="px-3 py-1.5 text-xs border rounded-lg transition-opacity font-medium text-white"
+                          style={{ backgroundColor: showWalletFor === customer.id ? "#B5535A" : "#1B2A5E", borderColor: showWalletFor === customer.id ? "#B5535A" : "#1B2A5E" }}>
+                          💳 Wallet
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setMsgTargetIds(new Set([customer.id]));
+                          setMsgText("");
+                          setMsgPromoFile(null);
+                          setMsgPromoUrl(null);
+                          setMsgSent(false);
+                          setShowMsgDrawer(true);
+                        }}
+                        title="Send promotion or message"
+                        className="px-3 py-1.5 text-xs border border-orange-200 dark:border-orange-700 text-orange-600 dark:text-orange-400 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors">
+                        📣
                       </button>
                     </div>
                   </div>
@@ -928,6 +1174,92 @@ export default function AdminCustomersPage() {
                 </div>
               )}
               </div>
+
+              {/* Wallet Panel - B2C only */}
+              {customer.customerType === "B2C" && showWalletFor === customer.id && (
+                <div className="border border-t-0 border-gray-200 dark:border-gray-700 rounded-b-xl bg-gray-50 dark:bg-gray-900/30 px-5 py-4">
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Wallet Balance</p>
+                      <span className="text-xl font-bold" style={{ color: "#1B2A5E" }}>${formatPrice(customer.walletBalance ?? 0)}</span>
+                    </div>
+                    <button onClick={() => setShowWalletFor(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none">✕</button>
+                  </div>
+
+                  {/* Manual adjustment form */}
+                  <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 mb-4">
+                    <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Manual Adjustment</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600">
+                        <button onClick={() => setWalletAdjType("credit")}
+                          className={`px-3 py-1.5 text-xs font-semibold transition-colors ${walletAdjType === "credit" ? "text-white" : "bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600"}`}
+                          style={walletAdjType === "credit" ? { backgroundColor: "#1B2A5E" } : {}}>
+                          + Credit
+                        </button>
+                        <button onClick={() => setWalletAdjType("debit")}
+                          className={`px-3 py-1.5 text-xs font-semibold transition-colors border-l border-gray-200 dark:border-gray-600 ${walletAdjType === "debit" ? "bg-red-600 text-white" : "bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600"}`}>
+                          − Debit
+                        </button>
+                      </div>
+                      <input
+                        type="number"
+                        placeholder="Amount $"
+                        value={walletAdjAmount}
+                        onChange={e => setWalletAdjAmount(e.target.value)}
+                        className="w-28 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-gray-400 bg-white dark:bg-gray-700 dark:text-white"
+                        min="0"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Description"
+                        value={walletAdjDesc}
+                        onChange={e => setWalletAdjDesc(e.target.value)}
+                        className="flex-1 min-w-[140px] border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-gray-400 bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400"
+                      />
+                      <button
+                        onClick={() => handleWalletAdjust(customer)}
+                        disabled={savingWallet || !walletAdjAmount || !walletAdjDesc.trim()}
+                        className="px-3 py-1.5 text-xs font-semibold text-white rounded-lg disabled:opacity-40 transition-opacity"
+                        style={{ backgroundColor: "#1B2A5E" }}>
+                        {savingWallet ? "Saving..." : "Apply"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Transaction history */}
+                  <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Transaction History</p>
+                  {walletTxLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                    </div>
+                  ) : (walletTxMap[customer.id] ?? []).length === 0 ? (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4 italic">No transactions yet</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                      {(walletTxMap[customer.id] ?? []).map((tx: any) => (
+                        <div key={tx.id} className="flex items-center justify-between rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className={`text-xs font-bold flex-shrink-0 ${tx.type === "credit" ? "text-green-600" : "text-red-500"}`}>
+                              {tx.type === "credit" ? "▲" : "▼"}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{tx.description}</p>
+                              <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                                {tx.createdAt?.toDate?.()?.toLocaleDateString() ?? "—"}
+                                {tx.invoiceNumber ? ` · ${tx.invoiceNumber}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <span className={`text-xs font-semibold flex-shrink-0 ml-3 ${tx.type === "credit" ? "text-green-600" : "text-red-500"}`}>
+                            {tx.type === "credit" ? "+" : "−"}${formatPrice(tx.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Special Prices Panel - Outside Card */}
               {specialCount > 0 && showPricesFor === customer.id && (
@@ -967,7 +1299,262 @@ export default function AdminCustomersPage() {
           );
         })}
 
+        {/* ── DORMANT SECTION ── */}
+        {viewMode === "cards" && dormantFiltered.length > 0 && (
+          <>
+            <div id="dormant-section" className="flex items-center gap-3 pt-4">
+              <div className="flex-1 h-px bg-orange-100 dark:bg-orange-900/30" />
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-orange-500 dark:text-orange-400 uppercase tracking-widest">
+                  💤 Dormant — {dormantFiltered.length} {dormantFiltered.length === 1 ? "client" : "clients"} (30+ days)
+                </span>
+                <button
+                  onClick={() => {
+                    setMsgTargetIds(new Set(dormantFiltered.map((c: any) => c.id)));
+                    setMsgText("");
+                    setMsgPromoFile(null);
+                    setMsgPromoUrl(null);
+                    setMsgSent(false);
+                    setShowMsgDrawer(true);
+                  }}
+                  className="text-xs px-2.5 py-1 rounded-lg border border-orange-200 dark:border-orange-700 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 font-medium transition-colors">
+                  📣 Send to All
+                </button>
+              </div>
+              <div className="flex-1 h-px bg-orange-100 dark:bg-orange-900/30" />
+            </div>
+            {dormantFiltered.map((customer: any) => {
+              const specialCount = Object.keys(customer.specialPrices || {}).length;
+              const dormDays = getDormantDays(customer);
+              return (
+                <div key={customer.id} className="opacity-80 hover:opacity-100 transition-opacity">
+                  <div className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden border-l-4 border-orange-300 dark:border-orange-600 border border-gray-200 dark:border-gray-700">
+                    <div className="px-5 py-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 flex-1">
+                          {customer.logoUrl ? (
+                            <img src={customer.logoUrl} alt={customer.name}
+                              className="w-20 h-20 rounded-xl object-contain border border-gray-200 dark:border-gray-700 flex-shrink-0 bg-white dark:bg-gray-700 p-1" />
+                          ) : (
+                            <div className="w-20 h-20 rounded-xl bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-700 flex items-center justify-center flex-shrink-0">
+                              <span className="text-2xl font-bold text-gray-400">{(customer.name || "?").charAt(0).toUpperCase()}</span>
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium text-gray-900 dark:text-white">{customer.name || "—"}</p>
+                              <TypeBadge type={customer.customerType} />
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">
+                                💤 {dormDays >= 9000 ? "Never ordered" : `${dormDays}d dormant`}
+                              </span>
+                            </div>
+                            {customer.companyName && <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mt-0.5">{customer.companyName}</p>}
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {[customer.building, customer.street, customer.city, customer.country].filter(Boolean).join(", ") || "No address"}
+                            </p>
+                            <div className="hidden md:flex items-center gap-4 text-sm text-gray-500 flex-wrap mt-1">
+                              {(customer.phoneNumber || customer.phone) && <a href={"https://wa.me/" + String(customer.phoneNumber || customer.phone).replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline text-xs">📞 {customer.phoneNumber || customer.phone}</a>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                          <button
+                            onClick={() => router.push(`/admin/orders/new?customer=${customer.id}`)}
+                            className="px-3 py-1.5 text-xs font-medium border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            + Order
+                          </button>
+                          <button onClick={() => { setShowAdd(false); startEdit(customer); }}
+                            className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300">
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => {
+                              setMsgTargetIds(new Set([customer.id]));
+                              setMsgText("");
+                              setMsgPromoFile(null);
+                              setMsgPromoUrl(null);
+                              setMsgSent(false);
+                              setShowMsgDrawer(true);
+                            }}
+                            className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors"
+                            style={{ backgroundColor: "#1B2A5E" }}>
+                            📣 Send Promo
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+
       </div>
+
+      {/* ── MESSAGING / CAMPAIGN DRAWER ── */}
+      {showMsgDrawer && (
+        <>
+          <div className="fixed inset-0 bg-black/40 dark:bg-black/60 z-40" onClick={() => setShowMsgDrawer(false)} />
+          <div className="fixed top-0 right-0 h-full w-[460px] max-w-full bg-white dark:bg-gray-800 shadow-2xl z-50 flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+              <div>
+                <p className="text-base font-semibold text-gray-900 dark:text-white">📣 Send Campaign</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  {msgTargetIds.size} recipient{msgTargetIds.size !== 1 ? "s" : ""} selected
+                </p>
+              </div>
+              <button onClick={() => setShowMsgDrawer(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
+            </div>
+
+            {msgSent ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6">
+                <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-3xl">✅</div>
+                <p className="text-base font-semibold text-gray-900 dark:text-white text-center">Campaign queued!</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                  Your message has been saved and will be sent to {msgTargetIds.size} client{msgTargetIds.size !== 1 ? "s" : ""} via the selected channels.
+                </p>
+                <button onClick={() => setShowMsgDrawer(false)}
+                  className="mt-2 px-5 py-2 text-sm font-medium text-white rounded-lg"
+                  style={{ backgroundColor: "#1B2A5E" }}>
+                  Done
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Scrollable body */}
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+                  {/* Recipients */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Recipients</p>
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
+                      {customers.filter(c => isDormant(c)).map(c => (
+                        <label key={c.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-0">
+                          <input type="checkbox"
+                            checked={msgTargetIds.has(c.id)}
+                            onChange={e => setMsgTargetIds(prev => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(c.id); else next.delete(c.id);
+                              return next;
+                            })}
+                            className="w-4 h-4 rounded border-gray-300 accent-orange-500 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
+                            <p className="text-xs text-gray-400 truncate">{c.customerType} · {getDormantDays(c) >= 9000 ? "Never ordered" : `${getDormantDays(c)}d dormant`}</p>
+                          </div>
+                          {c.phoneNumber && <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{c.phoneNumber}</span>}
+                        </label>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-3 mt-2">
+                      <button onClick={() => setMsgTargetIds(new Set(customers.filter(c => isDormant(c)).map((c: any) => c.id)))}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline">Select all dormant</button>
+                      <span className="text-gray-200 dark:text-gray-600">|</span>
+                      <button onClick={() => setMsgTargetIds(new Set())}
+                        className="text-xs text-gray-400 hover:underline">Clear</button>
+                    </div>
+                  </div>
+
+                  {/* Message */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Message</p>
+                    <textarea
+                      value={msgText}
+                      onChange={e => setMsgText(e.target.value)}
+                      placeholder="Write your message here… e.g. We miss you! Check out our new arrivals 🎉"
+                      rows={4}
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400 resize-none" />
+                    <p className="text-xs text-gray-400 mt-1 text-right">{msgText.length} chars</p>
+                  </div>
+
+                  {/* Promo Image */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Promotional Image (JPEG)</p>
+                    <input ref={msgPromoInputRef} type="file" accept="image/jpeg,image/jpg,image/png"
+                      className="hidden"
+                      onChange={e => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        setMsgPromoFile(f);
+                        setMsgPromoUrl(URL.createObjectURL(f));
+                      }} />
+                    {msgPromoUrl ? (
+                      <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+                        <img src={msgPromoUrl} alt="Promo preview" className="w-full object-cover max-h-48" />
+                        <button
+                          onClick={() => { setMsgPromoFile(null); setMsgPromoUrl(null); }}
+                          className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center hover:bg-black/80">
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => msgPromoInputRef.current?.click()}
+                        className="w-full border-2 border-dashed border-gray-200 dark:border-gray-600 rounded-xl py-8 flex flex-col items-center gap-2 hover:border-orange-300 dark:hover:border-orange-600 hover:bg-orange-50/30 dark:hover:bg-orange-900/10 transition-colors">
+                        <span className="text-2xl">🖼️</span>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">Click to upload promo image</span>
+                        <span className="text-xs text-gray-400">JPEG, PNG recommended</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Channels */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Send Via</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { key: "whatsapp", label: "📱 WhatsApp", color: "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400" },
+                        { key: "sms",      label: "💬 SMS",      color: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-400" },
+                        { key: "email",    label: "📧 Email",    color: "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-900/20 dark:text-purple-400" },
+                      ].map(ch => {
+                        const active = msgChannels.includes(ch.key);
+                        return (
+                          <button key={ch.key}
+                            onClick={() => setMsgChannels(prev => active ? prev.filter(c => c !== ch.key) : [...prev, ch.key])}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all ${active ? ch.color : "border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800"}`}>
+                            {active && <span className="text-xs">✓</span>} {ch.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  {(msgText.trim() || msgPromoUrl) && msgTargetIds.size > 0 && (
+                    <div className="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3">
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Summary</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-300">
+                        Sending to <span className="font-semibold">{msgTargetIds.size} client{msgTargetIds.size !== 1 ? "s" : ""}</span> via{" "}
+                        <span className="font-semibold">{msgChannels.join(", ") || "—"}</span>
+                        {msgPromoFile && <span> with promo image</span>}.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 dark:border-gray-700 flex-shrink-0">
+                  <button onClick={() => setShowMsgDrawer(false)}
+                    className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={sendCampaign}
+                    disabled={sendingMsg || msgTargetIds.size === 0 || (msgChannels.length === 0)}
+                    className="px-5 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-40 flex items-center gap-2 transition-opacity"
+                    style={{ backgroundColor: "#1B2A5E" }}>
+                    {sendingMsg
+                      ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Sending...</>
+                      : `📣 Send to ${msgTargetIds.size} Client${msgTargetIds.size !== 1 ? "s" : ""}`}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Document Lightbox */}
       {docPreview && (
