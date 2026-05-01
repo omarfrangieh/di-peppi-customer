@@ -20,6 +20,13 @@ export default function CustomerLoginPage() {
   const [otpMethod, setOtpMethod] = useState<"email" | "whatsapp">("email");
 
   useEffect(() => {
+    const savedId = localStorage.getItem("customerSavedIdentifier");
+    const savedMethod = localStorage.getItem("customerSavedMethod") as "email" | "whatsapp" | null;
+    if (savedId) setEmail(savedId);
+    if (savedMethod) setOtpMethod(savedMethod);
+  }, []);
+
+  useEffect(() => {
     const session = localStorage.getItem("session");
     if (session) {
       router.push("/customer");
@@ -64,6 +71,8 @@ export default function CustomerLoginPage() {
           : { email, method: otpMethod }
       );
       setMessage("");
+      localStorage.setItem("customerSavedIdentifier", email);
+      localStorage.setItem("customerSavedMethod", otpMethod);
       setOtpSuccess(true);
       setTimeout(() => {
         setOtpSuccess(false);

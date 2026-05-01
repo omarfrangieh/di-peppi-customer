@@ -25,6 +25,9 @@ interface Product {
   b2bPrice?: number;
   b2cPrice?: number;
   costPrice?: number;
+  requiresWeighing?: boolean;
+  minWeightPerUnit?: number;
+  maxWeightPerUnit?: number;
 }
 
 // Helper function to validate URL
@@ -243,9 +246,18 @@ export default function ProductDetailPage() {
 
             {/* Price */}
             <div className="border-t border-b border-gray-200 py-4">
-              <p className="text-4xl font-bold text-gray-900">
-                ${formatPrice(product.price)}
-              </p>
+              {product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit ? (
+                <>
+                  <p className="text-4xl font-bold text-gray-900">
+                    ~${formatPrice(product.price * product.minWeightPerUnit)}–${formatPrice(product.price * product.maxWeightPerUnit)}
+                  </p>
+                  <p className="text-gray-500 text-xs mt-1">Estimated price · ${formatPrice(product.price)}/{product.unit} · final amount based on confirmed weight at delivery</p>
+                </>
+              ) : (
+                <p className="text-4xl font-bold text-gray-900">
+                  ${formatPrice(product.price)}
+                </p>
+              )}
               <p className="text-gray-600 text-sm mt-1">Unit: {product.unit}</p>
             </div>
 

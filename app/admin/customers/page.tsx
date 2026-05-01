@@ -111,14 +111,11 @@ export default function AdminCustomersPage() {
     }
     // Fetch orders to compute lastOrderDate per customer
     try {
-      const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
       let orderData: any[] = [];
       try {
-        const res = await fetch(isLocal
-          ? "http://localhost:5001/di-peppi/us-central1/getOrders"
-          : "https://us-central1-di-peppi.cloudfunctions.net/getOrders");
+        const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
         if (res.ok) orderData = await res.json();
-      } catch { /* emulator not running */ }
+      } catch { /* network error */ }
       setOrders(Array.isArray(orderData) ? orderData : []);
     } catch { /* skip — dormancy will show "never ordered" */ }
 

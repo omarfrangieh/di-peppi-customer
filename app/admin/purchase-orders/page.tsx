@@ -341,7 +341,7 @@ export default function PurchaseOrdersPage() {
               <div className="text-right space-y-1">
                 <p className="text-xs text-gray-500 dark:text-gray-400">PO #: <span className="font-semibold text-gray-900 dark:text-white">{previewPO.poNumber}</span></p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">PO Date: {formatDate(previewPO.poDate)}</p>
-                <p className={`text-xs font-semibold ${isDeliveryOverdue ? "text-red-600 dark:text-red-400" : "text-gray-900 dark:text-white"}`}>
+                <p className="text-xs font-semibold text-gray-900 dark:text-white">
                   Delivery: {previewPO.deliveryDate ? formatDate(previewPO.deliveryDate) : "TBD"}
                 </p>
               </div>
@@ -349,7 +349,7 @@ export default function PurchaseOrdersPage() {
             <div className="grid grid-cols-2 gap-4 border-t border-b border-gray-200 dark:border-gray-600 py-4">
               <div>
                 <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Supplier</p>
-                <p className="font-semibold text-sm" style={{color: "#B5535A"}}>{previewPO.supplierName}</p>
+                <p className="font-semibold text-sm text-gray-900 dark:text-white">{previewPO.supplierName}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Contact</p>

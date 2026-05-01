@@ -28,6 +28,9 @@ interface Product {
   description?: string;
   category?: string;
   storageType?: string;
+  requiresWeighing?: boolean;
+  minWeightPerUnit?: number;
+  maxWeightPerUnit?: number;
 }
 
 export default function ProductsPage() {
@@ -65,6 +68,9 @@ export default function ProductsPage() {
               description: data.description || "",
               category: data.category || "",
               storageType: data.storageType || "",
+              requiresWeighing: Boolean(data.requiresWeighing),
+              minWeightPerUnit: Number(data.minWeightPerUnit || 0),
+              maxWeightPerUnit: Number(data.maxWeightPerUnit || 0),
             };
           })
           .filter((p) => p.name && p.price > 0)

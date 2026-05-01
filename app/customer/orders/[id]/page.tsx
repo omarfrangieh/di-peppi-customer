@@ -3,7 +3,7 @@
 import { use, useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  doc, getDoc, updateDoc, addDoc,
+  doc, getDoc, updateDoc, addDoc, deleteDoc,
   collection, query, where, getDocs, serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -115,16 +115,15 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
     setCancelling(true);
     setCancelError(null);
     try {
-      // Cancel the order
-      await updateDoc(doc(db, "orders", id), {
-        status: "Cancelled",
-        cancelledAt: serverTimestamp(),
-        cancelledBy: "customer",
-        updatedAt: serverTimestamp(),
-      });
-
-      // Wallet refund if paid via wallet
+      const withinWindow = countdown !== null && countdown > 0;
       const orderTotal = order.total || order.finalTotal || order.grandTotal || 0;
+
+      // TODO: when online/card payments are enabled, add payment gateway refund here
+      // e.g. if (order.paymentMethod === "online" && order.paymentIntentId) {
+      //   await callStripeRefund(order.paymentIntentId, orderTotal);
+      // }
+
+      // Wallet refund first (applies whether we delete or cancel)
       if (order.paymentMethod === "wallet" && orderTotal > 0 && order.customerId) {
         try {
           const custSnap = await getDoc(doc(db, "customers", order.customerId));
@@ -144,15 +143,33 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
           }
         } catch (refundErr) {
           console.error("Wallet refund failed:", refundErr);
-          // Order is already cancelled — refund failure is logged but doesn't block the UI
         }
+      }
+
+      if (withinWindow) {
+        // Within 10-second window: delete the order entirely so it never appears in admin
+        await deleteDoc(doc(db, "orders", id));
+      } else {
+        // After window: mark as Cancelled so admin can see the history
+        await updateDoc(doc(db, "orders", id), {
+          status: "Cancelled",
+          cancelledAt: serverTimestamp(),
+          cancelledBy: "customer",
+          updatedAt: serverTimestamp(),
+        });
       }
 
       // Stop the countdown
       if (timerRef.current) clearInterval(timerRef.current);
       setCountdown(null);
       setShowConfirm(false);
-      setOrder((prev: any) => prev ? { ...prev, status: "Cancelled" } : prev);
+
+      if (withinWindow) {
+        // Order was deleted — go straight back to orders list
+        router.replace("/customer/orders");
+      } else {
+        setOrder((prev: any) => prev ? { ...prev, status: "Cancelled" } : prev);
+      }
     } catch (err: any) {
       setCancelError(err.message || "Failed to cancel order. Please try again.");
     } finally {

@@ -16,6 +16,9 @@ interface Product {
   price: number;
   productImage?: string;
   description?: string;
+  requiresWeighing?: boolean;
+  minWeightPerUnit?: number;
+  maxWeightPerUnit?: number;
 }
 
 interface ProductCardProps {
@@ -110,9 +113,18 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         )}
 
         {/* Price */}
-        <p className="text-lg font-bold text-gray-900 mb-2">
-          ${formatPrice(product.price)}
-        </p>
+        {product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit ? (
+          <div className="mb-2">
+            <p className="text-lg font-bold text-gray-900">
+              ~${formatPrice(product.price * product.minWeightPerUnit)}–${formatPrice(product.price * product.maxWeightPerUnit)}
+            </p>
+            <p className="text-xs text-gray-400">est. · final price based on weight</p>
+          </div>
+        ) : (
+          <p className="text-lg font-bold text-gray-900 mb-2">
+            ${formatPrice(product.price)}
+          </p>
+        )}
 
         {/* Stock Status */}
         <div className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stockColor} mb-3 w-fit`}>

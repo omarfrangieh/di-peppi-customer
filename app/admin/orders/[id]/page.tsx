@@ -463,21 +463,8 @@ export default function Page() {
 
   const loadOrders = async () => {
     try {
-      const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
-      let data: any[] = [];
-      let emulatorOk = false;
-      if (isLocal) {
-        try {
-          const res = await fetch("http://localhost:5001/di-peppi/us-central1/getOrders");
-          if (res.ok) { data = await res.json(); emulatorOk = true; }
-        } catch {
-          // emulator not running — fall through to production
-        }
-      }
-      if (!emulatorOk) {
-        const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
-        data = await res.json();
-      }
+      const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
+      const data = await res.json();
       setOrders(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error loading orders:", error);
@@ -616,21 +603,8 @@ export default function Page() {
     }
 
     try {
-      const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
-      let data: any[] = [];
-      let emulatorOk = false;
-      if (isLocal) {
-        try {
-          const res = await fetch(`http://localhost:5001/di-peppi/us-central1/getOrderItems?orderId=${encodeURIComponent(orderId)}`);
-          if (res.ok) { data = await res.json(); emulatorOk = true; }
-        } catch {
-          // emulator not running — fall through to production
-        }
-      }
-      if (!emulatorOk) {
-        const res = await fetch(`https://us-central1-di-peppi.cloudfunctions.net/getOrderItems?orderId=${encodeURIComponent(orderId)}`);
-        data = await res.json();
-      }
+      const res = await fetch(`https://us-central1-di-peppi.cloudfunctions.net/getOrderItems?orderId=${encodeURIComponent(orderId)}`);
+      const data = await res.json();
       setOrderItems(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error loading order items:", error);
@@ -1066,7 +1040,7 @@ export default function Page() {
             <button onClick={() => router.push("/admin/orders")}
               className="px-4 py-2 text-sm text-white rounded-lg font-medium"
               style={{backgroundColor: "#1B2A5E"}}>
-              + New Order
+              ← Orders
             </button>
             {(!order?.status || order?.status === "Draft" || order?.status === "Confirmed" || order?.status === "Preparing") && (
               <button
@@ -1111,7 +1085,7 @@ export default function Page() {
               </div>
               <div>
                 <p className="text-xs text-gray-400 mb-1">Delivery Date</p>
-                <p className="font-medium" style={{color: "#B5535A"}}>{deliveryDate ? deliveryDate.split("-").reverse().join("-") : "—"}</p>
+                <p className="font-medium text-gray-900 dark:text-white">{deliveryDate ? deliveryDate.split("-").reverse().join("-") : "—"}</p>
               </div>
               {orderNotes && <div className="col-span-3"><p className="text-xs text-gray-400 mb-1">Notes</p><p className="text-gray-700 dark:text-gray-300">{orderNotes}</p></div>}
             </div>
@@ -1173,6 +1147,8 @@ export default function Page() {
                           {item.preparation && <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">🔪 {item.preparation}</span>}
                           {(item as any).sample && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-medium">🧪 Sample</span>}
                           {(item as any).gift && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">🎁 Gift</span>}
+                          {(item as any).weighConfirmed && <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded font-medium">✅ Weighed</span>}
+                          {(item as any).requiresWeighing && !(item as any).weighConfirmed && <span className="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded font-medium">⚖️ Needs weighing</span>}
                         </div>
                       </div>
                       <p className="font-semibold text-gray-900 dark:text-white">${formatPrice(displayNet)}</p>
@@ -1721,13 +1697,19 @@ export default function Page() {
                                     try {
                                     const updateOrderItem = httpsCallable(functions, "updateOrderItemCallable");
                                     await updateOrderItem({ orderItemId: item.id, productId: item.productId, quantity: qty, unitPrice: Number(item.unitPrice || 0), unitCostPrice: Number(item.unitCostPrice || 0), itemDiscountPercent: Number(item.itemDiscountPercent || 0), itemDiscountAmount: Number(item.itemDiscountAmount || 0), grossLineTotal: qty * Number(item.unitPrice || 0), netLineTotal: qty * Number(item.unitPrice || 0), notes: item.notes || "", customerType: selectedCustomer?.customerType || "", sample: false, gift: false });
+                                    // Mark weighing as confirmed on the orderItem document
+                                    await updateDoc(doc(db, "orderItems", item.id), {
+                                      weighConfirmed: true,
+                                      confirmedWeight: qty,
+                                    });
                                     {
                                       const newGross = qty * Number(item.unitPrice || 0);
                                       const newDiscount = (newGross * Number(item.itemDiscountPercent || 0) / 100) + Number(item.itemDiscountAmount || 0);
                                       const newNet = Math.max(newGross - newDiscount, 0);
                                       const newProfit = newNet - (qty * Number(item.unitCostPrice || 0));
-                                      setOrderItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: qty, totalPrice: newNet, profit: newProfit } : i));
+                                      setOrderItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: qty, totalPrice: newNet, profit: newProfit, weighConfirmed: true, confirmedWeight: qty } : i));
                                       setWeighingItemId(""); setWeighedQuantity("");
+                                      showToast("Weight confirmed ✓", "success");
                                     }
                                     } catch { showToast("Failed to update quantity", "error"); }
                                   }} className="text-xs px-2 py-1 bg-green-600 text-white rounded">✓</button>
@@ -1735,9 +1717,9 @@ export default function Page() {
                                 </div>
                               ) : products.find(p => p.id === item.productId)?.requiresWeighing ? (
                                 <button
-                                  className={`text-xs px-2 py-1 rounded border font-semibold ${Number(item.quantity) % 1 === 0 ? "border-orange-400 text-orange-600 bg-orange-50" : "border-green-400 text-green-600 bg-green-50"}`}
+                                  className={`text-xs px-2 py-1 rounded border font-semibold ${(item as any).weighConfirmed ? "border-green-400 text-green-600 bg-green-50" : "border-orange-400 text-orange-600 bg-orange-50"}`}
                                   onClick={() => { setWeighingItemId(item.id); setWeighedQuantity(String(item.quantity || "")); }}>
-                                  ⚖️ Weigh
+                                  {(item as any).weighConfirmed ? "✅ Weighed" : "⚖️ Weigh"}
                                 </button>
                               ) : null}
                               <div className="flex gap-1 justify-end">

@@ -13,6 +13,9 @@ interface Product {
   description?: string;
   category?: string;
   storageType?: string;
+  requiresWeighing?: boolean;
+  minWeightPerUnit?: number;
+  maxWeightPerUnit?: number;
 }
 
 interface ProductGridProps {

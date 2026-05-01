@@ -182,19 +182,8 @@ export default function Dashboard() {
   const load = async () => {
     setLoading(true);
     try {
-      const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
-      let data: any[] = [];
-      let emulatorOk = false;
-      if (isLocal) {
-        try {
-          const res = await fetch("http://localhost:5001/di-peppi/us-central1/getOrders");
-          if (res.ok) { data = await res.json(); emulatorOk = true; }
-        } catch { /* emulator not running */ }
-      }
-      if (!emulatorOk) {
-        const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
-        data = await res.json();
-      }
+      const res = await fetch("https://us-central1-di-peppi.cloudfunctions.net/getOrders");
+      const data = await res.json();
       const orderArr: any[] = Array.isArray(data) ? data : [];
 
       // ── Auto-promote: delivery date = today & still in pre-delivery status ──
@@ -400,10 +389,14 @@ export default function Dashboard() {
   const deliveredOrders = (() => {
     if (dateRange === "all") return allDelivered;
     return allDelivered.filter(o => {
-      const d = String(o.updatedAt || o.deliveryDate || o.createdAt || "").slice(0, 10);
-      if (dateRange === "today") return d === todayISO;
-      if (dateRange === "week")  return d >= twISO.slice(0, 10);
-      if (dateRange === "month") return d >= firstOfMonth;
+      // Use updatedAt (when actually marked delivered) as primary;
+      // also match deliveryDate so orders delivered on their scheduled date are included.
+      const delivered = String(o.updatedAt || "").slice(0, 10);
+      const scheduled = String(o.deliveryDate || o.createdAt || "").slice(0, 10);
+      const d = delivered || scheduled; // prefer actual delivery timestamp
+      if (dateRange === "today") return d === todayISO || scheduled === todayISO;
+      if (dateRange === "week")  return d >= twISO.slice(0, 10) || scheduled >= twISO.slice(0, 10);
+      if (dateRange === "month") return d >= firstOfMonth || scheduled >= firstOfMonth;
       return true;
     });
   })();

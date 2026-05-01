@@ -11,6 +11,11 @@ export default function AdminLoginPage() {
   const router = useRouter();
   const [step, setStep] = useState<"identifier" | "otp" | "verify">("identifier");
   const [email, setEmail] = useState("");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("adminSavedEmail");
+    if (saved) setEmail(saved);
+  }, []);
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -57,6 +62,7 @@ export default function AdminLoginPage() {
         method: "email",
       });
       setMessage("");
+      localStorage.setItem("adminSavedEmail", email);
       setOtpSuccess(true);
       setTimeout(() => {
         setOtpSuccess(false);

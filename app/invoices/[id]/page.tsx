@@ -160,7 +160,7 @@ export default function InvoiceDetailPage() {
   const [syncingLines, setSyncingLines] = useState(false);
   const [showSyncConfirm, setShowSyncConfirm] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
-  const [poWarning, setPoWarning] = useState<{ type: "missing-suppliers" | "no-pos-created" | "error"; products?: string[]; message?: string } | null>(null);
+  const [poWarning, setPoWarning] = useState<{ type: "missing-suppliers" | "no-pos-created" | "unconfirmed-weight" | "error"; products?: string[]; message?: string } | null>(null);
   const [walletBalance, setWalletBalance] = useState(0);
   const [applyingWallet, setApplyingWallet] = useState(false);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
@@ -212,11 +212,7 @@ export default function InvoiceDetailPage() {
       // derive lines from the linked order's orderItems via the existing Cloud Function.
       if (linesData.length === 0 && data.orderId) {
         try {
-          const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
-          const base = isLocal
-            ? "http://localhost:5001/di-peppi/us-central1"
-            : "https://us-central1-di-peppi.cloudfunctions.net";
-          const res = await fetch(`${base}/getOrderItems?orderId=${encodeURIComponent(data.orderId)}`);
+          const res = await fetch(`https://us-central1-di-peppi.cloudfunctions.net/getOrderItems?orderId=${encodeURIComponent(data.orderId)}`);
           if (res.ok) {
             const orderItems: any[] = await res.json();
             linesData = orderItems.map((item) => ({
@@ -304,6 +300,9 @@ export default function InvoiceDetailPage() {
         paymentMethod,
         updatedAt: new Date().toISOString(),
       });
+      if (invoice.orderId) {
+        await updateDoc(doc(db, "orders", invoice.orderId), { invoiceStatus: "paid" }).catch(() => {});
+      }
       setStatus("paid");
       setInvoice((prev) => prev ? { ...prev, status: "paid", paidAt, paymentMethod } : prev);
       setShowPayModal(false);
@@ -351,6 +350,9 @@ export default function InvoiceDetailPage() {
         status: newStatus,
         updatedAt: new Date().toISOString(),
       });
+      if (invoice?.orderId) {
+        await updateDoc(doc(db, "orders", invoice.orderId), { invoiceStatus: newStatus }).catch(() => {});
+      }
 
       // Credit overpaid amount to customer wallet
       const overpaid = Math.round(Math.max(-newBalance, 0) * 100) / 100;
@@ -876,7 +878,7 @@ export default function InvoiceDetailPage() {
             const snap = await getDoc(doc(db, "products", pid));
             if (snap.exists()) {
               const d = snap.data();
-              productDataMap[pid] = { supplierId: d.supplierId || "", unitCostPrice: d.unitCostPrice || 0, name: d.name || pid };
+              productDataMap[pid] = { supplierId: d.supplierId || "", unitCostPrice: Number(d.unitCostPrice || d.costPrice || 0), name: d.name || pid };
             }
           } catch { /* ignore individual failures */ }
         })
@@ -888,6 +890,20 @@ export default function InvoiceDetailPage() {
     if (missingSupplier.length > 0) {
       setPoWarning({ type: "missing-suppliers", products: missingSupplier.map((l: any) => l.productName || l.productId) });
       return;
+    }
+
+    // Block if any order items require weighing but haven't been confirmed
+    if (invoice.orderId) {
+      const orderItemsSnap = await getDocs(
+        query(collection(db, "orderItems"), where("orderId", "==", invoice.orderId))
+      );
+      const unconfirmedWeigh = orderItemsSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }) as any)
+        .filter((i: any) => i.requiresWeighing === true && i.weighConfirmed !== true);
+      if (unconfirmedWeigh.length > 0) {
+        setPoWarning({ type: "unconfirmed-weight", products: unconfirmedWeigh.map((i: any) => i.productName || i.productId) });
+        return;
+      }
     }
 
     if (invoicePOs.some(p => ["Sent", "Delivered", "Paid"].includes(p.status))) {
@@ -954,13 +970,11 @@ export default function InvoiceDetailPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          {invoice.orderId && (
-            <button onClick={() => router.push(`/admin/orders/${invoice.orderId}`)}
-              className="px-4 py-2 text-sm text-white rounded-lg flex items-center gap-1 font-medium hover:opacity-90"
-              style={{backgroundColor: "#1B2A5E"}}>
-              ← Order
-            </button>
-          )}
+          <button onClick={() => router.push("/invoices")}
+            className="px-4 py-2 text-sm text-white rounded-lg flex items-center gap-1 font-medium hover:opacity-90"
+            style={{backgroundColor: "#1B2A5E"}}>
+            ← Invoices
+          </button>
           <h1 className="text-sm font-semibold text-gray-900 dark:text-white">
             {invoice.invoiceNumber || "Draft Invoice"}
           </h1>
@@ -1092,9 +1106,7 @@ export default function InvoiceDetailPage() {
             {/* PO inline warnings */}
             {poWarning && (
               <div className={`mx-6 mt-4 rounded-lg border px-4 py-3 ${
-                poWarning.type === "missing-suppliers"
-                  ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700"
-                  : poWarning.type === "no-pos-created"
+                poWarning.type === "missing-suppliers" || poWarning.type === "no-pos-created" || poWarning.type === "unconfirmed-weight"
                   ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700"
                   : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700"
               }`}>
@@ -1103,6 +1115,7 @@ export default function InvoiceDetailPage() {
                     <AlertTriangle size={16} className={`mt-0.5 flex-shrink-0 ${
                       poWarning.type === "error" ? "text-red-500 dark:text-red-400" : "text-amber-500 dark:text-amber-400"
                     }`} />
+
                     <div>
                       {poWarning.type === "missing-suppliers" && (
                         <>
@@ -1128,6 +1141,23 @@ export default function InvoiceDetailPage() {
                           <a href="/admin/products" className="text-xs font-medium text-amber-700 dark:text-amber-300 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200">
                             Go to Products →
                           </a>
+                        </>
+                      )}
+                      {poWarning.type === "unconfirmed-weight" && (
+                        <>
+                          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1">
+                            Weight confirmation required before POs can be generated:
+                          </p>
+                          <ul className="space-y-0.5 mb-2">
+                            {poWarning.products?.map((name) => (
+                              <li key={name} className="text-sm text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                                <span className="text-amber-400">•</span> {name}
+                              </li>
+                            ))}
+                          </ul>
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            Open the linked order and confirm the final weight for each item before generating POs.
+                          </p>
                         </>
                       )}
                       {poWarning.type === "error" && (
@@ -1434,11 +1464,16 @@ export default function InvoiceDetailPage() {
               <span className="text-xs text-gray-500 dark:text-gray-400">Balance Due: <span className={balanceDue <= 0 ? "text-green-600 dark:text-green-400 font-semibold" : "text-red-600 dark:text-red-400 font-semibold"}>${formatPrice(balanceDue)}</span></span>
               {walletBalance > 0 && balanceDue > 0 && (
                 <button onClick={handlePayFromWallet} disabled={applyingWallet || status === "cancelled"}
-                  className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors font-medium">
+                  className="text-xs px-3 py-1.5 text-white rounded-lg disabled:opacity-40 transition-opacity font-medium hover:opacity-90"
+                  style={{ backgroundColor: "#1B2A5E" }}>
                   {applyingWallet ? "Applying..." : `Use Wallet (${formatPrice(Math.min(walletBalance, balanceDue))})`}
                 </button>
               )}
-              <button onClick={() => { setPayAmount(balanceDue > 0 ? String(Math.round(balanceDue * 100) / 100) : ""); setShowAddPayment(true); }} disabled={balanceDue <= 0 || status === "cancelled"} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 transition-colors font-medium">+ Add Payment</button>
+              <button onClick={() => { setPayAmount(balanceDue > 0 ? String(Math.round(balanceDue * 100) / 100) : ""); setShowAddPayment(true); }} disabled={balanceDue <= 0 || status === "cancelled"}
+                className="text-xs px-3 py-1.5 text-white rounded-lg disabled:opacity-40 transition-opacity font-medium hover:opacity-90"
+                style={{ backgroundColor: "#28a745" }}>
+                + Add Payment
+              </button>
             </div>
           </div>
           {payments.length === 0 ? (
