@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { collection, getDocs, doc, updateDoc, addDoc, runTransaction } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, addDoc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { formatPrice, formatQty } from "@/lib/formatters";
@@ -392,7 +392,8 @@ export default function Dashboard() {
     return true;
   });
 
-  const activeOrders    = filteredOrders.filter(o => !["Delivered", "Cancelled", "Canceled"].includes(o.status));
+  // Active Orders = ALL non-completed orders regardless of date filter
+  const activeOrders    = orders.filter(o => !["Delivered", "Cancelled", "Canceled"].includes(o.status));
   const deliveredOrders = filteredOrders.filter(o => o.status === "Delivered");
   // Pipeline always shows ALL orders by status — date filter only applies to KPI cards
   const colOrders = {
@@ -446,13 +447,47 @@ export default function Dashboard() {
       .slice(0, 3).map(c => ({ id: "c-" + c.name, icon: "👥", label: c.name, sub: `${c.count} orders · $${formatPrice(c.total)}`, href: "/admin/customers" })),
   ] : [];
 
-  // Click-to-advance status
+  // Click-to-advance status — Draft → Confirmed → Preparing → To Deliver → Delivered
   const STATUS_NEXT: Record<string, string> = {
-    "Draft":      "To Deliver",
-    "Confirmed":  "To Deliver",
+    "Draft":      "Confirmed",
+    "Confirmed":  "Preparing",
     "Preparing":  "To Deliver",
     "To Deliver": "Delivered",
   };
+  const STATUS_NEXT_LABEL: Record<string, string> = {
+    "Draft":      "Confirm",
+    "Confirmed":  "Prepare",
+    "Preparing":  "To Deliver",
+    "To Deliver": "Delivered",
+  };
+
+  /** Push a real-time notification into /notifications for the customer. */
+  const notifyCustomer = async (order: any, prevStatus: string, newStatus: string) => {
+    if (!order.customerId) return;
+    const messages: Record<string, string> = {
+      Confirmed:    `Your order ${order.name} has been confirmed! We're getting it ready.`,
+      Preparing:    `Your order ${order.name} is now being prepared 🐟`,
+      "To Deliver": `Your order ${order.name} is on its way! 🚚`,
+      Delivered:    `Your order ${order.name} has been delivered! Enjoy 🎉`,
+    };
+    const message = messages[newStatus];
+    if (!message) return;
+    try {
+      await addDoc(collection(db, "notifications"), {
+        userId:     order.customerId,
+        orderId:    order.id,
+        orderName:  order.name,
+        prevStatus,
+        newStatus,
+        message,
+        read:       false,
+        createdAt:  serverTimestamp(),
+      });
+    } catch (err) {
+      console.error("Failed to send notification:", err);
+    }
+  };
+
   const advanceStatus = async (order: any, e: React.MouseEvent) => {
     e.stopPropagation();
     const next = STATUS_NEXT[order.status];
@@ -461,7 +496,9 @@ export default function Dashboard() {
     try {
       await updateDoc(doc(db, "orders", order.id), { status: next, updatedAt: new Date().toISOString() });
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: next } : o));
-      // Deduct stock FIFO when order is first dispatched
+      // Notify customer on every meaningful status change
+      notifyCustomer(order, order.status, next);
+      // Deduct stock FIFO when order is dispatched
       if (next === "To Deliver") {
         deductStockForOrder(order.id).catch(err => console.error("FIFO deduction failed:", err));
       }
@@ -528,6 +565,7 @@ export default function Dashboard() {
         onClick={() => router.push(`/admin/orders/${order.id}`)}
         className={`rounded-lg border px-4 py-3 cursor-pointer hover:shadow-sm transition-shadow ${
           order.status === "Draft"      ? "bg-gray-50 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600" :
+          order.status === "Confirmed"  ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200" :
           order.status === "Preparing"  ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200" :
           order.status === "To Deliver" ? "bg-orange-50 dark:bg-orange-900/20 border-orange-200" :
           order.status === "Delivered"  ? "bg-green-50 dark:bg-green-900/20 border-green-200" :
@@ -552,6 +590,7 @@ export default function Dashboard() {
                   canAdvance ? "active:scale-95" : ""
                 } ${
                   order.status === "Draft"      ? "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-500" :
+                  order.status === "Confirmed"  ? "bg-blue-50 text-blue-700 border-blue-300" :
                   order.status === "Preparing"  ? "bg-yellow-50 text-yellow-700 border-yellow-300" :
                   order.status === "To Deliver" ? "bg-orange-50 text-orange-600 border-orange-300" :
                   order.status === "Delivered"  ? "bg-green-50 text-green-700 border-green-300" :

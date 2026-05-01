@@ -15,6 +15,14 @@ const STATUS_FLOW: Record<string, string> = {
   "To Deliver": "Delivered",
 };
 
+// Action verb shown on the advance button — makes it clear it's an action, not a current status
+const STATUS_ACTION: Record<string, string> = {
+  Draft:        "Confirm",
+  Confirmed:    "Prepare",
+  Preparing:    "Dispatch",
+  "To Deliver": "Delivered",
+};
+
 const STATUS_COLORS: Record<string, string> = {
   Draft:        "bg-gray-100 text-gray-600",
   Confirmed:    "bg-blue-100 text-blue-700 border border-blue-200",
@@ -134,8 +142,25 @@ export default function OrdersPage() {
     if (!next) return;
     setAdvancing(order.id);
     try {
-      await updateDoc(doc(db, "orders", order.id), { status: next });
+      await updateDoc(doc(db, "orders", order.id), { status: next, updatedAt: new Date().toISOString() });
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: next } : o));
+      // Notify the customer on every status advance
+      if (order.customerId) {
+        const messages: Record<string, string> = {
+          Confirmed:    `Your order ${order.name} has been confirmed! We're getting it ready.`,
+          Preparing:    `Your order ${order.name} is now being prepared 🐟`,
+          "To Deliver": `Your order ${order.name} is on its way! 🚚`,
+          Delivered:    `Your order ${order.name} has been delivered! Enjoy 🎉`,
+        };
+        const message = messages[next];
+        if (message) {
+          addDoc(collection(db, "notifications"), {
+            userId: order.customerId, orderId: order.id, orderName: order.name,
+            prevStatus: order.status, newStatus: next, message,
+            read: false, createdAt: serverTimestamp(),
+          }).catch(() => {});
+        }
+      }
     } catch {
       showToast("Failed to update status", "error");
     } finally {
@@ -482,20 +507,21 @@ export default function OrdersPage() {
                           })()}
                         </div>
 
-                        {/* Quick advance */}
+                        {/* Quick advance — shows action verb, not next status name */}
                         {nextStatus && (
                           <button
                             onClick={e => handleAdvanceStatus(e, order)}
                             disabled={isAdvancing}
                             title={`Mark as ${nextStatus}`}
-                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:border-gray-400 transition-all disabled:opacity-40"
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white rounded-lg hover:opacity-90 transition-all disabled:opacity-40"
+                            style={{ backgroundColor: "#1B2A5E" }}
                           >
                             {isAdvancing ? (
-                              <span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />
+                              <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
                             ) : (
                               <>
+                                {STATUS_ACTION[order.status] || nextStatus}
                                 <ChevronRight size={13} />
-                                {nextStatus}
                               </>
                             )}
                           </button>

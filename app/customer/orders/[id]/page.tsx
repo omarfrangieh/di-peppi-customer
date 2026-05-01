@@ -47,21 +47,37 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
   const [countdown, setCountdown] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 10-second cancel window right after checkout
+  // 10-second cancel window based on actual order.createdAt timestamp
   useEffect(() => {
-    if (!isConfirmed) return;
-    setCountdown(CANCEL_WINDOW_SECS);
+    if (!order || order.status !== "Draft") return;
+
+    // Resolve createdAt to a JS timestamp
+    let createdMs: number | null = null;
+    const raw = order.createdAt;
+    if (raw) {
+      if (typeof raw.toMillis === "function") createdMs = raw.toMillis();
+      else if (raw.seconds) createdMs = raw.seconds * 1000;
+      else if (typeof raw === "string") createdMs = new Date(raw).getTime();
+      else if (typeof raw === "number") createdMs = raw;
+    }
+    if (!createdMs) return;
+
+    const secsLeft = () =>
+      Math.max(0, CANCEL_WINDOW_SECS - Math.floor((Date.now() - createdMs!) / 1000));
+
+    const initial = secsLeft();
+    if (initial <= 0) return;
+
+    setCountdown(initial);
     timerRef.current = setInterval(() => {
-      setCountdown(prev => {
-        if (prev === null || prev <= 1) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          return null;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+      const left = secsLeft();
+      setCountdown(left > 0 ? left : null);
+      if (left <= 0 && timerRef.current) clearInterval(timerRef.current);
+    }, 500);
+
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [isConfirmed]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id, order?.status, order?.createdAt]);
 
   useEffect(() => {
     const load = async () => {
@@ -154,15 +170,16 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
 
   if (!order) return null;
 
-  const canCancel = order.status === "Draft";
+  // Only allow cancel within the 10-second window
+  const canCancel = order.status === "Draft" && countdown !== null && countdown > 0;
   const orderTotal = order.total || order.finalTotal || order.grandTotal || 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
 
-        {/* Post-checkout confirmation banner */}
-        {isConfirmed && order.status !== "Cancelled" && (
+        {/* Post-checkout / fresh order banner — shown while cancel window is open */}
+        {canCancel && (
           <div className="bg-green-50 border border-green-200 rounded-xl p-5 mb-4">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -174,18 +191,15 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
                   Your order <strong>{order.name}</strong> has been received. We'll confirm it shortly.
                 </p>
               </div>
-              {/* 10-second cancel window — only available while order is still Draft */}
-              {countdown !== null && order.status === "Draft" && (
-                <button
-                  onClick={() => setShowConfirm(true)}
-                  className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white border border-red-200 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
-                >
-                  <span className="w-5 h-5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold flex items-center justify-center">
-                    {countdown}
-                  </span>
-                  Undo
-                </button>
-              )}
+              <button
+                onClick={() => setShowConfirm(true)}
+                className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white border border-red-200 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+              >
+                <span className="w-5 h-5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold flex items-center justify-center">
+                  {countdown}
+                </span>
+                Cancel
+              </button>
             </div>
           </div>
         )}
@@ -312,7 +326,7 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
             </button>
           </div>
 
-          {/* Cancel button — only for Draft orders not yet being prepared */}
+          {/* Cancel button — only within the 10-second window after placing */}
           {canCancel && (
             <button
               onClick={() => setShowConfirm(true)}
