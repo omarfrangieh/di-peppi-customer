@@ -16,6 +16,7 @@ import {
   serverTimestamp,
   orderBy,
   increment,
+  onSnapshot,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { showToast } from "@/lib/toast";
@@ -179,6 +180,16 @@ export default function InvoiceDetailPage() {
     void loadInvoice();
   }, [invoiceId]);
 
+  // Real-time PO listener — stays in sync when POs are added or deleted from other pages
+  useEffect(() => {
+    if (!invoiceId) return;
+    const unsub = onSnapshot(
+      query(collection(db, "purchaseOrders"), where("invoiceId", "==", invoiceId)),
+      (snap) => setInvoicePOs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    return () => unsub();
+  }, [invoiceId]);
+
   const loadInvoice = async () => {
     setLoading(true);
     try {
@@ -256,12 +267,7 @@ export default function InvoiceDetailPage() {
       })) as Payment[];
       setPayments(paymentsData);
 
-      // Load POs for this invoice
-      const poSnap = await getDocs(query(
-        collection(db, "purchaseOrders"),
-        where("invoiceId", "==", invoiceId)
-      ));
-      setInvoicePOs(poSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      // POs are loaded via a real-time listener (see separate useEffect below)
 
       // Load customer wallet balance
       if (data.customerId) {
@@ -641,6 +647,8 @@ export default function InvoiceDetailPage() {
     if (!invoiceId) return;
     setSaving(true);
     try {
+      const prevStatus = invoice?.status;
+
       await updateDoc(doc(db, "invoices", invoiceId), {
         status,
         dueDate,
@@ -650,6 +658,85 @@ export default function InvoiceDetailPage() {
       });
       // Recalculate totals if delivery inclusion changed (affects finalTotal)
       await recalculateTotalsFromLines(lines);
+
+      // ── Auto-deduct wallet when status changes draft → issued ────────────────
+      if (prevStatus === "draft" && status === "issued") {
+        const customerId = invoice?.customerId;
+        if (customerId) {
+          try {
+            const custSnap = await getDoc(doc(db, "customers", customerId));
+            if (custSnap.exists()) {
+              const walletBalance = Number(custSnap.data().walletBalance || 0);
+              // Re-read finalTotal from Firestore (just recalculated above)
+              const invSnap = await getDoc(doc(db, "invoices", invoiceId));
+              const invoiceTotal = Number(invSnap.data()?.finalTotal || invoice?.finalTotal || 0);
+
+              if (walletBalance > 0 && invoiceTotal > 0) {
+                const applyAmount  = Math.round(Math.min(walletBalance, invoiceTotal) * 100) / 100;
+                const remaining    = Math.round((invoiceTotal - applyAmount) * 100) / 100;
+                const newStatus    = remaining <= 0 ? "paid" : "partly paid";
+                const invNum       = invoice?.invoiceNumber || "";
+
+                // Record payment
+                await addDoc(collection(db, "payments"), {
+                  invoiceId,
+                  invoiceNumber: invNum,
+                  customerId,
+                  paymentDate: new Date().toISOString().slice(0, 10),
+                  amount:      applyAmount,
+                  method:      "Wallet",
+                  notes:       "Auto-applied from customer wallet on invoice issuance",
+                  currency:    "USD",
+                  createdAt:   serverTimestamp(),
+                });
+
+                // Update invoice paid status
+                await updateDoc(doc(db, "invoices", invoiceId), {
+                  paidAmount: applyAmount,
+                  status:     newStatus,
+                  updatedAt:  serverTimestamp(),
+                });
+
+                // Sync invoiceStatus back to the linked order if any
+                if (invoice?.orderId) {
+                  await updateDoc(doc(db, "orders", invoice.orderId), {
+                    invoiceStatus: newStatus,
+                  }).catch(() => {});
+                }
+
+                // Deduct from customer wallet
+                await updateDoc(doc(db, "customers", customerId), {
+                  walletBalance: increment(-applyAmount),
+                });
+
+                // Wallet transaction log
+                await addDoc(collection(db, "walletTransactions"), {
+                  customerId,
+                  customerName: invoice?.customerName || "",
+                  invoiceId,
+                  invoiceNumber: invNum,
+                  orderId:      invoice?.orderId || "",
+                  orderName:    invoice?.sourceOrderName || "",
+                  amount:       applyAmount,
+                  type:         "debit",
+                  description:  `Auto-applied to ${invNum} on issuance`,
+                  createdAt:    serverTimestamp(),
+                });
+
+                // Update local state to reflect new status & payment
+                setInvoice((prev: any) => prev ? { ...prev, status: newStatus, paidAmount: applyAmount } : prev);
+                showToast(`💰 $${applyAmount.toFixed(2)} auto-deducted from wallet`, "success");
+                setSaving(false);
+                return; // skip the generic setInvoice below — status already set
+              }
+            }
+          } catch (walletErr) {
+            console.error("Wallet auto-deduction failed (non-blocking):", walletErr);
+          }
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       setInvoice((prev) => prev ? { ...prev, status, dueDate, notes, includeDelivery } : prev);
@@ -1091,9 +1178,9 @@ export default function InvoiceDetailPage() {
               <div className="flex items-center gap-3">
                 {status !== "cancelled" && (
                   <button
-                    onClick={handleGeneratePOs}
+                    onClick={status === "draft" ? () => showToast("Issue the invoice before generating purchase orders.", "warning") : handleGeneratePOs}
                     disabled={generatingPOs}
-                    className="text-xs px-3 py-1.5 text-white rounded-lg font-medium disabled:opacity-50"
+                    className={`text-xs px-3 py-1.5 text-white rounded-lg font-medium disabled:opacity-50 ${status === "draft" ? "opacity-40 cursor-not-allowed" : ""}`}
                     style={{backgroundColor: "#B5535A"}}>
                     {generatingPOs ? "Generating..." : invoicePOs.length > 0 ? "🔄 Regenerate POs" : "📦 Generate POs"}
                   </button>

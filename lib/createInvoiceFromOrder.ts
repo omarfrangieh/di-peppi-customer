@@ -82,23 +82,12 @@ export async function createInvoiceFromOrder(order: any): Promise<string> {
 
   if (items.length === 0) throw new Error(`createInvoiceFromOrder: no items found for order ${order.id}`);
 
-  // ── Block if any items require weighing but haven't been confirmed ───────────
-  const unconfirmedWeighItems = items.filter(
-    (i: any) => i.requiresWeighing === true && i.weighConfirmed !== true
-  );
-  if (unconfirmedWeighItems.length > 0) {
-    const names = unconfirmedWeighItems.map((i: any) => i.productName || i.productId).join(", ");
-    throw new Error(
-      `Cannot generate invoice: the following items require weighing confirmation before invoicing — ${names}. ` +
-      "Please confirm the final weight in the order details first."
-    );
-  }
-
-  // ── Fetch product details (VAT rates + b2cPrice fallback) ───────────────────
+  // ── Fetch product details (VAT rates + b2cPrice fallback + requiresWeighing) ─
   const productIds = [...new Set(items.map((i: any) => i.productId).filter(Boolean))];
   const productNames: Record<string, string> = {};
   const productVatRates: Record<string, number> = {};
   const productB2cPrices: Record<string, number> = {};
+  const productRequiresWeighing: Record<string, boolean> = {};
   await Promise.all(
     productIds.map(async (pid: any) => {
       const snap = await getDoc(doc(db, "products", pid));
@@ -106,9 +95,27 @@ export async function createInvoiceFromOrder(order: any): Promise<string> {
         productNames[pid] = snap.data().name || pid;
         productVatRates[pid] = snap.data().vatRate ?? 0;
         productB2cPrices[pid] = Number(snap.data().b2cPrice || 0);
+        productRequiresWeighing[pid] = Boolean(snap.data().requiresWeighing);
       }
     })
   );
+
+  // ── Block if any items require weighing but haven't been confirmed ───────────
+  // Check BOTH the orderItem flag AND the product flag — B2C checkout does not
+  // copy requiresWeighing onto orderItems, so we must look it up from the product.
+  const unconfirmedWeighItems = items.filter((i: any) => {
+    const requiresWeighing = i.requiresWeighing === true || productRequiresWeighing[i.productId] === true;
+    return requiresWeighing && i.weighConfirmed !== true;
+  });
+  if (unconfirmedWeighItems.length > 0) {
+    const names = unconfirmedWeighItems
+      .map((i: any) => productNames[i.productId] || i.productName || i.productId)
+      .join(", ");
+    throw new Error(
+      `Cannot generate invoice: the following items require weighing confirmation before invoicing — ${names}. ` +
+      "Please confirm the final weight in the order details first."
+    );
+  }
 
   // ── Calculate totals ─────────────────────────────────────────────────────────
   // Customer checkout writes: priceAtTime, lineTotal (not unitPrice/totalPrice)
@@ -124,12 +131,16 @@ export async function createInvoiceFromOrder(order: any): Promise<string> {
   const lineAmount = (item: any) => {
     // For items requiring weighing, use confirmedWeight as the quantity
     // so the invoice always reflects the final measured amount, not the estimated qty.
-    const qty = item.requiresWeighing && item.weighConfirmed && item.confirmedWeight
-      ? Number(item.confirmedWeight)
+    // Check both the orderItem flag and the product flag (B2C checkout doesn't copy requiresWeighing to orderItems).
+    const itemRequiresWeighing = item.requiresWeighing === true || productRequiresWeighing[item.productId] === true;
+    const weighConfirmed = itemRequiresWeighing && item.weighConfirmed && item.confirmedWeight;
+    // confirmedWeight is stored in grams; divide by 1000 to get kg for price calculation (unitPrice is per kg)
+    const qty = weighConfirmed
+      ? Number(item.confirmedWeight) / 1000
       : Number(item.quantity || 1);
     const stored = Number(item.lineTotal || item.totalPrice || 0);
     // If weighing was confirmed, recalculate line amount from confirmed weight
-    if (item.requiresWeighing && item.weighConfirmed && item.confirmedWeight) {
+    if (weighConfirmed) {
       return resolvedUnitPrice(item) * qty;
     }
     if (stored > 0) return stored;

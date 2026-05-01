@@ -63,31 +63,38 @@ const items = itemsSnap.docs.map((doc) => ({
   ...doc.data(),
 }));
 
-// Block invoice creation if any items require weighing but haven't been confirmed
-const unconfirmedWeighItems = items.filter(
-  (i: any) => i.requiresWeighing === true && i.weighConfirmed !== true
-);
-if (unconfirmedWeighItems.length > 0) {
-  const names = unconfirmedWeighItems.map((i: any) => i.productName || i.productId).join(", ");
-  throw new Error(
-    `Cannot create invoice: the following items require weighing confirmation first — ${names}. ` +
-    "Confirm the final weight in the order builder before invoicing."
-  );
-}
-
-// Fetch product names and VAT rates
+// Fetch product names, VAT rates, and requiresWeighing flag
   const productIds = [...new Set(items.map((i: any) => i.productId).filter(Boolean))];
   const productNames: Record<string, string> = {};
   const productVatRates: Record<string, number | undefined> = {};
+  const productRequiresWeighing: Record<string, boolean> = {};
   await Promise.all(
     productIds.map(async (pid: any) => {
       const snap = await getDoc(doc(db, 'products', pid));
       if (snap.exists()) {
         productNames[pid] = snap.data().name || pid;
         productVatRates[pid] = snap.data().vatRate;
+        productRequiresWeighing[pid] = Boolean(snap.data().requiresWeighing);
       }
     })
   );
+
+// Block invoice creation if any items require weighing but haven't been confirmed.
+// Check BOTH the orderItem flag AND the product flag — B2C checkout does not
+// copy requiresWeighing onto orderItems, so we must look it up from the product.
+const unconfirmedWeighItems = items.filter((i: any) => {
+  const requiresWeighing = i.requiresWeighing === true || productRequiresWeighing[i.productId] === true;
+  return requiresWeighing && i.weighConfirmed !== true;
+});
+if (unconfirmedWeighItems.length > 0) {
+  const names = unconfirmedWeighItems
+    .map((i: any) => productNames[i.productId] || i.productName || i.productId)
+    .join(", ");
+  throw new Error(
+    `Cannot create invoice: the following items require weighing confirmation first — ${names}. ` +
+    "Confirm the final weight in the order builder before invoicing."
+  );
+}
 
   console.log('ORDER USED FOR INVOICE:', order);
 console.log("FIRST ORDER ITEM USED FOR INVOICE:", items[0]);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy, getDoc, setDoc } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { generatePOPDF } from "@/lib/generatePOPDF";
 import { formatPrice } from "@/lib/formatters";
@@ -36,12 +36,8 @@ export default function PurchaseOrdersPage() {
   const [previewPO, setPreviewPO] = useState<any | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; poNumber: string; supplierName: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [warehousePhone, setWarehousePhone] = useState("");
-  const [showWarehouseSetup, setShowWarehouseSetup] = useState(false);
-  const [warehousePhoneInput, setWarehousePhoneInput] = useState("");
-  const [savingWarehouse, setSavingWarehouse] = useState(false);
 
-  useEffect(() => { void load(); void loadWarehousePhone(); }, []);
+  useEffect(() => { void load(); }, []);
 
   const load = async () => {
     setLoading(true);
@@ -54,7 +50,11 @@ export default function PurchaseOrdersPage() {
       }
       const data = snap.docs
         .map(d => ({ id: d.id, ...d.data() } as any))
-        .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+        .sort((a, b) => {
+          const ta = a.createdAt?.toMillis?.() ?? (typeof a.createdAt === "string" ? new Date(a.createdAt).getTime() : 0);
+          const tb = b.createdAt?.toMillis?.() ?? (typeof b.createdAt === "string" ? new Date(b.createdAt).getTime() : 0);
+          return tb - ta;
+        });
       setPOs(data);
     } catch (err) {
       console.error("Failed to load purchase orders:", err);

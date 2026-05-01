@@ -277,7 +277,6 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
 
         <div className="flex items-center justify-between mb-6">
           <div>
-            <button onClick={() => router.push("/customer/orders")} className="text-sm text-gray-500 hover:text-gray-700 font-medium mb-1 block cursor-pointer">← All Orders</button>
             <h1 className="text-xl font-bold text-gray-900">{order.name}</h1>
           </div>
           <span className={`text-sm font-semibold px-3 py-1.5 rounded-full ${STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600"}`}>

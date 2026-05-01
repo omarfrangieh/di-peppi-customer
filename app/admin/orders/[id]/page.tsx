@@ -50,6 +50,8 @@ type Product = {
   b2cPrice?: number;
   costPrice?: number;
   requiresWeighing?: boolean;
+  minWeightPerUnit?: number;
+  maxWeightPerUnit?: number;
   trackExpiry?: boolean;
 };
 
@@ -199,6 +201,7 @@ export default function Page() {
   const searchParams = useSearchParams();
   const urlOrderId = params?.id as string | undefined;
   const [products, setProducts] = useState<Product[]>([]);
+  const [supplierContacts, setSupplierContacts] = useState<Record<string, { name: string; phone: string; supplierName: string }>>({});
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
@@ -252,6 +255,7 @@ export default function Page() {
 
   const [itemDiscountPercent, setItemDiscountPercent] = useState("");
   const [itemDiscountAmount, setItemDiscountAmount] = useState("");
+  const [showAddProduct, setShowAddProduct] = useState(false);
 
   const [editingItemDiscountPercent, setEditingItemDiscountPercent] =
     useState("");
@@ -445,11 +449,34 @@ export default function Page() {
           b2bPrice: Number(raw.b2bPrice || 0),
           b2cPrice: Number(raw.b2cPrice || 0),
           requiresWeighing: Boolean(raw.requiresWeighing),
+          minWeightPerUnit: raw.minWeightPerUnit ? Number(raw.minWeightPerUnit) : undefined,
+          maxWeightPerUnit: raw.maxWeightPerUnit ? Number(raw.maxWeightPerUnit) : undefined,
           trackExpiry: Boolean(raw.trackExpiry),
         };
       });
 
-      setProducts(data.filter(p => p.active !== false));
+      const activeProducts = data.filter(p => p.active !== false);
+      setProducts(activeProducts);
+
+      // Load primary supplier contacts for all products with a supplierId
+      const allSupplierIds = [...new Set(
+        activeProducts.filter(p => p.supplierId).map(p => p.supplierId as string)
+      )];
+      if (allSupplierIds.length > 0) {
+        const suppSnap = await getDocs(collection(db, "suppliers"));
+        const contacts: Record<string, { name: string; phone: string; supplierName: string }> = {};
+        suppSnap.docs.forEach(d => {
+          if (allSupplierIds.includes(d.id)) {
+            const primary = (d.data().contacts || []).find((c: any) => c.isPrimary) || d.data().contacts?.[0];
+            contacts[d.id] = {
+              name: primary?.name || "",
+              phone: primary?.phone || "",
+              supplierName: d.data().name || "",
+            };
+          }
+        });
+        setSupplierContacts(contacts);
+      }
 } catch (error: any) {
   console.error(
     "Error loading products:",
@@ -1016,8 +1043,8 @@ export default function Page() {
         100
       : 0;
 
-  // ── READ-ONLY VIEW when invoice is locked (not draft) ──────────────────────
-  if (existingInvoiceId && selectedOrderId && existingInvoiceStatus !== "draft") {
+  // ── READ-ONLY VIEW when invoice is locked (not draft and not cancelled) ──────
+  if (existingInvoiceId && selectedOrderId && existingInvoiceStatus !== "draft" && existingInvoiceStatus !== "cancelled") {
     const order = orders.find(o => o.id === selectedOrderId);
     const customer = customers.find(c => c.id === customerId);
     return (
@@ -1043,25 +1070,33 @@ export default function Page() {
               ← Orders
             </button>
             {(!order?.status || order?.status === "Draft" || order?.status === "Confirmed" || order?.status === "Preparing") && (
-              <button
-                onClick={async () => {
-                  const msg = existingInvoiceId
-                    ? "Delete this order and its draft invoice? This cannot be undone."
-                    : "Delete this order? This cannot be undone.";
-                  if (!confirm(msg)) return;
-                  try {
-                    const { httpsCallable } = await import("firebase/functions");
-                    const { functions } = await import("@/lib/firebase");
-                    const deleteOrder = httpsCallable(functions, "deleteOrder");
-                    await deleteOrder({ orderId: selectedOrderId });
-                    router.push("/admin/orders");
-                  } catch (e: any) {
-                    showToast(`Failed to delete order: ${e.message}`, "error");
-                  }
-                }}
-                className="px-3 py-1.5 text-xs rounded-lg font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
-                🗑 Delete
-              </button>
+              existingInvoiceId && existingInvoiceStatus !== "draft" ? (
+                <button
+                  onClick={() => showToast("Cannot delete — this order has an invoice record. Cancel the order instead.", "error")}
+                  className="px-3 py-1.5 text-xs rounded-lg font-medium bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed">
+                  🗑 Delete
+                </button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    const msg = existingInvoiceId
+                      ? "Delete this order and its draft invoice? This cannot be undone."
+                      : "Delete this order? This cannot be undone.";
+                    if (!confirm(msg)) return;
+                    try {
+                      const { httpsCallable } = await import("firebase/functions");
+                      const { functions } = await import("@/lib/firebase");
+                      const deleteOrder = httpsCallable(functions, "deleteOrder");
+                      await deleteOrder({ orderId: selectedOrderId });
+                      router.push("/admin/orders");
+                    } catch (e: any) {
+                      showToast(`Failed to delete order: ${e.message}`, "error");
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-lg font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
+                  🗑 Delete
+                </button>
+              )
             )}
             <button onClick={() => router.push(`/invoices/${existingInvoiceId}`)}
               className="px-4 py-2 text-sm text-white rounded-lg font-medium"
@@ -1205,25 +1240,33 @@ export default function Page() {
                 }`}>📦 POs {poReadiness[selectedOrderId].delivered}/{poReadiness[selectedOrderId].total}</span>
               )}
               {(!orderStatus || orderStatus === "Draft" || orderStatus === "Confirmed" || orderStatus === "Preparing") && (
-                <button
-                  onClick={async () => {
-                    const msg = existingInvoiceId
-                      ? "Delete this order and its draft invoice? This cannot be undone."
-                      : "Delete this order? This cannot be undone.";
-                    if (!confirm(msg)) return;
-                    try {
-                      const { httpsCallable } = await import("firebase/functions");
-                      const { functions } = await import("@/lib/firebase");
-                      const deleteOrder = httpsCallable(functions, "deleteOrder");
-                      await deleteOrder({ orderId: selectedOrderId });
-                      router.push("/admin/orders");
-                    } catch (e: any) {
-                      alert(`Failed to delete order: ${e.message}`);
-                    }
-                  }}
-                  className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
-                  🗑 Delete
-                </button>
+                existingInvoiceId && existingInvoiceStatus !== "draft" && existingInvoiceStatus !== "cancelled" ? (
+                  <button
+                    onClick={() => showToast("Cannot delete — this order has an invoice record. Cancel the order instead.", "error")}
+                    className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed">
+                    🗑 Delete
+                  </button>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      const msg = existingInvoiceId
+                        ? "Delete this order and its draft invoice? This cannot be undone."
+                        : "Delete this order? This cannot be undone.";
+                      if (!confirm(msg)) return;
+                      try {
+                        const { httpsCallable } = await import("firebase/functions");
+                        const { functions } = await import("@/lib/firebase");
+                        const deleteOrder = httpsCallable(functions, "deleteOrder");
+                        await deleteOrder({ orderId: selectedOrderId });
+                        router.push("/admin/orders");
+                      } catch (e: any) {
+                        alert(`Failed to delete order: ${e.message}`);
+                      }
+                    }}
+                    className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
+                    🗑 Delete
+                  </button>
+                )
               )}
             </>
           )}
@@ -1427,7 +1470,13 @@ export default function Page() {
 
             {/* Add Product */}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-5 space-y-3">
-              <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">➕ Add Product</h3>
+              <button
+                onClick={() => setShowAddProduct(v => !v)}
+                className="w-full flex items-center justify-between text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                <span>➕ Add Product</span>
+                <span className="text-base leading-none">{showAddProduct ? "▲" : "▼"}</span>
+              </button>
+              {showAddProduct && <>
               <div className="relative">
                 <div
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-800 flex items-center gap-2 cursor-pointer"
@@ -1588,6 +1637,7 @@ export default function Page() {
                 {loading ? "Adding..." : "➕ Add to Order"}
               </button>
               {result && <p className="text-xs text-center text-gray-600 dark:text-gray-400">{result}</p>}
+              </>}
             </div>
 
             {/* Order Items List */}
@@ -1671,10 +1721,10 @@ export default function Page() {
                             <div className="flex-1">
                               <p className="font-semibold text-sm text-gray-900 dark:text-white">{item.productName}</p>
                               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                                <span className={`font-semibold ${Number(item.quantity) % 1 === 0 ? "text-orange-500" : "text-green-600"}`}>
-                                  {item.quantity}
+                                <span className={`font-semibold ${(item as any).weighConfirmed && (item as any).confirmedWeight ? "text-green-600" : Number(item.quantity) % 1 === 0 ? "text-orange-500" : "text-green-600"}`}>
+                                  {(item as any).weighConfirmed && (item as any).confirmedWeight ? `${(item as any).confirmedWeight}g` : item.quantity}
                                 </span>
-                                <span>× {money(item.unitPrice)}</span>
+                                <span>× {(item as any).weighConfirmed ? `$${Number(item.unitPrice) % 1 === 0 ? Number(item.unitPrice) : money(item.unitPrice)}/kg` : money(item.unitPrice)}</span>
                                 {displayItemDiscount > 0 && <span className="text-red-500">-{money(displayItemDiscount)}</span>}
                                 {item.preparation && <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">🔪 {item.preparation}</span>}
                                 {(item as any).sample && <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-medium">🧪 Sample</span>}
@@ -1688,26 +1738,27 @@ export default function Page() {
                               <p className="font-bold text-gray-900 dark:text-white">{money(displayNetLine)}</p>
                               {products.find(p => p.id === item.productId)?.requiresWeighing && weighingItemId === item.id ? (
                                 <div className="flex items-center gap-1">
-                                  <input type="number" step="0.001" placeholder="kg..." value={weighedQuantity}
+                                  <input type="number" step="1" placeholder="g..." value={weighedQuantity}
                                     onChange={e => setWeighedQuantity(e.target.value)}
                                     className="w-20 border rounded px-2 py-1 text-xs focus:outline-none" autoFocus />
                                   <button onClick={async () => {
                                     if (!weighedQuantity || Number(weighedQuantity) <= 0) return;
-                                    const qty = Number(weighedQuantity);
+                                    const qty_g = Number(weighedQuantity); // grams entered by user
+                                    const qty_kg = qty_g / 1000;           // convert to kg for price calculation
                                     try {
                                     const updateOrderItem = httpsCallable(functions, "updateOrderItemCallable");
-                                    await updateOrderItem({ orderItemId: item.id, productId: item.productId, quantity: qty, unitPrice: Number(item.unitPrice || 0), unitCostPrice: Number(item.unitCostPrice || 0), itemDiscountPercent: Number(item.itemDiscountPercent || 0), itemDiscountAmount: Number(item.itemDiscountAmount || 0), grossLineTotal: qty * Number(item.unitPrice || 0), netLineTotal: qty * Number(item.unitPrice || 0), notes: item.notes || "", customerType: selectedCustomer?.customerType || "", sample: false, gift: false });
-                                    // Mark weighing as confirmed on the orderItem document
+                                    await updateOrderItem({ orderItemId: item.id, productId: item.productId, quantity: qty_kg, unitPrice: Number(item.unitPrice || 0), unitCostPrice: Number(item.unitCostPrice || 0), itemDiscountPercent: Number(item.itemDiscountPercent || 0), itemDiscountAmount: Number(item.itemDiscountAmount || 0), grossLineTotal: qty_kg * Number(item.unitPrice || 0), netLineTotal: qty_kg * Number(item.unitPrice || 0), notes: item.notes || "", customerType: selectedCustomer?.customerType || "", sample: false, gift: false });
+                                    // Mark weighing as confirmed; store confirmedWeight in grams
                                     await updateDoc(doc(db, "orderItems", item.id), {
                                       weighConfirmed: true,
-                                      confirmedWeight: qty,
+                                      confirmedWeight: qty_g,
                                     });
                                     {
-                                      const newGross = qty * Number(item.unitPrice || 0);
+                                      const newGross = qty_kg * Number(item.unitPrice || 0);
                                       const newDiscount = (newGross * Number(item.itemDiscountPercent || 0) / 100) + Number(item.itemDiscountAmount || 0);
                                       const newNet = Math.max(newGross - newDiscount, 0);
-                                      const newProfit = newNet - (qty * Number(item.unitCostPrice || 0));
-                                      setOrderItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: qty, totalPrice: newNet, profit: newProfit, weighConfirmed: true, confirmedWeight: qty } : i));
+                                      const newProfit = newNet - (qty_kg * Number(item.unitCostPrice || 0));
+                                      setOrderItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: qty_kg, totalPrice: newNet, grossLineTotal: newGross, netLineTotal: newNet, profit: newProfit, weighConfirmed: true, confirmedWeight: qty_g } : i));
                                       setWeighingItemId(""); setWeighedQuantity("");
                                       showToast("Weight confirmed ✓", "success");
                                     }
@@ -1734,6 +1785,55 @@ export default function Page() {
                   })}
                 </div>
               )}
+
+              {/* Notify Suppliers via WhatsApp */}
+              {orderItems.length > 0 && (() => {
+                const order = orders.find(o => o.id === selectedOrderId);
+                // Group order items by supplierId
+                const bySupplier: Record<string, { supplierId: string; items: typeof orderItems }> = {};
+                orderItems.forEach(item => {
+                  const product = products.find(p => p.id === item.productId);
+                  const sid = product?.supplierId;
+                  if (!sid) return;
+                  if (!bySupplier[sid]) bySupplier[sid] = { supplierId: sid, items: [] };
+                  bySupplier[sid].items.push(item);
+                });
+                const groups = Object.values(bySupplier).filter(g => supplierContacts[g.supplierId]?.phone);
+                if (groups.length === 0) return null;
+                return (
+                  <div className="px-6 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
+                    <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">📱 Notify Suppliers</p>
+                    <div className="flex flex-wrap gap-2">
+                      {groups.map(({ supplierId }) => {
+                        const contact = supplierContacts[supplierId];
+                        const phone = contact.phone.replace(/[^0-9]/g, "");
+                        // Include ALL order items in the message (full order context)
+                        const itemLines = orderItems.map(i => {
+                          const product = products.find(p => p.id === i.productId);
+                          const isWeighed = (i as any).weighConfirmed;
+                          const qtyDisplay = product?.requiresWeighing
+                            ? isWeighed
+                              ? `${(i as any).confirmedWeight}g (confirmed)`
+                              : `${product.minWeightPerUnit ?? "?"}–${product.maxWeightPerUnit ?? "?"}g (to be weighed)`
+                            : `${i.quantity} ${product?.unit || "unit"}${Number(i.quantity) !== 1 && !product?.unit ? "s" : ""}`;
+                          return `- ${i.productName}: ${qtyDisplay}`;
+                        }).join("\n");
+                        const msg = encodeURIComponent(
+                          `Hi ${contact.supplierName},\n\nOrder: ${order?.name || ""}\nDelivery Date: ${order?.deliveryDate || "TBD"}\n\nItems:\n${itemLines}\n\nPlease confirm availability.\n\nDi Peppi`
+                        );
+                        return (
+                          <a key={supplierId}
+                            href={`https://wa.me/${phone}?text=${msg}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-green-500 text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-colors">
+                            📱 {contact.supplierName || contact.name}
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Totals */}
               <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 space-y-2">
@@ -1771,10 +1871,23 @@ export default function Page() {
             {editingItem && <div className="hidden">{editingMarginPercent}</div>}
 
             {/* Create Invoice Button */}
-            {orderItems.length > 0 && (
+            {orderItems.length > 0 && (() => {
+              const unconfirmedWeighItems = orderItems.filter(item => {
+                const productWeigh = products.find(p => p.id === item.productId)?.requiresWeighing;
+                return (item.requiresWeighing || productWeigh) && !(item as any).weighConfirmed;
+              });
+              const hasUnconfirmed = unconfirmedWeighItems.length > 0;
+              return (
+              <div>
+                {hasUnconfirmed && (
+                  <p className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mb-2 text-center font-medium">
+                    ⚖️ Confirm the weight of {unconfirmedWeighItems.map(i => i.productName || i.productId).join(", ")} before invoicing
+                  </p>
+                )}
               <button
-                className="w-full py-3 text-white font-bold rounded-xl text-sm"
-                style={{backgroundColor: "#1B2A5E"}}
+                disabled={hasUnconfirmed}
+                className={`w-full py-3 font-bold rounded-xl text-sm ${hasUnconfirmed ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "text-white"}`}
+                style={hasUnconfirmed ? {} : {backgroundColor: "#1B2A5E"}}
                 onClick={async () => {
                   try {
                     if (!deliveryDate) { showToast("Please set a Delivery Date first.", "warning"); return; }
@@ -1807,7 +1920,9 @@ export default function Page() {
                 }}>
                 🧾 Create Invoice →
               </button>
-            )}
+              </div>
+              );
+            })()}
           </>
         )}
       </div>
