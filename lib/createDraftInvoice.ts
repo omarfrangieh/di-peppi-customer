@@ -63,6 +63,18 @@ const items = itemsSnap.docs.map((doc) => ({
   ...doc.data(),
 }));
 
+// Block invoice creation if any items require weighing but haven't been confirmed
+const unconfirmedWeighItems = items.filter(
+  (i: any) => i.requiresWeighing === true && i.weighConfirmed !== true
+);
+if (unconfirmedWeighItems.length > 0) {
+  const names = unconfirmedWeighItems.map((i: any) => i.productName || i.productId).join(", ");
+  throw new Error(
+    `Cannot create invoice: the following items require weighing confirmation first — ${names}. ` +
+    "Confirm the final weight in the order builder before invoicing."
+  );
+}
+
 // Fetch product names and VAT rates
   const productIds = [...new Set(items.map((i: any) => i.productId).filter(Boolean))];
   const productNames: Record<string, string> = {};

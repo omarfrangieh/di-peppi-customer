@@ -1803,7 +1803,7 @@ export default function Page() {
                     });
                     await updateDoc(doc(db, "orders", selectedOrderId), { status: "To Deliver" });
                     window.location.href = `/invoices/${id}`;
-                  } catch (err) { console.error(err); showToast("Error creating invoice", "error"); }
+                  } catch (err: any) { console.error(err); showToast(err?.message || "Error creating invoice", "error"); }
                 }}>
                 🧾 Create Invoice →
               </button>
