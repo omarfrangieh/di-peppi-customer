@@ -181,7 +181,9 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
 
         {/* Stock Status */}
         <div className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stockColor} mb-3 w-fit`}>
-          {stockStatus}
+          {product.currentStock > 0 && product.currentStock < 5
+            ? `Only ${formatQty(product.currentStock)} left`
+            : stockStatus}
         </div>
 
         {/* Quantity stepper + add to cart */}

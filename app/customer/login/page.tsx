@@ -337,7 +337,18 @@ export default function CustomerLoginPage() {
           </button>
         </div>
 
-        <p className="text-xs text-gray-400 text-center mt-8">
+        <p className="text-center text-sm text-gray-500 mt-6">
+          Don&apos;t have an account?{" "}
+          <button
+            onClick={() => router.push("/customer/signup")}
+            className="font-semibold hover:underline"
+            style={{ color: "#1B2A5E" }}
+          >
+            Sign up
+          </button>
+        </p>
+
+        <p className="text-xs text-gray-400 text-center mt-4">
           © 2026 Di Peppi. All rights reserved.
         </p>
       </div>

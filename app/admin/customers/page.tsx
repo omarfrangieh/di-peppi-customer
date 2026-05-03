@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp, query, where, orderBy, increment } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, serverTimestamp, query, where, orderBy, increment } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { formatPrice } from "@/lib/formatters";
@@ -143,6 +143,18 @@ export default function AdminCustomersPage() {
 
   const cancelEdit = () => { setEditing(null); setEditData({}); setEditPrices({}); setShowAdd(false); setPendingHold(false); setEditMapLocation(null); setShowEditMap(false); };
 
+  const deleteCustomer = async (customer: any) => {
+    if (!confirm(`Delete ${customer.name}? This cannot be undone.`)) return;
+    try {
+      await deleteDoc(doc(db, "customers", customer.id));
+      setCustomers(prev => prev.filter(c => c.id !== customer.id));
+      showToast("Customer deleted", "success");
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to delete customer", "error");
+    }
+  };
+
   const openWallet = async (customerId: string) => {
     setShowWalletFor(customerId);
     setWalletAdjAmount("");
@@ -281,7 +293,7 @@ export default function AdminCustomersPage() {
         mapLocation: editMapLocation || null,
         updatedAt: new Date().toISOString(),
       });
-      setCustomers(prev => prev.map(c => c.id === id ? { ...editData, specialPrices } : c));
+      setCustomers(prev => prev.map(c => c.id === id ? { ...editData, specialPrices, mapLocation: editMapLocation || null } : c));
       setEditing(null);
     } finally {
       setSaving(null);
@@ -903,6 +915,10 @@ export default function AdminCustomersPage() {
                             className="px-2.5 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300">
                             Edit
                           </button>
+                          <button onClick={() => deleteCustomer(customer)}
+                            className="px-2.5 py-1 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
+                            Delete
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -968,6 +984,7 @@ export default function AdminCustomersPage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <Field label="Name" value={editData.name} onChange={(v: string) => setEditData((p: any) => ({ ...p, name: v }))} />
                     <Field label="Company Name" value={editData.companyName} onChange={(v: string) => setEditData((p: any) => ({ ...p, companyName: v }))} />
+                    <Field label="Email" value={editData.email} onChange={(v: string) => setEditData((p: any) => ({ ...p, email: v }))} type="email" />
                     <div>
                       <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Customer Type</label>
                       <SearchableSelect value={editData.customerType || ""} onChange={v => setEditData((p: any) => ({ ...p, customerType: v }))} options={CUSTOMER_TYPES} placeholder="— Select —" />
@@ -1249,7 +1266,9 @@ export default function AdminCustomersPage() {
                         {customer.customerType === "B2C" && <span className={`text-xs font-medium ${(customer.walletBalance ?? 0) > 0 ? "" : "text-gray-400 dark:text-gray-500"}`} style={(customer.walletBalance ?? 0) > 0 ? { color: "#1B2A5E" } : {}}>💳 ${formatPrice(customer.walletBalance ?? 0)}</span>}
                         {customer.clientMargin > 0 && <span>📊 {customer.clientMargin}% margin</span>}
                         {customer.clientDiscount > 0 && <span>🏷️ {customer.clientDiscount}% disc</span>}
-                        {customer.mapsLink && <a href={customer.mapsLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs">📍 Maps</a>}
+                        {(customer.mapsLink || customer.mapLocation) && (
+                          <a href={customer.mapsLink || `https://maps.google.com/?q=${customer.mapLocation.lat},${customer.mapLocation.lng}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs">📍 Maps</a>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 ml-4 flex-shrink-0">
@@ -1261,6 +1280,10 @@ export default function AdminCustomersPage() {
                       <button onClick={() => { setShowAdd(false); startEdit(customer); }}
                         className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300">
                         Edit
+                      </button>
+                      <button onClick={() => deleteCustomer(customer)}
+                        className="px-3 py-1.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
+                        Delete
                       </button>
                       {customer.customerType === "B2C" && (
                         <button
@@ -1501,6 +1524,10 @@ export default function AdminCustomersPage() {
                           <button onClick={() => { setShowAdd(false); startEdit(customer); }}
                             className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300">
                             Edit
+                          </button>
+                          <button onClick={() => deleteCustomer(customer)}
+                            className="px-3 py-1.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
+                            Delete
                           </button>
                           <button
                             onClick={() => {
