@@ -106,23 +106,20 @@ export default function ProductsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Storefront hero banner */}
-      <div className="text-white px-6 py-4 sm:py-5" style={{ backgroundColor: "#1B2A5E" }}>
+      {/* Page title — no duplication with header */}
+      <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-white/50 mb-0.5" style={{ fontFamily: "var(--font-playfair)" }}>Di Peppi</p>
-            <h1 className="text-xl sm:text-2xl font-bold leading-tight" style={{ fontFamily: "var(--font-playfair)" }}>Our Products</h1>
-            <p className="text-white/60 text-xs mt-0.5">Premium quality, delivered to your door</p>
+            <h1 className="text-lg font-bold leading-tight" style={{ color: "#B5535A", fontFamily: "var(--font-playfair)" }}>Our Products</h1>
+            <p className="text-xs text-gray-400 mt-0.5">Premium quality, delivered to your door</p>
           </div>
-          <img
-            src="/Di-Peppi-White-Background.jpg"
-            alt="Di Peppi"
-            className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-contain border-2 border-white/20 opacity-90"
-          />
+          {!loading && (
+            <span className="text-xs text-gray-400 font-medium">{allProducts.length} items</span>
+          )}
         </div>
       </div>
 
-      {/* Sticky search + category filter — full-width, outside padded container */}
+      {/* Sticky search + category filter */}
       {!loading && allProducts.length > 0 && (
         <SearchFilter
           products={allProducts}

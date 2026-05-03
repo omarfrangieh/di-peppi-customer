@@ -177,7 +177,7 @@ export default function WalletPage() {
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
 
         {/* Page Title */}
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">My Wallet</h1>
+        <h1 className="text-2xl font-bold mb-6" style={{ color: "#B5535A" }}>My Wallet</h1>
 
         {/* Balance Card */}
         <div

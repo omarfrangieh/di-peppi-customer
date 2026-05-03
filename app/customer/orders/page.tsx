@@ -107,7 +107,7 @@ export default function CustomerOrdersPage() {
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Order History</h1>
+            <h1 className="text-xl font-bold" style={{ color: "#B5535A" }}>Order History</h1>
             <p className="text-sm text-gray-500 mt-0.5">{orders.length} order{orders.length !== 1 ? "s" : ""}</p>
           </div>
           <button

@@ -277,7 +277,7 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
 
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">{order.name}</h1>
+            <h1 className="text-xl font-bold" style={{ color: "#B5535A" }}>{order.name}</h1>
           </div>
           <span className={`text-sm font-semibold px-3 py-1.5 rounded-full ${STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600"}`}>
             {order.status}
