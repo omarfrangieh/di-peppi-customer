@@ -561,13 +561,50 @@ export default function AdminProductsPage() {
   };
 
   const downloadCsvTemplate = () => {
-    const headers = "name,productSubName,supplier,category,origin,unit,storageType,costPrice,b2bPrice,b2cPrice,vatRate,minStock,barcodeNumber,requiresWeighing,trackExpiry,active";
-    const example = "Olive Oil Extra Virgin,500ml,LE MARIN TRAITEUR,Oils,ITALY,Jar,Ambient,12.50,18.00,22.00,,10,1234567890123,false,false,true";
-    const blob = new Blob([headers + "\n" + example], { type: "text/csv" });
+    const headers = [
+      "name",            // Required — product name (no weight/size in name)
+      "productSubName",  // Optional — size/format label e.g. "60g Tube", "500ml Jar"
+      "brand",           // Optional — brand name
+      "supplier",        // Optional — must match supplier name in system exactly
+      "category",        // Optional — e.g. Anchovy, Octopus, Olive Oil
+      "origin",          // Optional — country e.g. SPAIN, ITALY
+      "unit",            // Required — Kg, Jar, Tin, Tube, Piece
+      "storageType",     // Optional — Ambient, Chilled, Fresh, Frozen, Refrigerated
+      "costPrice",       // Optional — cost price (per unit / per kg)
+      "b2bPrice",        // Optional — wholesale price
+      "b2cPrice",        // Optional — retail price
+      "vatRate",         // Optional — VAT % e.g. 11
+      "minStock",        // Optional — reorder alert threshold
+      "barcodeNumber",   // Optional — EAN/UPC barcode
+      "caliber",         // Optional — e.g. 16/20, 20/30
+      "description",     // Optional — product description
+      "ingredients",     // Optional — ingredients list
+      "allergens",       // Optional — e.g. Fish, Shellfish, Gluten
+      "packSizeG",       // Optional — pack weight in grams (triggers per-kg price calc). Leave empty for fixed-price items
+      "netWeightG",      // Optional — net weight in grams (display only, no price calc)
+      "drainedWeightG",  // Optional — drained weight in grams for canned/jarred items
+      "requiresWeighing",// Optional — true/false. Set true for whole fish/meat sold by kg
+      "minWeightPerUnit",// Optional — min unit weight in grams (only if requiresWeighing=true)
+      "maxWeightPerUnit",// Optional — max unit weight in grams (only if requiresWeighing=true)
+      "b2cOnly",         // Optional — true/false. true = hidden from B2B catalogue
+      "trackExpiry",     // Optional — true/false
+      "active",          // Optional — true/false (default: true)
+    ].join(",");
+
+    const examples = [
+      // Fixed-price jar — no packSizeG (price is per jar)
+      "Anchovy Paste,60g Tube,Conserva Silvia,LE MARIN TRAITEUR,Anchovy,SPAIN,Tube,Ambient,3.50,6.00,8.00,11,20,,,Smooth anchovy paste in a convenient tube,Anchovies (Engraulis encrasicolus) 70% olive oil 30% salt,,60,,,false,,,false,false,true",
+      // Canned tin — no packSizeG for fixed price
+      "Octopus in Olive Oil,Pulpo en Aceite de Oliva,Los Peperetes,LE MARIN TRAITEUR,Octopus,SPAIN,Tin,Ambient,8.00,14.00,18.00,11,15,,,Octopus tentacles in extra virgin olive oil,Octopus olive oil salt lemon,Fish Shellfish,120,,,false,,,false,false,true",
+      // Whole fish sold by kg — requiresWeighing
+      "Octopus,,Le Marin Traiteur,LE MARIN TRAITEUR,Octopus,MAURITANIA,Kg,Fresh,12.00,17.00,,11,20,,16/20,Whole fresh octopus,,,,,800,1200,true,800,1200,false,false,true",
+    ].join("\n");
+
+    const blob = new Blob([headers + "\n" + examples], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "products-import-template.csv";
+    a.download = "di-peppi-products-import-template.csv";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -603,10 +640,11 @@ export default function AdminProductsPage() {
         await addDoc(collection(db, "products"), {
           name: row.name.trim(),
           productSubName: row.productSubName || "",
+          brand: row.brand || "",
           supplierId: supplierMatch?.id || "",
           supplier: row.supplier || "",
           category: row.category || "",
-          origin: row.origin || "",
+          origin: row.origin ? row.origin.trim().toUpperCase() : "",
           unit: row.unit || "KG",
           storageType: row.storageType || "",
           costPrice: Number(row.costPrice || 0),
@@ -615,10 +653,20 @@ export default function AdminProductsPage() {
           vatRate: row.vatRate ? Number(row.vatRate) : null,
           minStock: Number(row.minStock || 0),
           barcodeNumber: row.barcodeNumber || "",
+          caliber: row.caliber || "",
+          description: row.description || "",
+          ingredients: row.ingredients || "",
+          allergens: row.allergens || "",
+          packSizeG: row.packSizeG ? Number(row.packSizeG) : null,
+          netWeightG: row.netWeightG ? Number(row.netWeightG) : null,
+          drainedWeightG: row.drainedWeightG ? Number(row.drainedWeightG) : null,
           requiresWeighing: row.requiresWeighing === "true",
+          minWeightPerUnit: row.minWeightPerUnit ? Number(row.minWeightPerUnit) : null,
+          maxWeightPerUnit: row.maxWeightPerUnit ? Number(row.maxWeightPerUnit) : null,
+          b2cOnly: row.b2cOnly === "true",
           trackExpiry: row.trackExpiry === "true",
           active: row.active !== "false",
-          stock: 0,
+          currentStock: 0,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
