@@ -189,7 +189,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         {/* Stock Status */}
         <div className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stockColor} mb-3 w-fit`}>
           {product.currentStock > 0 && product.currentStock < 5
-            ? `Only ${formatQty(product.currentStock)}${product.requiresWeighing ? " kg" : ""} left`
+            ? `Only ${formatQty(product.currentStock)}${product.requiresWeighing ? " kg" : product.unit ? ` ${product.unit}` : ""} left`
             : stockStatus}
         </div>
 

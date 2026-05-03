@@ -181,7 +181,7 @@ export default function ProductDetailPage() {
     product.currentStock === 0
       ? "Out of Stock"
       : product.currentStock < 5
-      ? "Limited Stock"
+      ? `Only ${formatQty(product.currentStock)}${product.requiresWeighing ? " kg" : product.unit ? ` ${product.unit}` : ""} left`
       : "In Stock";
 
   const stockColor =
