@@ -148,7 +148,7 @@ export default function PermissionsPage() {
     <div className="p-6 min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Permissions</h1>
+          <h1 className="text-3xl font-bold mb-2" style={{color: "#B5535A"}}>Permissions</h1>
           <p className="text-sm text-gray-600 dark:text-gray-400">Manage role-based access control</p>
         </div>
         {confirmResetAll ? (
