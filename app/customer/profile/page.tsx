@@ -332,12 +332,15 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-3 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <h1 className="text-xl font-bold" style={{ color: "#B5535A" }}>Profile Settings</h1>
+          <div>
+            <h1 className="text-lg font-bold leading-tight" style={{ color: "#B5535A", fontFamily: "var(--font-playfair)" }}>Profile Settings</h1>
+            <p className="text-xs text-gray-400 mt-0.5">Manage your account details</p>
+          </div>
           <button
             onClick={() => router.push("/customer/products")}
-            className="px-4 py-2 text-white text-sm font-semibold rounded-xl hover:opacity-90 cursor-pointer"
+            className="px-3 py-1.5 text-white text-xs font-semibold rounded-lg hover:opacity-90 cursor-pointer"
             style={{ backgroundColor: "#1B2A5E" }}
           >
             Shop

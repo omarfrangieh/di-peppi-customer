@@ -114,6 +114,14 @@ export default function WalletPage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
+      {/* Page title bar */}
+      <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-3">
+        <div className="max-w-3xl mx-auto">
+          <h1 className="text-lg font-bold leading-tight" style={{ color: "#B5535A", fontFamily: "var(--font-playfair)" }}>My Wallet</h1>
+          <p className="text-xs text-gray-400 mt-0.5">Your credit balance & transactions</p>
+        </div>
+      </div>
+
       {/* Add Credit Modal */}
       {showAddCredit && (
         <div
@@ -175,9 +183,6 @@ export default function WalletPage() {
       )}
 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
-
-        {/* Page Title */}
-        <h1 className="text-2xl font-bold mb-6" style={{ color: "#B5535A" }}>My Wallet</h1>
 
         {/* Balance Card */}
         <div
