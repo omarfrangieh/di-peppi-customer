@@ -5,7 +5,7 @@ import { showToast } from "@/lib/toast";
 import { exportToExcel, exportToPDF } from "@/lib/exportReports";
 import { buildWhatsAppReportShare } from "@/lib/whatsappShare";
 import { db } from "@/lib/firebase";
-import { formatQty, formatPrice } from "@/lib/formatters";
+import { formatQty, formatPrice, toTitleCase } from "@/lib/formatters";
 
 function money(v: number) { return "$" + formatPrice(v); }
 function pct(v: number) { return Number(v || 0).toFixed(1) + "%"; }
@@ -261,7 +261,7 @@ export default function ReportsPage() {
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {byCustomer.map(c => (
                   <tr key={c.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{c.name}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{toTitleCase(c.name)}</td>
                     <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{c.orders}</td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{money(c.revenue)}</td>
                     <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{money(c.orders ? c.revenue/c.orders : 0)}</td>
@@ -301,7 +301,7 @@ export default function ReportsPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {i<3 && <span>{["🥇","🥈","🥉"][i]}</span>}
-                        <span className="font-medium text-gray-900 dark:text-white">{p.name}</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{toTitleCase(p.name)}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{formatQty(p.qty)}</td>
@@ -327,7 +327,7 @@ export default function ReportsPage() {
           <div className="space-y-6">
             <div className="grid grid-cols-3 gap-4">
               {[
-                {label:"Best Product", value:byProduct[0]?.name||"—", color:"text-gray-900 dark:text-white"},
+                {label:"Best Product", value:byProduct[0]?.name ? toTitleCase(byProduct[0].name) : "—", color:"text-gray-900 dark:text-white"},
                 {label:"Total Profit", value:money(totalProfit), color: totalProfit > 0 ? "text-green-600 dark:text-green-400" : totalProfit < 0 ? "text-red-600 dark:text-red-400" : "text-gray-500 dark:text-gray-400"},
                 {label:"Overall Margin", value:totalRevenue>0?pct(totalProfit/totalRevenue*100):"—", color:totalRevenue>0&&totalProfit/totalRevenue*100<15?"text-yellow-600 dark:text-yellow-400":"text-green-600 dark:text-green-400"},
               ].map(c => (
@@ -352,7 +352,7 @@ export default function ReportsPage() {
                     const m = p.revenue>0?(p.profit/p.revenue)*100:0;
                     return (
                       <tr key={p.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{p.name}</td>
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{toTitleCase(p.name)}</td>
                         <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{money(p.revenue)}</td>
                         <td className={`px-4 py-3 text-right font-medium ${p.profit > 0 ? "text-green-600 dark:text-green-400" : p.profit < 0 ? "text-red-600 dark:text-red-400" : "text-gray-400 dark:text-gray-500"}`}>{money(p.profit)}</td>
                         <td className="px-4 py-3 text-right">
@@ -402,7 +402,7 @@ export default function ReportsPage() {
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {stockData.map(p => (
                     <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{p.name}</td>
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{toTitleCase(p.name)}</td>
                       <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{formatQty(p.currentStock)}</td>
                       <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">{p.minStock||"—"}</td>
                       <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">{formatQty(p.inTotal)}</td>
