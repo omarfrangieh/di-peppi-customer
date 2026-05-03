@@ -105,7 +105,7 @@ export default function CustomerOrdersPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Page title bar */}
-      <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-3">
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-lg font-bold leading-tight" style={{ color: "#B5535A", fontFamily: "var(--font-playfair)" }}>Order History</h1>
