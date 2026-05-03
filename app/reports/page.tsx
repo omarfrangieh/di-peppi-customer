@@ -99,7 +99,7 @@ export default function ReportsPage() {
     filteredOrders.forEach(o => {
       const k = o.customerId || o.customerName || "Unknown";
       if (!map[k]) map[k] = { name: o.customerName || k, revenue: 0, profit: 0, orders: 0 };
-      map[k].revenue += Number(o.finalTotal || 0); map[k].orders += 1;
+      map[k].revenue += Number(o.finalTotal || o.total || o.grandTotal || 0); map[k].orders += 1;
     });
     filteredItems.forEach(i => {
       const o = filteredOrders.find((x: any) => x.id === i.orderId); if (!o) return;
