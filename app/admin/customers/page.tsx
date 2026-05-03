@@ -232,7 +232,7 @@ export default function AdminCustomersPage() {
     setHasAttemptedSubmit(true);
     if (!newCustomer.name?.trim()) return;
     if (!newCustomer.customerType) return;
-    if (!newCustomer.phoneNumber?.trim()) return;
+    if (!newCustomer.phoneNumber?.trim() && !newCustomer.email?.trim()) return;
     const fullPhone = phonePrefix + (newCustomer.phoneNumber || "").replace(/^\+?[0-9]{1,4}/, "");
     const docRef = await addDoc(collection(db, "customers"), {
       ...newCustomer,
@@ -621,6 +621,16 @@ export default function AdminCustomersPage() {
                   />
                 </div>
                 <div>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Email</label>
+                  <input
+                    type="email"
+                    value={newCustomer.email || ""}
+                    onChange={e => setNewCustomer((p: any) => ({ ...p, email: e.target.value }))}
+                    placeholder="customer@email.com"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  />
+                </div>
+                <div>
                   <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Customer Type *</label>
                   <SearchableSelect
                     value={newCustomer.customerType}
@@ -631,7 +641,7 @@ export default function AdminCustomersPage() {
                   {hasAttemptedSubmit && !newCustomer.customerType && <p className="text-xs text-red-500 mt-0.5">Type is required</p>}
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Phone *</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Phone {!newCustomer.email?.trim() ? "*" : "(optional)"}</label>
                   <div className={`flex rounded border overflow-hidden ${hasAttemptedSubmit && !newCustomer.phoneNumber?.trim() ? "border-red-400 dark:border-red-500" : "border-gray-200 dark:border-gray-600"}`}>
                     <select
                       value={phonePrefix}
@@ -651,7 +661,7 @@ export default function AdminCustomersPage() {
                       className="flex-1 px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none"
                     />
                   </div>
-                  {hasAttemptedSubmit && !newCustomer.phoneNumber?.trim() && <p className="text-xs text-red-500 mt-0.5">Phone is required</p>}
+                  {hasAttemptedSubmit && !newCustomer.phoneNumber?.trim() && !newCustomer.email?.trim() && <p className="text-xs text-red-500 mt-0.5">Phone or email is required</p>}
                 </div>
               </div>
 
