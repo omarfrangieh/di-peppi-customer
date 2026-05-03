@@ -19,6 +19,7 @@ interface Product {
   currentStock: number;
   price: number;
   productImage?: string;
+  productImages?: string[];
   description?: string;
   category?: string;
   storageType?: string;
@@ -54,6 +55,7 @@ export default function ProductDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
@@ -202,23 +204,48 @@ export default function ProductDetailPage() {
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-          {/* Product Image */}
-          <div>
-            <div className="relative w-full aspect-square bg-gray-100 rounded-lg overflow-hidden">
-              {isValidUrl(product.productImage) ? (
-                <Image
-                  src={product.productImage!}
-                  alt={product.name}
-                  fill
-                  className="object-cover"
-                  priority
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-400">
-                  <span className="text-6xl">📦</span>
-                </div>
-              )}
-            </div>
+          {/* Product Image Gallery */}
+          <div className="space-y-3">
+            {(() => {
+              const images: string[] = (product.productImages && product.productImages.length > 0)
+                ? product.productImages
+                : (product.productImage ? [product.productImage] : []);
+              const current = images[selectedImageIndex] || null;
+              return (
+                <>
+                  {/* Main image */}
+                  <div className="relative w-full aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                    {isValidUrl(current ?? undefined) ? (
+                      <Image
+                        src={current!}
+                        alt={product.name}
+                        fill
+                        className="object-contain p-2"
+                        priority
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                        <span className="text-6xl">📦</span>
+                      </div>
+                    )}
+                  </div>
+                  {/* Thumbnail strip — only shown when there are multiple images */}
+                  {images.length > 1 && (
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {images.map((url, idx) => (
+                        <button
+                          key={url}
+                          onClick={() => setSelectedImageIndex(idx)}
+                          className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-colors ${idx === selectedImageIndex ? "border-[#1B2A5E]" : "border-gray-200 hover:border-gray-400"}`}
+                        >
+                          <img src={url} alt={`View ${idx + 1}`} className="w-full h-full object-contain p-0.5 bg-white" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* Product Info */}

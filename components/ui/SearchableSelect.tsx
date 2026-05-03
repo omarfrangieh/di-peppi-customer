@@ -10,6 +10,7 @@ export function SearchableSelect({
   size = "sm",
   allowCustom = false,
   disabled = false,
+  onAddOption,
 }: {
   value: string;
   onChange: (val: string) => void;
@@ -18,6 +19,7 @@ export function SearchableSelect({
   size?: "xs" | "sm";
   allowCustom?: boolean;
   disabled?: boolean;
+  onAddOption?: (val: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -26,6 +28,9 @@ export function SearchableSelect({
   const allOptions = value && !sorted.includes(value) ? [value, ...sorted] : sorted;
   const filtered = allOptions.filter(o => o.toLowerCase().includes(search.toLowerCase()));
   const px = size === "xs" ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm";
+  // Show "add" option when allowCustom and search has text not matching any existing option
+  const searchTrimmed = search.trim();
+  const showAddNew = allowCustom && searchTrimmed.length > 0 && !allOptions.some(o => o.toLowerCase() === searchTrimmed.toLowerCase());
 
   return (
     <div className="relative">
@@ -72,8 +77,22 @@ export function SearchableSelect({
                   {o}
                 </div>
               ))}
-              {filtered.length === 0 && (
+              {filtered.length === 0 && !showAddNew && (
                 <div className={`px-3 py-3 ${size === "xs" ? "text-xs" : "text-sm"} text-gray-400 text-center`}>No options found</div>
+              )}
+              {showAddNew && (
+                <div
+                  onClick={() => {
+                    const val = searchTrimmed.toUpperCase();
+                    onChange(val);
+                    onAddOption?.(val);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  className={`px-3 py-2 ${size === "xs" ? "text-xs" : "text-sm"} cursor-pointer hover:bg-green-50 dark:hover:bg-green-900/20 text-green-700 dark:text-green-400 font-medium flex items-center gap-1.5 border-t border-gray-100 dark:border-gray-700`}
+                >
+                  <span>＋</span> Add "{searchTrimmed.toUpperCase()}"
+                </div>
               )}
             </div>
           </div>

@@ -2,7 +2,7 @@
 import React from "react";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { collection, getDocs, doc, updateDoc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp, writeBatch, arrayUnion } from "firebase/firestore";
 import { showToast } from "@/lib/toast";
 import { db, storage } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -21,11 +21,12 @@ const DEFAULT_OPTIONS: { unit: string[]; storageType: string[]; category: string
   origin: [],
 };
 
-function ProductImage({ src, alt, className }: { src?: string | null; alt: string; className?: string }) {
+function ProductImage({ src, images, alt, className }: { src?: string | null; images?: string[]; alt: string; className?: string }) {
   const [failed, setFailed] = React.useState(false);
-  const isValid = src && (src.startsWith("/") || src.startsWith("http://") || src.startsWith("https://"));
+  const resolved = (images && images.length > 0 ? images[0] : src) || null;
+  const isValid = resolved && (resolved.startsWith("/") || resolved.startsWith("http://") || resolved.startsWith("https://"));
   if (!isValid || failed) return null;
-  return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
+  return <img src={resolved} alt={alt} className={className} onError={() => setFailed(true)} />;
 }
 
 function Badge({ label, color }: { label: string; color: string }) {
@@ -42,6 +43,7 @@ export default function AdminProductsPage() {
   const [options, setOptions] = useState(DEFAULT_OPTIONS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editData, setEditData] = useState<any>({});
   const [search, setSearch] = useState("");
@@ -66,6 +68,9 @@ export default function AdminProductsPage() {
     vatRate: "",
   });
   const [addingSaving, setAddingSaving] = useState(false);
+  const [newProductImageFiles, setNewProductImageFiles] = useState<File[]>([]);
+  const [newProductImagePreviews, setNewProductImagePreviews] = useState<string[]>([]);
+  const newProductImageRef = useRef<HTMLInputElement>(null);
   const [showMarginsFor, setShowMarginsFor] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const [selectedForPrint, setSelectedForPrint] = useState<Set<string>>(new Set());
@@ -439,19 +444,40 @@ export default function AdminProductsPage() {
     if (!file) return;
     setUploadingImage(productId);
     try {
-      const storageRef = ref(storage, `products/${productId}/${file.name}`);
+      const uniqueName = `${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, `products/${productId}/${uniqueName}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
-      await updateDoc(doc(db, "products", productId), { productImage: url });
-      setProducts(prev => prev.map(p => p.id === productId ? { ...p, productImage: url } : p));
+      const product = products.find(p => p.id === productId);
+      const existingImages: string[] = product?.productImages || (product?.productImage ? [product.productImage] : []);
+      const updatedImages = [...existingImages, url];
+      await updateDoc(doc(db, "products", productId), {
+        productImages: updatedImages,
+        productImage: updatedImages[0],
+      });
+      setProducts(prev => prev.map(p => p.id === productId ? { ...p, productImages: updatedImages, productImage: updatedImages[0] } : p));
       if (editing === productId) {
-        setEditData((p: any) => ({ ...p, productImage: url }));
+        setEditData((p: any) => ({ ...p, productImages: updatedImages, productImage: updatedImages[0] }));
       }
     } catch (err) {
       console.error("Error uploading image:", err);
       showToast("Failed to upload image", "error");
     } finally {
       setUploadingImage(null);
+    }
+  };
+
+  const handleImageDelete = async (productId: string, imageUrl: string) => {
+    const product = products.find(p => p.id === productId);
+    const existingImages: string[] = product?.productImages || (product?.productImage ? [product.productImage] : []);
+    const updatedImages = existingImages.filter(u => u !== imageUrl);
+    await updateDoc(doc(db, "products", productId), {
+      productImages: updatedImages,
+      productImage: updatedImages[0] || null,
+    });
+    setProducts(prev => prev.map(p => p.id === productId ? { ...p, productImages: updatedImages, productImage: updatedImages[0] || null } : p));
+    if (editing === productId) {
+      setEditData((p: any) => ({ ...p, productImages: updatedImages, productImage: updatedImages[0] || null }));
     }
   };
 
@@ -589,6 +615,18 @@ export default function AdminProductsPage() {
     setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   };
 
+  const addOptionToList = async (field: "category" | "origin", value: string) => {
+    const trimmed = value.trim().toUpperCase();
+    if (!trimmed || options[field].includes(trimmed)) return;
+    const updated = [...options[field], trimmed].sort((a, b) => a.localeCompare(b));
+    setOptions(prev => ({ ...prev, [field]: updated }));
+    try {
+      await updateDoc(doc(db, "settings", "productOptions"), { [field]: arrayUnion(trimmed) });
+    } catch (err) {
+      console.error("Failed to save option:", err);
+    }
+  };
+
   const saveNewProduct = async () => {
     if (!newProduct.name.trim()) { showToast("Product name is required", "warning"); return; }
     if (newProduct.requiresWeighing) {
@@ -605,7 +643,7 @@ export default function AdminProductsPage() {
     }
     setAddingSaving(true);
     try {
-      await addDoc(collection(db, "products"), {
+      const docRef = await addDoc(collection(db, "products"), {
         name: newProduct.name.trim(),
         productSubName: newProduct.productSubName || "",
         supplierId: newProduct.supplierId || "",
@@ -630,8 +668,27 @@ export default function AdminProductsPage() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
+      // Upload images if any were selected
+      if (newProductImageFiles.length > 0) {
+        try {
+          const urls: string[] = [];
+          for (const file of newProductImageFiles) {
+            const uniqueName = `${Date.now()}_${file.name}`;
+            const storageRef = ref(storage, `products/${docRef.id}/${uniqueName}`);
+            await uploadBytes(storageRef, file);
+            const url = await getDownloadURL(storageRef);
+            urls.push(url);
+          }
+          await updateDoc(doc(db, "products", docRef.id), { productImages: urls, productImage: urls[0] });
+        } catch (imgErr) {
+          console.error("Image upload failed:", imgErr);
+          showToast("Product created but image upload failed", "warning");
+        }
+      }
       setShowAddProduct(false);
       setNewProduct({ name: "", productSubName: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "", packSizeG: "", barcodeNumber: "", vatRate: "", initialExpiry: "" });
+      setNewProductImageFiles([]);
+      setNewProductImagePreviews([]);
       await load();
     } finally {
       setAddingSaving(false);
@@ -1202,18 +1259,32 @@ export default function AdminProductsPage() {
               {editing === product.id ? (
                 /* EDIT MODE */
                 <div className="space-y-3">
-                  <div className="relative h-32 bg-white dark:bg-gray-800 rounded-t-lg overflow-hidden group flex items-center justify-center">
-                    <ProductImage src={editData.productImage} alt={editData.name} className="max-w-full max-h-full object-contain" />
-                    {!editData.productImage && (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">📷 No image</div>
-                    )}
-                    <input type="file" accept="image/*" ref={fileInputRef} className="hidden"
-                      onChange={e => e.target.files && handleImageUpload(product.id, e.target.files[0])} />
-                    <button onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadingImage === product.id}
-                      className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-medium transition-opacity disabled:opacity-50">
-                      {uploadingImage === product.id ? "⏳ Uploading..." : "📸 Change Image"}
-                    </button>
+                  {/* Multi-photo gallery in edit mode */}
+                  <div className="bg-gray-50 dark:bg-gray-900 rounded-t-lg p-2">
+                    <input type="file" accept="image/*" ref={fileInputRef} className="hidden" multiple
+                      onChange={e => { if (e.target.files) { Array.from(e.target.files).forEach(f => handleImageUpload(product.id, f)); e.target.value = ""; } }} />
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {(() => {
+                        const imgs: string[] = editData.productImages || (editData.productImage ? [editData.productImage] : []);
+                        return imgs.map((url: string, idx: number) => (
+                          <div key={url} className="relative shrink-0 w-24 h-24 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 group">
+                            <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-contain bg-white dark:bg-gray-800" />
+                            {idx === 0 && <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] text-center py-0.5">Main</span>}
+                            <button
+                              onClick={() => handleImageDelete(product.id, url)}
+                              className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                            >×</button>
+                          </div>
+                        ));
+                      })()}
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingImage === product.id}
+                        className="shrink-0 w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-gray-400 hover:text-gray-500 transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        {uploadingImage === product.id ? <span className="text-xs">⏳</span> : <><span className="text-2xl">+</span><span className="text-[10px] font-medium">Add Photo</span></>}
+                      </button>
+                    </div>
                   </div>
                   <div className="p-4 space-y-3">
                     <input value={editData.name || ""} onChange={e => setEditData((p: any) => ({ ...p, name: e.target.value }))}
@@ -1284,6 +1355,8 @@ export default function AdminProductsPage() {
                       options={options.category}
                       placeholder="Category"
                       size="xs"
+                      allowCustom
+                      onAddOption={v => addOptionToList("category", v)}
                     />
                     <SearchableSelect
                       value={editData.origin || ""}
@@ -1291,6 +1364,8 @@ export default function AdminProductsPage() {
                       options={options.origin}
                       placeholder="Origin"
                       size="xs"
+                      allowCustom
+                      onAddOption={v => addOptionToList("origin", v)}
                     />
                   </div>
 
@@ -1481,15 +1556,28 @@ export default function AdminProductsPage() {
               ) : (
                 /* VIEW MODE */
                 <div className="space-y-3">
-                  <div className="h-32 bg-white dark:bg-gray-800 rounded-t-lg overflow-hidden flex items-center justify-center">
-                    <ProductImage src={product.productImage} alt={product.name} className="max-w-full max-h-full object-contain" />
-                    {!product.productImage && (
-                      <div className="text-gray-400 dark:text-gray-500 text-center">
-                        <div className="text-3xl mb-1">📦</div>
-                        <div className="text-xs">No image</div>
+                  {(() => {
+                    const imgs: string[] = product.productImages?.length ? product.productImages : (product.productImage ? [product.productImage] : []);
+                    return (
+                      <div
+                        className={`h-32 bg-white dark:bg-gray-800 rounded-t-lg overflow-hidden flex items-center justify-center relative ${imgs.length > 0 ? "cursor-zoom-in" : ""}`}
+                        onClick={() => imgs.length > 0 && setLightbox({ images: imgs, index: 0 })}
+                      >
+                        <ProductImage src={product.productImage} images={product.productImages} alt={product.name} className="max-w-full max-h-full object-contain" />
+                        {imgs.length === 0 && (
+                          <div className="text-gray-400 dark:text-gray-500 text-center">
+                            <div className="text-3xl mb-1">📦</div>
+                            <div className="text-xs">No image</div>
+                          </div>
+                        )}
+                        {imgs.length > 1 && (
+                          <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium">
+                            +{imgs.length - 1} photos
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    );
+                  })()}
                   <div className="p-4 space-y-3">
                     <div>
                       <h3 className="font-semibold text-gray-900 dark:text-white capitalize">{product.name}</h3>
@@ -1732,12 +1820,56 @@ export default function AdminProductsPage() {
       )}
 
       {/* Add Product Modal */}
+      {/* Photo Lightbox */}
+      {lightbox && (
+        <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center" onClick={() => setLightbox(null)}>
+          <button className="absolute top-4 right-4 text-white text-3xl leading-none hover:text-gray-300 z-10" onClick={() => setLightbox(null)}>×</button>
+          {/* Prev */}
+          {lightbox.images.length > 1 && (
+            <button
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-white text-4xl leading-none hover:text-gray-300 z-10 px-3 py-1"
+              onClick={e => { e.stopPropagation(); setLightbox(l => l ? { ...l, index: (l.index - 1 + l.images.length) % l.images.length } : null); }}
+            >‹</button>
+          )}
+          {/* Main image */}
+          <div className="max-w-3xl max-h-[80vh] flex flex-col items-center gap-4 px-16" onClick={e => e.stopPropagation()}>
+            <img
+              src={lightbox.images[lightbox.index]}
+              alt={`Photo ${lightbox.index + 1}`}
+              className="max-w-full max-h-[65vh] object-contain rounded-lg"
+            />
+            {/* Thumbnail strip */}
+            {lightbox.images.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {lightbox.images.map((url, idx) => (
+                  <button
+                    key={url}
+                    onClick={() => setLightbox(l => l ? { ...l, index: idx } : null)}
+                    className={`shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-colors ${idx === lightbox.index ? "border-white" : "border-gray-600 hover:border-gray-400"}`}
+                  >
+                    <img src={url} alt={`Thumb ${idx + 1}`} className="w-full h-full object-contain bg-gray-900" />
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="text-gray-400 text-sm">{lightbox.index + 1} / {lightbox.images.length}</p>
+          </div>
+          {/* Next */}
+          {lightbox.images.length > 1 && (
+            <button
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-white text-4xl leading-none hover:text-gray-300 z-10 px-3 py-1"
+              onClick={e => { e.stopPropagation(); setLightbox(l => l ? { ...l, index: (l.index + 1) % l.images.length } : null); }}
+            >›</button>
+          )}
+        </div>
+      )}
+
       {showAddProduct && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-semibold text-gray-900 dark:text-white">Add New Product</h3>
-              <button onClick={() => setShowAddProduct(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl">×</button>
+              <button onClick={() => { setShowAddProduct(false); setNewProductImageFiles([]); setNewProductImagePreviews([]); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl">×</button>
             </div>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
@@ -1752,6 +1884,51 @@ export default function AdminProductsPage() {
                   <input value={newProduct.productSubName} onChange={e => setNewProduct((p:any) => ({...p, productSubName: e.target.value}))}
                     placeholder="e.g. Scientific name or French name"
                     className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                </div>
+                {/* Product Photo */}
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Product Photo</label>
+                  <input
+                    ref={newProductImageRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []);
+                      if (!files.length) return;
+                      setNewProductImageFiles(prev => [...prev, ...files]);
+                      files.forEach(file => {
+                        const reader = new FileReader();
+                        reader.onload = ev => setNewProductImagePreviews(prev => [...prev, ev.target?.result as string]);
+                        reader.readAsDataURL(file);
+                      });
+                      e.target.value = "";
+                    }}
+                  />
+                  <div className="flex gap-2 flex-wrap">
+                    {newProductImagePreviews.map((preview, idx) => (
+                      <div key={idx} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 group">
+                        <img src={preview} alt={`Photo ${idx + 1}`} className="w-full h-full object-contain bg-gray-50 dark:bg-gray-900" />
+                        {idx === 0 && <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] text-center py-0.5">Main</span>}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewProductImageFiles(prev => prev.filter((_, i) => i !== idx));
+                            setNewProductImagePreviews(prev => prev.filter((_, i) => i !== idx));
+                          }}
+                          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                        >×</button>
+                      </div>
+                    ))}
+                    <div
+                      onClick={() => newProductImageRef.current?.click()}
+                      className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex flex-col items-center justify-center gap-0.5 cursor-pointer hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
+                    >
+                      <span className="text-xl">📷</span>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium text-center leading-tight">Add Photo</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Supplier</label>
@@ -1816,6 +1993,8 @@ export default function AdminProductsPage() {
                     options={options.category}
                     placeholder="— Category —"
                     size="sm"
+                    allowCustom
+                    onAddOption={v => addOptionToList("category", v)}
                   />
                 </div>
                 <div>
@@ -1826,6 +2005,8 @@ export default function AdminProductsPage() {
                     options={options.origin}
                     placeholder="— Origin —"
                     size="sm"
+                    allowCustom
+                    onAddOption={v => addOptionToList("origin", v)}
                   />
                 </div>
                 <div>
@@ -1979,7 +2160,7 @@ export default function AdminProductsPage() {
                 )}
               </div>
               <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAddProduct(false)}
+                <button onClick={() => { setShowAddProduct(false); setNewProductImageFiles([]); setNewProductImagePreviews([]); }}
                   className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">Cancel</button>
                 <button onClick={saveNewProduct} disabled={addingSaving || !newProduct.name.trim()}
                   className="flex-1 px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-50"

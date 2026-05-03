@@ -10,6 +10,7 @@ interface Product {
   currentStock: number;
   price: number;
   productImage?: string;
+  productImages?: string[];
   description?: string;
   category?: string;
   storageType?: string;

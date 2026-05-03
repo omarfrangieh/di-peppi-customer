@@ -15,6 +15,7 @@ interface Product {
   currentStock: number;
   price: number;
   productImage?: string;
+  productImages?: string[];
   description?: string;
   requiresWeighing?: boolean;
   minWeightPerUnit?: number;
@@ -86,18 +87,26 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
     <div className="relative bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow h-full flex flex-col">
       {/* Image Container */}
       <div className="relative w-full h-48 bg-white flex-shrink-0 flex items-center justify-center overflow-hidden">
-        {isValidUrl(product.productImage) && !imgError ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={product.productImage!}
-            alt={product.name}
-            className="w-full h-full object-contain p-2"
-            onError={() => setImgError(true)}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-50">
-            <span className="text-5xl">📦</span>
-          </div>
+        {(() => {
+          const mainImage = (product.productImages && product.productImages.length > 0 ? product.productImages[0] : product.productImage) || null;
+          return isValidUrl(mainImage ?? undefined) && !imgError ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={mainImage!}
+              alt={product.name}
+              className="w-full h-full object-contain p-2"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gray-50">
+              <span className="text-5xl">📦</span>
+            </div>
+          );
+        })()}
+        {(product.productImages?.length ?? 0) > 1 && (
+          <span className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+            +{product.productImages!.length - 1}
+          </span>
         )}
       </div>
 

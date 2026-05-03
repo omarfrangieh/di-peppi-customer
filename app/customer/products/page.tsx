@@ -25,6 +25,7 @@ interface Product {
   currentStock: number;
   price: number;
   productImage?: string;
+  productImages?: string[];
   description?: string;
   category?: string;
   storageType?: string;
@@ -66,6 +67,7 @@ export default function ProductsPage() {
               currentStock: data.currentStock ?? 0,
               price: data.b2cPrice ?? data.price ?? 0,
               productImage: resolveImageUrl(data.productImage),
+              productImages: Array.isArray(data.productImages) ? data.productImages : undefined,
               description: data.description || "",
               category: data.category || "",
               storageType: data.storageType || "",
