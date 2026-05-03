@@ -266,7 +266,16 @@ export default function B2BLoginPage() {
           <p className="text-xs text-blue-600 mt-1">Access wholesale pricing, bulk ordering, and invoice payment terms. For B2C retail orders, visit the <a href="/customer/login" className="underline font-medium">Online Shop</a>.</p>
         </div>
 
-        <p className="text-xs text-gray-400 text-center mt-6">© 2026 Di Peppi. All rights reserved.</p>
+        <div className="mt-4 text-center">
+          <p className="text-xs text-gray-500">
+            New business?{" "}
+            <a href="/b2b/signup" className="font-semibold underline" style={{ color: "#1B2A5E" }}>
+              Request trade access →
+            </a>
+          </p>
+        </div>
+
+        <p className="text-xs text-gray-400 text-center mt-4">© 2026 Di Peppi. All rights reserved.</p>
       </div>
     </div>
   );

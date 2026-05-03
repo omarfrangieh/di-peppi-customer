@@ -10,6 +10,7 @@ import { showToast } from "@/lib/toast";
 interface Product {
   id: string;
   name: string;
+  productSubName?: string;
   origin?: string;
   unit: string;
   currentStock: number;
@@ -21,6 +22,7 @@ interface Product {
   minWeightPerUnit?: number;
   maxWeightPerUnit?: number;
   packSizeG?: number;
+  netWeightG?: number;
 }
 
 interface ProductCardProps {
@@ -142,9 +144,14 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
       {/* Content */}
       <div className="p-4 flex flex-col flex-grow">
         {/* Product Name */}
-        <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 mb-1">
+        <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 mb-0.5">
           {toTitleCase(product.name)}
         </h3>
+
+        {/* Sub-name (e.g. "60g Tube", "500ml Jar") — no price impact */}
+        {product.productSubName && (
+          <p className="text-xs text-gray-400 mb-1">{toTitleCase(product.productSubName)}</p>
+        )}
 
         {/* Weight range — shown under name for weigh items */}
         {product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit && (
@@ -182,17 +189,17 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         {/* Stock Status */}
         <div className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stockColor} mb-3 w-fit`}>
           {product.currentStock > 0 && product.currentStock < 5
-            ? `Only ${formatQty(product.currentStock)} left`
+            ? `Only ${formatQty(product.currentStock)}${product.requiresWeighing ? " kg" : ""} left`
             : stockStatus}
         </div>
 
         {/* Quantity stepper + add to cart */}
-        <div className="flex gap-2 mt-auto">
-          <div className={`flex-1 flex items-center gap-1 border rounded-lg ${product.currentStock === 0 ? "border-gray-200 opacity-50" : "border-gray-300"}`}>
+        <div className="flex flex-col gap-2 mt-auto">
+          <div className={`flex items-center gap-1 border rounded-lg ${product.currentStock === 0 ? "border-gray-200 opacity-50" : "border-gray-300"}`}>
             <button
               onClick={() => setQuantity(Math.max(1, quantity - 1))}
               disabled={product.currentStock === 0}
-              className="px-2 py-1 text-gray-600 hover:bg-gray-100 cursor-pointer disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 cursor-pointer disabled:cursor-not-allowed"
             >
               −
             </button>
@@ -211,7 +218,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
             <button
               onClick={() => setQuantity(Math.min(quantity + 1, product.currentStock))}
               disabled={product.currentStock === 0}
-              className="px-2 py-1 text-gray-600 hover:bg-gray-100 cursor-pointer disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 cursor-pointer disabled:cursor-not-allowed"
             >
               +
             </button>
@@ -219,7 +226,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
           <button
             onClick={handleAddToCart}
             disabled={product.currentStock === 0 || isAdding}
-            className="flex-1 py-2 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
+            className="w-full py-2 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
             style={{ backgroundColor: product.currentStock === 0 ? "#d1d5db" : "#1B2A5E" }}
           >
             {isAdding ? "Adding..." : product.currentStock === 0 ? "Out of Stock" : "Add to Cart"}

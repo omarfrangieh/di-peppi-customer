@@ -121,6 +121,15 @@ export default function ProductDetailPage() {
 
   const handleAddToCart = async (quantity: number) => {
     if (!product) return;
+    if (quantity > product.currentStock) {
+      showToast(
+        product.currentStock === 0
+          ? "This product is out of stock"
+          : `Only ${formatQty(product.currentStock)} available`,
+        "warning"
+      );
+      return;
+    }
 
     setIsAddingToCart(true);
     try {

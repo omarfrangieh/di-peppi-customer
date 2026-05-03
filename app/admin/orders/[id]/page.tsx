@@ -711,11 +711,19 @@ export default function Page() {
       // Never overwrite B2C totals from the admin builder — they're set by checkout.
       const isB2c = orderSource === "b2c";
 
+      // Never downgrade a Delivered order via auto-save
+      const currentOrder = orders.find(o => o.id === selectedOrderId);
+      const isAlreadyDelivered = currentOrder?.status === "Delivered";
+      const STATUS_RANK: Record<string, number> = { Draft: 0, Confirmed: 1, Preparing: 2, "To Deliver": 3, Delivered: 4 };
+      const safeStatus = isAlreadyDelivered && (STATUS_RANK[orderStatus] ?? 0) < STATUS_RANK["Delivered"]
+        ? "Delivered"
+        : (orderStatus || "Draft");
+
       await updateDoc(doc(db, "orders", selectedOrderId), {
         customerId,
         orderDate,
         deliveryDate,
-        status: orderStatus || "Draft",
+        status: safeStatus,
         notes: orderNotes,
         discountPercent: discountPercentNumber,
         discountAmount: discountAmountNumber,
@@ -1434,12 +1442,43 @@ export default function Page() {
               </div>
               <div className="mt-3 flex items-center gap-3">
                 <label className="text-xs text-gray-500 dark:text-gray-400">Status</label>
-                <select className="flex-1 rounded-lg border px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" value={orderStatus}
-                  onChange={(e) => setOrderStatus(e.target.value)}>
-                  <option value="Draft">📝 Draft</option>
-                  <option value="Preparing">🟡 Preparing</option>
-                  <option value="Cancelled">❌ Cancelled</option>
-                </select>
+                {(() => {
+                  const currentOrder = orders.find(o => o.id === selectedOrderId);
+                  const isPaid = currentOrder?.invoiceStatus === "paid" || currentOrder?.isPaid === true;
+                  const isDelivered = orderStatus === "Delivered";
+                  if (isDelivered && isPaid) {
+                    // Paid + Delivered — fully locked
+                    return (
+                      <span className="flex-1 inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg text-sm font-semibold text-green-700">
+                        ✅ Delivered <span className="text-xs font-normal text-green-500 ml-1">🔒 Paid — cannot revert</span>
+                      </span>
+                    );
+                  }
+                  return (
+                    <select
+                      className="flex-1 rounded-lg border px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                      value={orderStatus}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        const STATUS_RANK: Record<string, number> = { Draft: 0, Confirmed: 1, Preparing: 2, "To Deliver": 3, Delivered: 4 };
+                        if (isDelivered && (STATUS_RANK[next] ?? 0) < STATUS_RANK["Delivered"]) {
+                          if (!confirm(`Are you sure you want to revert this order from Delivered to ${next}? This should only be done to correct a mistake.`)) return;
+                        }
+                        setOrderStatus(next);
+                      }}
+                    >
+                      <option value="Draft">📝 Draft</option>
+                      <option value="Preparing">🟡 Preparing</option>
+                      {(orderStatus === "To Deliver" || orderStatus === "Delivered") && (
+                        <option value="To Deliver">🚚 To Deliver</option>
+                      )}
+                      {orderStatus === "Delivered" && (
+                        <option value="Delivered">✅ Delivered</option>
+                      )}
+                      <option value="Cancelled">❌ Cancelled</option>
+                    </select>
+                  );
+                })()}
               </div>
               <div className="mt-3">
                 <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Notes</label>

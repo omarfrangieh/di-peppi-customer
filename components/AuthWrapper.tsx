@@ -35,8 +35,8 @@ export default function AuthWrapper({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const isLoginPage = pathname === "/login" || pathname === "/admin/login" || pathname === "/customer/login" || pathname === "/b2b/login" || pathname === "/customer/signup";
-  const publicPages = ["/login", "/admin/login", "/customer/login", "/b2b/login", "/customer/signup"];
+  const isLoginPage = pathname === "/login" || pathname === "/admin/login" || pathname === "/customer/login" || pathname === "/b2b/login" || pathname === "/customer/signup" || pathname === "/b2b/signup";
+  const publicPages = ["/login", "/admin/login", "/customer/login", "/b2b/login", "/customer/signup", "/b2b/signup"];
 
   const getLoginRedirect = () => {
     if (pathname.startsWith("/customer")) return "/customer/login";

@@ -3,7 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, serverTimestamp, query, where, orderBy, increment } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
+import { db, storage, functions } from "@/lib/firebase";
 import { formatPrice } from "@/lib/formatters";
 import { showToast } from "@/lib/toast";
 import { useRouter } from "next/navigation";
@@ -77,6 +78,10 @@ export default function AdminCustomersPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const newDocInputRef = useRef<HTMLInputElement>(null);
+
+  // ── B2B REQUESTS ──
+  const [showB2bRequests, setShowB2bRequests] = useState(false);
+  const [processingRequest, setProcessingRequest] = useState<string | null>(null);
 
   // ── DORMANT CLIENTS ──
   const [orders, setOrders] = useState<any[]>([]);
@@ -152,6 +157,36 @@ export default function AdminCustomersPage() {
     } catch (err) {
       console.error(err);
       showToast("Failed to delete customer", "error");
+    }
+  };
+
+  const approveB2BRequest = async (customerId: string) => {
+    setProcessingRequest(customerId);
+    try {
+      const fn = httpsCallable(functions, "approveB2BRequest");
+      await fn({ customerId });
+      setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, accountStatus: "approved" } : c));
+      showToast("Account approved — they can now log in", "success");
+    } catch (err: any) {
+      showToast("Failed to approve: " + err.message, "error");
+    } finally {
+      setProcessingRequest(null);
+    }
+  };
+
+  const rejectB2BRequest = async (customerId: string, companyName: string) => {
+    const reason = window.prompt(`Rejection reason for ${companyName} (optional):`);
+    if (reason === null) return; // cancelled
+    setProcessingRequest(customerId);
+    try {
+      const fn = httpsCallable(functions, "rejectB2BRequest");
+      await fn({ customerId, reason: reason || null });
+      setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, accountStatus: "rejected" } : c));
+      showToast("Request rejected", "success");
+    } catch (err: any) {
+      showToast("Failed to reject: " + err.message, "error");
+    } finally {
+      setProcessingRequest(null);
     }
   };
 
@@ -432,6 +467,7 @@ export default function AdminCustomersPage() {
 
   const b2bCount = customers.filter(c => c.customerType === "B2B").length;
   const b2cCount = customers.filter(c => c.customerType === "B2C").length;
+  const pendingB2B = customers.filter(c => c.accountStatus === "pending");
 
   const setView = (mode: "cards" | "list") => {
     setViewMode(mode);
@@ -529,6 +565,13 @@ export default function AdminCustomersPage() {
             className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 font-medium text-gray-700 dark:text-gray-300">
             ↑ Import CSV
           </button>
+          {pendingB2B.length > 0 && (
+            <button
+              onClick={() => { setShowB2bRequests(true); setTimeout(() => document.getElementById("b2b-requests-section")?.scrollIntoView({ behavior: "smooth" }), 50); }}
+              className="px-4 py-2 text-sm border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg font-medium flex items-center gap-1.5">
+              🏢 B2B Requests <span className="bg-blue-200 text-blue-800 text-xs font-bold px-1.5 py-0.5 rounded-full">{pendingB2B.length}</span>
+            </button>
+          )}
           {holdFiltered.length > 0 && (
             <button
               onClick={() => document.getElementById("hold-section")?.scrollIntoView({ behavior: "smooth" })}
@@ -551,6 +594,99 @@ export default function AdminCustomersPage() {
           />
         </div>
       </div>
+
+      {/* ── B2B REQUESTS SECTION ── */}
+      {pendingB2B.length > 0 && (
+        <div id="b2b-requests-section" className="mx-6 mt-4">
+          <button
+            onClick={() => setShowB2bRequests(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-lg">🏢</span>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">
+                  {pendingB2B.length} pending B2B request{pendingB2B.length !== 1 ? "s" : ""} awaiting approval
+                </p>
+                <p className="text-xs text-blue-600 dark:text-blue-400">Review documents, MOF#, and VAT# before approving</p>
+              </div>
+            </div>
+            <span className="text-blue-600 dark:text-blue-400 text-sm font-medium">{showB2bRequests ? "▲ Hide" : "▼ Review"}</span>
+          </button>
+
+          {showB2bRequests && (
+            <div className="mt-2 space-y-3">
+              {pendingB2B.map((c: any) => (
+                <div key={c.id} className="bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900 rounded-xl p-5 space-y-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-bold text-gray-900 dark:text-white text-sm">{c.companyName || c.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Contact: {c.name}{c.companyName && c.name !== c.companyName ? "" : ""}</p>
+                    </div>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 border border-yellow-200 flex-shrink-0">⏳ Pending</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <p className="text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-0.5">Email</p>
+                      <p className="text-gray-900 dark:text-white font-medium">{c.email || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-0.5">Phone</p>
+                      <p className="text-gray-900 dark:text-white font-medium">{c.phoneNumber || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-0.5">MOF Number</p>
+                      <p className="text-gray-900 dark:text-white font-semibold">{c.mofNumber || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-0.5">VAT Number</p>
+                      <p className="text-gray-900 dark:text-white font-semibold">{c.vatNumber || "—"}</p>
+                    </div>
+                  </div>
+
+                  {c.officialDocumentUrl && (
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={c.officialDocumentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 underline"
+                      >
+                        📄 {c.officialDocumentName || "View Official Document"} ↗
+                      </a>
+                    </div>
+                  )}
+
+                  {c.createdAt && (
+                    <p className="text-xs text-gray-400">
+                      Submitted: {c.createdAt?.toDate?.()?.toLocaleDateString?.() || "—"}
+                    </p>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => approveB2BRequest(c.id)}
+                      disabled={processingRequest === c.id}
+                      className="flex-1 py-2 text-sm font-semibold text-white rounded-lg transition-all disabled:opacity-50"
+                      style={{ backgroundColor: "#1B2A5E" }}
+                    >
+                      {processingRequest === c.id ? "Processing..." : "✓ Approve"}
+                    </button>
+                    <button
+                      onClick={() => rejectB2BRequest(c.id, c.companyName || c.name)}
+                      disabled={processingRequest === c.id}
+                      className="flex-1 py-2 text-sm font-semibold rounded-lg border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-all disabled:opacity-50"
+                    >
+                      ✕ Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── DORMANT ALERT BANNER ── */}
       {allDormant.length > 0 && (

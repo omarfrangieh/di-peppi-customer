@@ -165,6 +165,22 @@ export default function CheckoutPage() {
     setError(null);
 
     try {
+      // Validate stock for every item before creating the order
+      for (const item of items) {
+        const productSnap = await getDoc(doc(db, "products", item.productId));
+        if (!productSnap.exists()) {
+          throw new Error(`"${item.productName}" is no longer available`);
+        }
+        const stock = Number(productSnap.data().currentStock || 0);
+        if (item.quantity > stock) {
+          throw new Error(
+            stock === 0
+              ? `"${item.productName}" is out of stock`
+              : `Only ${stock} unit(s) of "${item.productName}" available — please update your cart`
+          );
+        }
+      }
+
       const orderNumber = await generateOrderNumber();
 
       const orderRef = await addDoc(collection(db, "orders"), {
