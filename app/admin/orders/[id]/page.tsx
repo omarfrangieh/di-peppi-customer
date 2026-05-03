@@ -53,6 +53,8 @@ type Product = {
   minWeightPerUnit?: number;
   maxWeightPerUnit?: number;
   trackExpiry?: boolean;
+  caliber?: string;
+  brand?: string;
 };
 
 type Order = {
@@ -72,6 +74,11 @@ type Order = {
   createdAt?: string;
   currency?: string;
   notes?: string;
+  source?: string;
+  deliveryAddress?: string;
+  deliveryPhone?: string;
+  paymentMethod?: string;
+  specialInstructions?: string;
 };
 
 type Customer = {
