@@ -516,7 +516,7 @@ export default function AdminCustomersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
-      <div className="bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
           <h1 className="text-xl font-bold" style={{color: "#B5535A"}}>Customers</h1>

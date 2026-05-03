@@ -145,7 +145,8 @@ export default function PermissionsPage() {
   }
 
   return (
-    <div className="p-6 min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-2" style={{color: "#B5535A"}}>Permissions</h1>
@@ -304,6 +305,7 @@ export default function PermissionsPage() {
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

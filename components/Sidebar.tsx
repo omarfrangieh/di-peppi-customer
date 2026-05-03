@@ -47,7 +47,7 @@ export default function Sidebar() {
 
   // Close when route changes (mobile nav tap)
   useEffect(() => {
-    if (window.innerWidth < 768) setOpen(false);
+    setOpen(false);
   }, [pathname]);
 
   if (LOGIN_PATHS.some(p => pathname === p || pathname.startsWith(p))) return null;
@@ -59,24 +59,56 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile backdrop */}
+      {/* ── Mobile top bar (visible only on mobile) ──────────────────── */}
+      <div
+        className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center gap-3 px-4"
+        style={{ backgroundColor: BRAND, height: 56 }}
+      >
+        <button
+          onClick={() => setOpen(true)}
+          className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-white/10 active:bg-white/20 transition-colors"
+        >
+          <Menu size={20} color="white" />
+        </button>
+        <img
+          src="/Di-Peppi-White-Background.jpg"
+          alt="Di Peppi"
+          className="w-7 h-7 rounded-lg object-contain bg-white p-0.5"
+        />
+        <span
+          className="text-white font-bold text-sm"
+          style={{ fontFamily: "var(--font-playfair, serif)" }}
+        >
+          Di Peppi
+        </span>
+      </div>
+
+      {/* ── Mobile backdrop ───────────────────────────────────────────── */}
       {open && (
         <div
-          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={() => setOpen(false)}
         />
       )}
 
-      {/* Space placeholder so main content doesn't slide under the sidebar */}
+      {/* ── Desktop placeholder (keeps main content pushed right) ─────── */}
       <div
-        className="flex-shrink-0 transition-all duration-200"
+        className="hidden md:block flex-shrink-0 transition-all duration-200"
         style={{ width: open ? W_OPEN : W_CLOSED }}
       />
 
-      {/* Sidebar */}
+      {/* ── Sidebar panel ─────────────────────────────────────────────── */}
       <aside
-        className="fixed left-0 top-0 h-screen flex flex-col z-50 transition-all duration-200"
-        style={{ backgroundColor: BRAND, width: open ? W_OPEN : W_CLOSED }}
+        className={`
+          fixed left-0 top-0 h-screen flex flex-col z-50 transition-all duration-200
+          md:translate-x-0
+          ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+        `}
+        style={{
+          backgroundColor: BRAND,
+          width: open ? W_OPEN : W_CLOSED,
+          // On mobile always full-width when open
+        }}
       >
         {/* Header */}
         <div
@@ -125,25 +157,18 @@ export default function Sidebar() {
                 }`}
                 style={{ height: 44 }}
               >
-                {/* Active left accent */}
                 {active && (
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 rounded-r-full bg-white" />
                 )}
-
-                {/* Icon */}
                 <span
                   className="flex items-center justify-center flex-shrink-0"
                   style={{ width: W_CLOSED }}
                 >
                   <Icon size={18} strokeWidth={active ? 2.25 : 1.75} />
                 </span>
-
-                {/* Label */}
                 {open && (
                   <span className="whitespace-nowrap flex-1 pr-3">{label}</span>
                 )}
-
-                {/* Tooltip when collapsed */}
                 {!open && (
                   <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 text-xs text-white bg-gray-900 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
                     {label}
@@ -162,7 +187,6 @@ export default function Sidebar() {
               <p className="text-white/50 text-xs truncate capitalize">{session.role}</p>
             </div>
           )}
-
           {!open && session && (
             <div
               className="flex items-center justify-center mb-1"
@@ -176,7 +200,6 @@ export default function Sidebar() {
             </div>
           )}
 
-          {/* Dark mode toggle */}
           <button
             onClick={toggle}
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}

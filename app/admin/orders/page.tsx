@@ -269,8 +269,8 @@ export default function OrdersPage() {
       )}
 
       {/* Sticky header */}
-      <div className="bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+      <div className="bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700 px-4 sm:px-6 py-4 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <h1 className="text-xl font-bold flex-shrink-0" style={{ color: "#B5535A" }}>Orders</h1>
             <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 dark:text-gray-400 px-2 py-0.5 rounded-full flex-shrink-0">
@@ -348,7 +348,7 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
 
         {/* Clickable stat cards — double as status filter */}
         <div className="py-4 flex gap-2 overflow-x-auto pb-3">

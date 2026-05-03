@@ -132,7 +132,7 @@ export default function PurchaseOrdersPage() {
     <>
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Top bar */}
-      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
           <h1 className="text-xl font-bold" style={{color: "#B5535A"}}>Purchase Orders</h1>
@@ -141,7 +141,7 @@ export default function PurchaseOrdersPage() {
         <SearchInput placeholder="Search POs..." value={search} onChange={setSearch} className="w-48" />
       </div>
 
-      <div className="max-w-5xl mx-auto px-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
 
         {/* Status tab pills */}
         <div className="py-4 flex gap-2 overflow-x-auto pb-3">
