@@ -107,33 +107,34 @@ export default function ProductsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Storefront hero banner */}
-      <div className="text-white px-6 py-5" style={{ backgroundColor: "#1B2A5E" }}>
+      <div className="text-white px-6 py-4 sm:py-5" style={{ backgroundColor: "#1B2A5E" }}>
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-white/50 mb-1" style={{ fontFamily: "var(--font-playfair)" }}>Di Peppi</p>
-            <h1 className="text-2xl font-bold leading-tight" style={{ fontFamily: "var(--font-playfair)" }}>Our Products</h1>
-            <p className="text-white/60 text-xs mt-1">Premium quality, delivered to your door</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-white/50 mb-0.5" style={{ fontFamily: "var(--font-playfair)" }}>Di Peppi</p>
+            <h1 className="text-xl sm:text-2xl font-bold leading-tight" style={{ fontFamily: "var(--font-playfair)" }}>Our Products</h1>
+            <p className="text-white/60 text-xs mt-0.5">Premium quality, delivered to your door</p>
           </div>
           <img
             src="/Di-Peppi-White-Background.jpg"
             alt="Di Peppi"
-            className="w-12 h-12 rounded-xl object-contain border-2 border-white/20 opacity-90"
+            className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-contain border-2 border-white/20 opacity-90"
           />
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
+      {/* Sticky search + category filter — full-width, outside padded container */}
+      {!loading && allProducts.length > 0 && (
+        <SearchFilter
+          products={allProducts}
+          onFilterChange={handleFilterChange}
+        />
+      )}
+
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 pb-6">
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
             <p className="text-red-700 font-semibold">{error}</p>
           </div>
-        )}
-
-        {!loading && allProducts.length > 0 && (
-          <SearchFilter
-            products={allProducts}
-            onFilterChange={handleFilterChange}
-          />
         )}
 
         <ProductGrid products={filteredProducts} isLoading={loading} />

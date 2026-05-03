@@ -65,9 +65,8 @@ export default function ReportsPage() {
     return items.filter(i => ids.has(i.orderId));
   }, [items, filteredOrders]);
 
-  // Revenue = only Delivered orders; pipeline = all non-cancelled (shows order volume)
-  const deliveredOrders = useMemo(() => filteredOrders.filter(o => o.status === "Delivered"), [filteredOrders]);
-  const totalRevenue = useMemo(() => deliveredOrders.reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0), [deliveredOrders]);
+  // Revenue = all non-cancelled orders in period (same logic as YTD and Profit)
+  const totalRevenue = useMemo(() => filteredOrders.reduce((s, o) => s + Number(o.finalTotal || o.total || o.grandTotal || 0), 0), [filteredOrders]);
   const totalProfit = useMemo(() => filteredItems.reduce((s, i) => s + Number(i.profit || 0), 0), [filteredItems]);
   const ytdRevenue = useMemo(() => orders.filter(o => {
     const d = String(o.createdAt || o.deliveryDate || o.orderDate || "").slice(0, 10);
@@ -77,20 +76,19 @@ export default function ReportsPage() {
 
   const salesByPeriod = useMemo(() => {
     const map: Record<string, { revenue: number; profit: number; orders: number }> = {};
+    const periodKey = (d: string) => period === "daily" ? d : period === "yearly" ? d.slice(0, 4) : period === "monthly" ? d.slice(0, 7) : (() => {
+      const dt = new Date(d); const s = new Date(dt); s.setDate(dt.getDate() - dt.getDay()); return s.toISOString().slice(0, 10);
+    })();
     filteredOrders.forEach(o => {
-      const d = o.deliveryDate || o.orderDate || ""; if (!d) return;
-      let key = period === "daily" ? d : period === "yearly" ? d.slice(0, 4) : period === "monthly" ? d.slice(0, 7) : (() => {
-        const dt = new Date(d); const s = new Date(dt); s.setDate(dt.getDate() - dt.getDay()); return s.toISOString().slice(0, 10);
-      })();
+      const d = String(o.createdAt || o.deliveryDate || o.orderDate || "").slice(0, 10); if (!d) return;
+      const key = periodKey(d);
       if (!map[key]) map[key] = { revenue: 0, profit: 0, orders: 0 };
-      map[key].revenue += Number(o.finalTotal || 0); map[key].orders += 1;
+      map[key].revenue += Number(o.finalTotal || o.total || o.grandTotal || 0); map[key].orders += 1;
     });
     filteredItems.forEach(i => {
       const o = filteredOrders.find((x: any) => x.id === i.orderId); if (!o) return;
-      const d = o.deliveryDate || o.orderDate || "";
-      let key = period === "daily" ? d : period === "yearly" ? d.slice(0, 4) : period === "monthly" ? d.slice(0, 7) : (() => {
-        const dt = new Date(d); const s = new Date(dt); s.setDate(dt.getDate() - dt.getDay()); return s.toISOString().slice(0, 10);
-      })();
+      const d = String(o.createdAt || o.deliveryDate || o.orderDate || "").slice(0, 10);
+      const key = periodKey(d);
       if (map[key]) map[key].profit += Number(i.profit || 0);
     });
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));

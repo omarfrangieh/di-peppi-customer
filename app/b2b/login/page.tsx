@@ -154,6 +154,9 @@ export default function B2BLoginPage() {
 
           <input
             type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            autoComplete="one-time-code"
             placeholder="000000"
             maxLength={6}
             value={otp}
