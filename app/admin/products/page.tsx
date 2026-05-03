@@ -511,7 +511,20 @@ export default function AdminProductsPage() {
         ]);
         setSuppliers(suppSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a:any, b:any) => (a.name||'').localeCompare(b.name||'')));
         if (optSnap.exists()) {
-          setOptions({ ...DEFAULT_OPTIONS, ...optSnap.data() });
+          const raw = { ...DEFAULT_OPTIONS, ...optSnap.data() };
+          // Deduplicate unit list — collapse case variants (e.g. "Kg" + "KG" → keep first seen)
+          const seen = new Set<string>();
+          const dedupedUnits: string[] = [];
+          for (const u of (raw.unit as string[])) {
+            const key = u.trim().toUpperCase();
+            if (!seen.has(key)) { seen.add(key); dedupedUnits.push(u.trim()); }
+          }
+          raw.unit = dedupedUnits.sort((a, b) => a.localeCompare(b));
+          setOptions(raw);
+          // Persist the cleaned list if it changed
+          if (dedupedUnits.length !== (optSnap.data().unit || []).length) {
+            setDoc(doc(db, "settings", "productOptions"), { unit: raw.unit }, { merge: true }).catch(() => {});
+          }
         }
       } catch (e) {
         console.warn("Could not load options/suppliers:", e);
