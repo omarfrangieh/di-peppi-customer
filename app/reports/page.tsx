@@ -117,8 +117,11 @@ export default function ReportsPage() {
       const k = i.productId || i.productName || "Unknown";
       const resolvedName = i.productName || productMap[i.productId] || k;
       if (!map[k]) map[k] = { name: resolvedName, qty: 0, revenue: 0, profit: 0, customers: new Set() };
-      map[k].qty += Number(i.quantity || 0);
-      map[k].revenue += Number(i.netLineTotal || i.lineNet || i.totalPrice || 0);
+      const qty = Number(i.quantity || 0);
+      const lineRevenue = Number(i.netLineTotal || i.lineNet || i.totalPrice || 0)
+        || qty * Number(i.unitPrice || i.priceAtTime || 0);
+      map[k].qty += qty;
+      map[k].revenue += lineRevenue;
       map[k].profit += Number(i.profit || 0);
       const o = filteredOrders.find((x: any) => x.id === i.orderId);
       if (o?.customerName) map[k].customers.add(o.customerName);
