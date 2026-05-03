@@ -8,12 +8,13 @@ import { functions } from "@/lib/firebase";
 import useCart from "../../hooks/useCart";
 import QuantitySelector from "../components/QuantitySelector";
 import RelatedProducts from "../components/RelatedProducts";
-import { formatPrice, formatQty } from "@/lib/formatters";
+import { formatPrice, formatQty, toTitleCase } from "@/lib/formatters";
 
 interface Product {
   id: string;
   name: string;
   productSubName?: string;
+  brand?: string;
   origin?: string;
   unit: string;
   currentStock: number;
@@ -30,6 +31,11 @@ interface Product {
   minWeightPerUnit?: number;
   maxWeightPerUnit?: number;
   packSizeG?: number;
+  netWeightG?: number;
+  drainedWeightG?: number;
+  ingredients?: string;
+  allergens?: string;
+  caliber?: string;
 }
 
 // Helper function to validate URL
@@ -194,11 +200,13 @@ export default function ProductDetailPage() {
         <div className="max-w-7xl mx-auto flex items-center gap-4">
           <button
             onClick={() => router.push("/customer/products")}
-            className="text-gray-600 hover:text-gray-900 text-lg font-semibold cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold text-white cursor-pointer hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: "#1B2A5E" }}
           >
-            ← Back
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            Back
           </button>
-          <h1 className="text-xl font-bold text-gray-900">{product.name}</h1>
+          <h1 className="text-xl font-bold text-gray-900">{toTitleCase(product.name)}</h1>
         </div>
       </div>
 
@@ -252,9 +260,9 @@ export default function ProductDetailPage() {
           <div className="space-y-6">
             {/* Name & Subname */}
             <div>
-              <h2 className="text-3xl font-bold text-gray-900">{product.name}</h2>
+              <h2 className="text-3xl font-bold text-gray-900">{toTitleCase(product.name)}</h2>
               {product.productSubName && (
-                <p className="text-gray-600 text-sm mt-1">{product.productSubName}</p>
+                <p className="text-gray-600 text-sm mt-1">{toTitleCase(product.productSubName)}</p>
               )}
               {product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit && (
                 <p className="text-2xl font-bold text-gray-700 mt-2">
@@ -267,17 +275,17 @@ export default function ProductDetailPage() {
             <div className="flex gap-2 flex-wrap">
               {product.origin && (
                 <span className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ backgroundColor: "#EEF1F8", color: "#1B2A5E" }}>
-                  {product.origin}
+                  {toTitleCase(product.origin)}
                 </span>
               )}
               {product.category && (
                 <span className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ backgroundColor: "#EEF1F8", color: "#1B2A5E" }}>
-                  {product.category}
+                  {toTitleCase(product.category)}
                 </span>
               )}
               {product.storageType && (
                 <span className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ backgroundColor: "#EEF1F8", color: "#1B2A5E" }}>
-                  {product.storageType}
+                  {toTitleCase(product.storageType)}
                 </span>
               )}
             </div>
@@ -313,6 +321,59 @@ export default function ProductDetailPage() {
               <div className="bg-white rounded-lg border border-gray-200 p-4">
                 <h3 className="font-semibold text-gray-900 mb-2">Description</h3>
                 <p className="text-gray-600 text-sm">{product.description}</p>
+              </div>
+            )}
+
+            {/* Product Details Table */}
+            {(product.brand || product.origin || product.caliber || product.netWeightG || product.drainedWeightG || product.ingredients || product.allergens) && (
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <h3 className="font-semibold text-gray-900 mb-3">Product Details</h3>
+                <table className="w-full text-sm">
+                  <tbody className="divide-y divide-gray-100">
+                    {product.brand && (
+                      <tr>
+                        <td className="py-2 text-gray-500 font-medium w-40">Brand</td>
+                        <td className="py-2 text-gray-900">{product.brand}</td>
+                      </tr>
+                    )}
+                    {product.origin && (
+                      <tr>
+                        <td className="py-2 text-gray-500 font-medium">Origin</td>
+                        <td className="py-2 text-gray-900">{product.origin}</td>
+                      </tr>
+                    )}
+                    {product.caliber && (
+                      <tr>
+                        <td className="py-2 text-gray-500 font-medium">Caliber</td>
+                        <td className="py-2 text-gray-900 font-semibold">{product.caliber}</td>
+                      </tr>
+                    )}
+                    {product.netWeightG && (
+                      <tr>
+                        <td className="py-2 text-gray-500 font-medium">Net Weight</td>
+                        <td className="py-2 text-gray-900">{product.netWeightG} g</td>
+                      </tr>
+                    )}
+                    {product.drainedWeightG && (
+                      <tr>
+                        <td className="py-2 text-gray-500 font-medium">Drained Weight</td>
+                        <td className="py-2 text-gray-900">{product.drainedWeightG} g</td>
+                      </tr>
+                    )}
+                    {product.ingredients && (
+                      <tr>
+                        <td className="py-2 text-gray-500 font-medium align-top">Ingredients</td>
+                        <td className="py-2 text-gray-900">{product.ingredients}</td>
+                      </tr>
+                    )}
+                    {product.allergens && (
+                      <tr>
+                        <td className="py-2 text-gray-500 font-medium align-top">Allergens</td>
+                        <td className="py-2 font-semibold" style={{ color: "#B5535A" }}>{product.allergens}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             )}
 

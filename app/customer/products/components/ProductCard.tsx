@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import useCart from "../../hooks/useCart";
-import { formatPrice, formatQty } from "@/lib/formatters";
+import { formatPrice, formatQty, toTitleCase } from "@/lib/formatters";
 import { showToast } from "@/lib/toast";
 
 interface Product {
@@ -45,6 +45,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
   const [quantity, setQuantity] = useState(1);
   const [isAdding, setIsAdding] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [activeImgIndex, setActiveImgIndex] = useState(0);
 
   const stockStatus =
     product.currentStock === 0
@@ -86,35 +87,63 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
   return (
     <div className="relative bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow h-full flex flex-col">
       {/* Image Container */}
-      <div className="relative w-full h-48 bg-white flex-shrink-0 flex items-center justify-center overflow-hidden">
-        {(() => {
-          const mainImage = (product.productImages && product.productImages.length > 0 ? product.productImages[0] : product.productImage) || null;
-          return isValidUrl(mainImage ?? undefined) && !imgError ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={mainImage!}
-              alt={product.name}
-              className="w-full h-full object-contain p-2"
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gray-50">
-              <span className="text-5xl">📦</span>
-            </div>
-          );
-        })()}
-        {(product.productImages?.length ?? 0) > 1 && (
-          <span className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-            +{product.productImages!.length - 1}
-          </span>
-        )}
-      </div>
+      {(() => {
+        const imgs: string[] = (product.productImages && product.productImages.length > 0)
+          ? product.productImages
+          : (product.productImage ? [product.productImage] : []);
+        const current = imgs[activeImgIndex] || null;
+        return (
+          <div className="relative w-full h-48 bg-white flex-shrink-0 flex items-center justify-center overflow-hidden">
+            {isValidUrl(current ?? undefined) && !imgError ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={current!}
+                alt={product.name}
+                className="w-full h-full object-contain p-2"
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gray-50">
+                <span className="text-5xl">📦</span>
+              </div>
+            )}
+            {/* Prev arrow */}
+            {imgs.length > 1 && (
+              <button
+                className="absolute left-1 top-1/2 -translate-y-1/2 text-white rounded-full w-7 h-7 flex items-center justify-center text-base leading-none z-10"
+                style={{ backgroundColor: "#1B2A5E" }}
+                onClick={e => { e.stopPropagation(); setActiveImgIndex(i => (i - 1 + imgs.length) % imgs.length); }}
+              >‹</button>
+            )}
+            {/* Next arrow */}
+            {imgs.length > 1 && (
+              <button
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-white rounded-full w-7 h-7 flex items-center justify-center text-base leading-none z-10"
+                style={{ backgroundColor: "#1B2A5E" }}
+                onClick={e => { e.stopPropagation(); setActiveImgIndex(i => (i + 1) % imgs.length); }}
+              >›</button>
+            )}
+            {/* Dot indicators */}
+            {imgs.length > 1 && (
+              <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
+                {imgs.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={e => { e.stopPropagation(); setActiveImgIndex(idx); }}
+                    className={`w-1.5 h-1.5 rounded-full transition-colors ${idx === activeImgIndex ? "bg-[#1B2A5E]" : "bg-gray-300"}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Content */}
       <div className="p-4 flex flex-col flex-grow">
         {/* Product Name */}
         <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 mb-1">
-          {product.name}
+          {toTitleCase(product.name)}
         </h3>
 
         {/* Weight range — shown under name for weigh items */}
@@ -126,7 +155,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
 
         {/* Origin */}
         {product.origin && (
-          <p className="text-xs text-gray-500 mb-2">from {product.origin}</p>
+          <p className="text-xs text-gray-500 mb-2">from {toTitleCase(product.origin)}</p>
         )}
 
         {/* Price */}

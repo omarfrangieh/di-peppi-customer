@@ -21,7 +21,7 @@ import { httpsCallable } from "firebase/functions";
 import { getPricing } from "@/lib/pricing";
 import { createDraftInvoice } from "@/lib/createDraftInvoice";
 import { syncOrderToInvoice } from "@/lib/syncOrderToInvoice";
-import { formatQty, formatPrice } from "@/lib/formatters";
+import { formatQty, formatPrice, toTitleCase } from "@/lib/formatters";
 import { showToast } from "@/lib/toast";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 
@@ -1482,9 +1482,17 @@ export default function Page() {
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-800 flex items-center gap-2 cursor-pointer"
                   onClick={() => { setProductDropdownOpen(o => !o); setProductSearch(""); }}
                 >
-                  {selectedProductId ? (
-                    <span className="flex-1 text-gray-900 dark:text-white">{products.find(p => p.id === selectedProductId)?.name || "—"}</span>
-                  ) : (
+                  {selectedProductId ? (() => {
+                    const sp = products.find(p => p.id === selectedProductId);
+                    return (
+                      <span className="flex-1 text-gray-900 dark:text-white">
+                        {toTitleCase(sp?.name) || "—"}
+                        {sp?.requiresWeighing && sp?.minWeightPerUnit && sp?.maxWeightPerUnit && (
+                          <span className="ml-2 text-xs text-purple-600 font-medium">⚖️ {sp.minWeightPerUnit}–{sp.maxWeightPerUnit} g</span>
+                        )}
+                      </span>
+                    );
+                  })() : (
                     <span className="flex-1 text-gray-400">Select Product</span>
                   )}
                   {selectedProductId && (
@@ -1518,10 +1526,23 @@ export default function Page() {
                             <div
                               key={p.id}
                               onClick={() => { setSelectedProductId(p.id); setProductDropdownOpen(false); setProductSearch(""); }}
-                              className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center justify-between ${p.id === selectedProductId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-800 dark:text-gray-200"}`}
+                              className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center justify-between gap-2 ${p.id === selectedProductId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-800 dark:text-gray-200"}`}
                             >
-                              <span>{p.name}</span>
-                              <span className="text-xs text-gray-400 shrink-0 ml-2">{formatQty(p.currentStock)}</span>
+                              <div className="flex flex-col min-w-0">
+                                <span className="truncate">{toTitleCase(p.name)}</span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {p.requiresWeighing && p.minWeightPerUnit && p.maxWeightPerUnit && (
+                                    <span className="text-xs text-purple-600 font-medium">⚖️ {p.minWeightPerUnit}–{p.maxWeightPerUnit} g</span>
+                                  )}
+                                  {p.caliber && (
+                                    <span className="text-xs font-semibold" style={{ color: "#1B2A5E" }}>📏 {p.caliber}</span>
+                                  )}
+                                  {p.productSubName && (
+                                    <span className="text-xs text-gray-400 truncate">{p.productSubName}</span>
+                                  )}
+                                </div>
+                              </div>
+                              <span className="text-xs text-gray-400 shrink-0">{formatQty(p.currentStock)}</span>
                             </div>
                           ))}
                         {products.filter(p => (p.name || "").toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
@@ -1559,6 +1580,25 @@ export default function Page() {
                       <span className="font-semibold">{money(createNetLineTotal)}</span>
                     </div>
                   )}
+
+                  {/* Product Details */}
+                  {(selectedProduct.brand || selectedProduct.caliber) && (
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-1 space-y-1">
+                      {selectedProduct.brand && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-gray-400">Brand</span>
+                          <span className="font-medium text-right">{selectedProduct.brand}</span>
+                        </div>
+                      )}
+                      {selectedProduct.caliber && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 dark:text-gray-400">Caliber</span>
+                          <span className="font-semibold" style={{ color: "#1B2A5E" }}>{selectedProduct.caliber}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <label className="flex items-center gap-2 pt-1">
                     <input type="checkbox" checked={manualPrice} onChange={(e) => {
                       setManualPrice(e.target.checked);

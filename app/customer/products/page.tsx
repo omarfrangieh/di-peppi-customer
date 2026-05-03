@@ -33,6 +33,7 @@ interface Product {
   minWeightPerUnit?: number;
   maxWeightPerUnit?: number;
   packSizeG?: number;
+  b2cOnly?: boolean;
 }
 
 export default function ProductsPage() {
@@ -50,6 +51,8 @@ export default function ProductsPage() {
   useEffect(() => {
     const sessionStr = localStorage.getItem("session");
     if (!sessionStr) { router.push("/customer/login"); return; }
+    const session = JSON.parse(sessionStr);
+    const customerType = session.customerType || "B2C";
 
     const q = query(collection(db, "products"), where("active", "==", true));
     const unsub = onSnapshot(
@@ -75,9 +78,11 @@ export default function ProductsPage() {
               minWeightPerUnit: Number(data.minWeightPerUnit || 0),
               maxWeightPerUnit: Number(data.maxWeightPerUnit || 0),
               packSizeG: data.packSizeG ? Number(data.packSizeG) : undefined,
+              b2cOnly: Boolean(data.b2cOnly),
             };
           })
-          .filter((p) => p.name && p.price > 0)
+          // B2B customers cannot see b2cOnly products
+          .filter((p) => p.name && p.price > 0 && (customerType === "B2C" || !p.b2cOnly))
           .sort((a, b) => {
             // In stock first, then alphabetical
             const aInStock = a.currentStock > 0 ? 0 : 1;
