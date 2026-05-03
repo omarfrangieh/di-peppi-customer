@@ -1194,7 +1194,7 @@ export default function AdminProductsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {filtered.map((product, index) => {
-                  const isLowStock = Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock);
+                  const isLowStock = Number(product.minStock) > 0 && Number(product.currentStock || 0) > 0 && Number(product.currentStock || 0) < Number(product.minStock);
                   return (
                     <tr
                       key={product.id}
@@ -1214,10 +1214,14 @@ export default function AdminProductsPage() {
                       <td className="px-4 py-2">
                         <p className="font-semibold text-gray-900 dark:text-white capitalize">{product.name}</p>
                         {product.productSubName && <p className="text-xs text-gray-400">{product.productSubName}</p>}
-                        {isLowStock && <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded mt-0.5">⚠ Low Stock</span>}
+                        {Number(product.currentStock || 0) === 0
+                          ? <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded mt-0.5">✕ Out of Stock</span>
+                          : isLowStock
+                          ? <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded mt-0.5">⚠ Low Stock</span>
+                          : null}
                       </td>
                       <td className="px-4 py-2 text-right">
-                        <span className={`text-sm font-semibold ${isLowStock ? "text-orange-600 dark:text-orange-400" : "text-gray-900 dark:text-white"}`}>
+                        <span className={`text-sm font-semibold ${Number(product.currentStock || 0) === 0 ? "text-red-600 dark:text-red-400" : isLowStock ? "text-orange-600 dark:text-orange-400" : "text-gray-900 dark:text-white"}`}>
                           {formatQty(product.currentStock)}
                         </span>
                         <span className="text-xs text-gray-400"> / {product.minStock || "—"}</span>
@@ -1677,9 +1681,11 @@ export default function AdminProductsPage() {
                             🛍️ B2C Only
                           </span>
                         )}
-                        {isLowStock && (
+                        {Number(product.currentStock || 0) === 0 ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">✕ Out of Stock</span>
+                        ) : isLowStock ? (
                           <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 rounded-full">⚠ Low Stock</span>
-                        )}
+                        ) : null}
                       </div>
                     </div>
 
