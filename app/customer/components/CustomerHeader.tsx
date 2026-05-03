@@ -64,7 +64,7 @@ export default function CustomerHeader() {
           <img
             src="/Di-Peppi-White-Background.jpg"
             alt="Di Peppi"
-            className="w-8 h-8 rounded-lg object-contain border border-gray-200"
+            className="w-10 h-10 rounded-xl object-contain border border-gray-200"
           />
           <div>
             <p className="text-sm font-bold leading-tight" style={{ color: "#1B2A5E" }}>Di Peppi</p>
