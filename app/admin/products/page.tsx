@@ -1183,7 +1183,7 @@ export default function AdminProductsPage() {
           <SearchInput
             placeholder="Search products..."
             value={search}
-            onChange={setSearch}
+            onChange={(v) => { setSearch(v); if (v) window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior }); }}
             className="w-48"
           />
           <div className="flex items-center gap-1 border border-gray-200 dark:border-gray-600 rounded-lg p-0.5">
