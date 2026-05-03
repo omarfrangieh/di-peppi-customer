@@ -115,7 +115,7 @@ export default function ReportsPage() {
     const map: Record<string, any> = {};
     filteredItems.forEach(i => {
       const k = i.productId || i.productName || "Unknown";
-      const resolvedName = i.productName || productMap[i.productId] || k;
+      const resolvedName = productMap[i.productId] || i.productName || k;
       if (!map[k]) map[k] = { name: resolvedName, qty: 0, revenue: 0, profit: 0, customers: new Set() };
       const qty = Number(i.quantity || 0);
       const lineRevenue = Number(i.netLineTotal || i.lineNet || i.totalPrice || 0)
@@ -327,9 +327,9 @@ export default function ReportsPage() {
           <div className="space-y-6">
             <div className="grid grid-cols-3 gap-4">
               {[
+                {label:"Best Product", value:byProduct[0]?.name||"—", color:"text-gray-900 dark:text-white"},
                 {label:"Total Profit", value:money(totalProfit), color: totalProfit > 0 ? "text-green-600 dark:text-green-400" : totalProfit < 0 ? "text-red-600 dark:text-red-400" : "text-gray-500 dark:text-gray-400"},
                 {label:"Overall Margin", value:totalRevenue>0?pct(totalProfit/totalRevenue*100):"—", color:totalRevenue>0&&totalProfit/totalRevenue*100<15?"text-yellow-600 dark:text-yellow-400":"text-green-600 dark:text-green-400"},
-                {label:"Best Product", value:byProduct[0]?.name||"—", color:"text-gray-900 dark:text-white"},
               ].map(c => (
                 <div key={c.label} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{c.label}</p>
