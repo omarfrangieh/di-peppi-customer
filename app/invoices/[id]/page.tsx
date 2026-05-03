@@ -23,6 +23,7 @@ import { showToast } from "@/lib/toast";
 import { generateInvoicePDF } from "@/lib/generateInvoicePDF";
 import { createPurchaseOrdersForInvoice } from "@/lib/createPurchaseOrders";
 import { formatQty, formatPrice } from "@/lib/formatters";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 
 interface Invoice {
   id: string;
@@ -1158,15 +1159,7 @@ export default function InvoiceDetailPage() {
             </div>
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Status</p>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="text-sm font-medium text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white dark:bg-gray-800"
-              >
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                ))}
-              </select>
+              <SearchableSelect value={status} onChange={setStatus} options={STATUS_OPTIONS} placeholder="— Select —" />
             </div>
           </div>
         </div>
@@ -1746,14 +1739,7 @@ export default function InvoiceDetailPage() {
               </div>
               <div>
                 <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Method</label>
-                <select value={editPayMethod} onChange={(e) => setEditPayMethod(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
-                  <option>Cash</option>
-                  <option>Card</option>
-                  <option>Transfer</option>
-                  <option>Cheque</option>
-                  <option>Other</option>
-                </select>
+                <SearchableSelect value={editPayMethod} onChange={setEditPayMethod} options={["Cash", "Card", "Transfer", "Cheque", "Other"]} placeholder="— Select —" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Date</label>
@@ -1888,14 +1874,7 @@ export default function InvoiceDetailPage() {
               </div>
               <div>
                 <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 block">Method</label>
-                <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}
-                  className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-500">
-                  <option>Cash</option>
-                  <option>Card</option>
-                  <option>Transfer</option>
-                  <option>Cheque</option>
-                  <option>Other</option>
-                </select>
+                <SearchableSelect value={payMethod} onChange={setPayMethod} options={["Cash", "Card", "Transfer", "Cheque", "Other"]} placeholder="— Select —" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 block">Payment Date</label>
@@ -1937,17 +1916,7 @@ export default function InvoiceDetailPage() {
           <div className="space-y-4">
             <div>
               <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Payment Method</label>
-              <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              >
-                <option>Cash</option>
-                  <option>Card</option>
-                  <option>Transfer</option>
-                  <option>Cheque</option>
-                  <option>Other</option>
-              </select>
+              <SearchableSelect value={paymentMethod} onChange={setPaymentMethod} options={["Cash", "Card", "Transfer", "Cheque", "Other"]} placeholder="— Select —" />
             </div>
             <div>
               <label className="text-xs text-gray-500 uppercase tracking-wider mb-1 block">Payment Date</label>

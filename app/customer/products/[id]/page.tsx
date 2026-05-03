@@ -28,6 +28,7 @@ interface Product {
   requiresWeighing?: boolean;
   minWeightPerUnit?: number;
   maxWeightPerUnit?: number;
+  packSizeG?: number;
 }
 
 // Helper function to validate URL
@@ -58,6 +59,11 @@ export default function ProductDetailPage() {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2500);
   };
+
+  // Scroll to top on navigation
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [productId]);
 
   // Fetch products on mount
   useEffect(() => {
@@ -258,12 +264,16 @@ export default function ProductDetailPage() {
                   </p>
                   <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full mt-1" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>Final price based on confirmed weight at delivery</span>
                 </>
+              ) : product.packSizeG ? (
+                <p className="text-4xl font-bold text-gray-900">
+                  ${formatPrice(product.price * product.packSizeG / 1000)}
+                  <span className="text-xl font-medium text-gray-500"> / {product.packSizeG}g</span>
+                </p>
               ) : (
                 <p className="text-4xl font-bold text-gray-900">
                   ${formatPrice(product.price)}
                 </p>
               )}
-              <p className="text-gray-600 text-sm mt-1">Unit: {product.unit}</p>
             </div>
 
             {/* Stock Status */}

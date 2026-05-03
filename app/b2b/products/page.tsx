@@ -14,6 +14,7 @@ function resolveImageUrl(raw?: string): string {
 }
 import B2BProductCard from "./components/B2BProductCard";
 import useB2BCart from "../hooks/useCart";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 
 interface Product {
   id: string;
@@ -138,15 +139,9 @@ export default function B2BProductsPage() {
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-[200px] px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-blue-400 transition-colors"
           />
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:border-blue-400"
-          >
-            {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          <div className="w-40">
+            <SearchableSelect value={selectedCategory === "All" ? "" : selectedCategory} onChange={v => setSelectedCategory(v || "All")} options={categories.filter(c => c !== "All")} placeholder="All Categories" />
+          </div>
           <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
             <input
               type="checkbox"

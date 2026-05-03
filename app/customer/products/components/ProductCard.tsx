@@ -19,6 +19,7 @@ interface Product {
   requiresWeighing?: boolean;
   minWeightPerUnit?: number;
   maxWeightPerUnit?: number;
+  packSizeG?: number;
 }
 
 interface ProductCardProps {
@@ -126,6 +127,13 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
               ${formatPrice(product.price)} <span className="text-sm font-medium text-gray-500">/kg</span>
             </p>
             <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>Final price based on confirmed weight</span>
+          </div>
+        ) : product.packSizeG ? (
+          <div className="mb-2">
+            <p className="text-lg font-bold text-gray-900">
+              ${formatPrice(product.price * product.packSizeG / 1000)}
+              <span className="text-sm font-medium text-gray-500"> / {product.packSizeG}g</span>
+            </p>
           </div>
         ) : (
           <p className="text-lg font-bold text-gray-900 mb-2">

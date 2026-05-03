@@ -5,6 +5,7 @@ import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, serverTimestamp
 import { db } from "@/lib/firebase";
 import { formatQty, formatPrice } from "@/lib/formatters";
 import SearchInput from "@/components/SearchInput";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 
 function AdjustModal({ product, onClose, onSave }: { product: any; onClose: () => void; onSave: (newQty: number, delta: number, reason: string, notes: string) => Promise<void> }) {
   const [qty, setQty] = useState(String(product.currentStock || 0));
@@ -438,10 +439,9 @@ export default function StockPage() {
               <option value="stock">Sort: Stock Level</option>
               <option value="value">Sort: Stock Value</option>
             </select>
-            <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white">
-              <option value="">Supplier: All</option>
-              {suppliers.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <div className="w-44">
+              <SearchableSelect value={supplierFilter} onChange={setSupplierFilter} options={suppliers} placeholder="Supplier: All" size="xs" />
+            </div>
             <SearchInput
               placeholder="Search products..."
               value={search}

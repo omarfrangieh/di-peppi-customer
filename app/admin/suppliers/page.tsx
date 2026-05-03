@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase";
 import { formatQty } from "@/lib/formatters";
 import { showToast } from "@/lib/toast";
 import SearchInput from "@/components/SearchInput";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { AlertTriangle } from "lucide-react";
 
 const PAYMENT_TERMS = ["COD", "Consignment", "Net 7", "Net 15", "Net 30", "Net 60", "Prepaid"];
@@ -66,18 +67,11 @@ function AddSupplierForm({ onAdd, onCancel }: { onAdd: (data: any) => Promise<vo
         <div><label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Google Maps Link</label>{inp(refs.mapsLink, "https://maps.app.goo.gl/...")}</div>
         <div>
           <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Payment Terms</label>
-          <select value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)}
-            className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none">
-            <option value="">— Select —</option>
-            {PAYMENT_TERMS.map(t => <option key={t}>{t}</option>)}
-          </select>
+          <SearchableSelect value={paymentTerms} onChange={setPaymentTerms} options={PAYMENT_TERMS} placeholder="— Select —" />
         </div>
         <div>
           <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Currency</label>
-          <select value={currency} onChange={e => setCurrency(e.target.value)}
-            className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none">
-            {CURRENCIES.map(c => <option key={c}>{c}</option>)}
-          </select>
+          <SearchableSelect value={currency} onChange={setCurrency} options={CURRENCIES} placeholder="— Select —" />
         </div>
         <div><label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Lead Time (days)</label>{inp(refs.leadTimeDays, "e.g. 3", "number")}</div>
         <div><label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Min Order $</label>{inp(refs.minOrder, "0", "number")}</div>
@@ -251,18 +245,11 @@ export default function AdminSuppliersPage() {
                     <Field label="Google Maps Link" value={editData.mapsLink} onChange={(v: string) => setEditData((p: any) => ({ ...p, mapsLink: v }))} />
                     <div>
                       <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Payment Terms</label>
-                      <select value={editData.paymentTerms || ""} onChange={e => setEditData((p: any) => ({ ...p, paymentTerms: e.target.value }))}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none">
-                        <option value="">— Select —</option>
-                        {PAYMENT_TERMS.map(t => <option key={t}>{t}</option>)}
-                      </select>
+                      <SearchableSelect value={editData.paymentTerms || ""} onChange={v => setEditData((p: any) => ({ ...p, paymentTerms: v }))} options={PAYMENT_TERMS} placeholder="— Select —" />
                     </div>
                     <div>
                       <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Currency</label>
-                      <select value={editData.currency || "USD"} onChange={e => setEditData((p: any) => ({ ...p, currency: e.target.value }))}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none">
-                        {CURRENCIES.map(c => <option key={c}>{c}</option>)}
-                      </select>
+                      <SearchableSelect value={editData.currency || "USD"} onChange={v => setEditData((p: any) => ({ ...p, currency: v }))} options={CURRENCIES} placeholder="— Select —" />
                     </div>
                     <Field label="Lead Time (days)" value={editData.leadTimeDays} onChange={(v: string) => setEditData((p: any) => ({ ...p, leadTimeDays: v }))} type="number" />
                     <Field label="Min Order $" value={editData.minOrder} onChange={(v: string) => setEditData((p: any) => ({ ...p, minOrder: v }))} type="number" />

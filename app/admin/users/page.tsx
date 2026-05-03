@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/lib/toast";
 import SearchInput from "@/components/SearchInput";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { useAuth } from "@/components/AuthWrapper";
 
 const ROLES = ["Admin", "Driver", "Manager", "Operator", "Warehouse Lead"];
@@ -252,39 +253,15 @@ export default function UsersPage() {
             onChange={setSearch}
             className="flex-1"
           />
-          <select
-            value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none"
-          >
-            <option value="All">All Roles</option>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none"
-          >
-            <option value="All">All Account Types</option>
-            {ACCOUNT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none"
-          >
-            <option value="All">All Status</option>
-            <option value="Active">Active</option>
-            <option value="Inactive">Inactive</option>
-          </select>
+          <div className="w-36">
+            <SearchableSelect value={filterRole === "All" ? "" : filterRole} onChange={v => setFilterRole(v || "All")} options={ROLES} placeholder="All Roles" size="xs" />
+          </div>
+          <div className="w-40">
+            <SearchableSelect value={filterType === "All" ? "" : filterType} onChange={v => setFilterType(v || "All")} options={ACCOUNT_TYPES} placeholder="All Account Types" size="xs" />
+          </div>
+          <div className="w-36">
+            <SearchableSelect value={filterStatus === "All" ? "" : filterStatus} onChange={v => setFilterStatus(v || "All")} options={["Active", "Inactive"]} placeholder="All Status" size="xs" />
+          </div>
         </div>
 
         {/* Users Table */}
@@ -441,29 +418,23 @@ export default function UsersPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Account Type</label>
-                    <select
+                    <SearchableSelect
                       value={formData.accountType || "Employee"}
-                      onChange={(e) => {
-                        const newType = e.target.value;
-                        setFormData({ ...formData, accountType: newType, role: newType === "Employee" ? formData.role : "" });
-                      }}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onChange={(newType) => setFormData({ ...formData, accountType: newType, role: newType === "Employee" ? formData.role : "" })}
+                      options={ACCOUNT_TYPES}
+                      placeholder="— Select —"
                       disabled={saving}
-                    >
-                      {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Role</label>
-                    <select
+                    <SearchableSelect
                       value={formData.role || ""}
-                      onChange={(e) => setFormData({...formData, role: e.target.value, accountType: "Employee"})}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onChange={(v) => setFormData({...formData, role: v, accountType: "Employee"})}
+                      options={ROLES}
+                      placeholder="— No Role —"
                       disabled={saving || formData.accountType !== "Employee"}
-                    >
-                      <option value="">-- No Role --</option>
-                      {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                    </select>
+                    />
                   </div>
                 </div>
 
@@ -598,29 +569,23 @@ export default function UsersPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Account Type</label>
-                    <select
+                    <SearchableSelect
                       value={formData.accountType || "Employee"}
-                      onChange={(e) => {
-                        const newType = e.target.value;
-                        setFormData({...formData, accountType: newType, role: newType === "Employee" ? formData.role : ""});
-                      }}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onChange={(newType) => setFormData({...formData, accountType: newType, role: newType === "Employee" ? formData.role : ""})}
+                      options={ACCOUNT_TYPES}
+                      placeholder="— Select —"
                       disabled={saving}
-                    >
-                      {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Role</label>
-                    <select
+                    <SearchableSelect
                       value={formData.role || ""}
-                      onChange={(e) => setFormData({...formData, role: e.target.value, accountType: "Employee"})}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onChange={(v) => setFormData({...formData, role: v, accountType: "Employee"})}
+                      options={ROLES}
+                      placeholder="— No Role —"
                       disabled={saving || formData.accountType !== "Employee"}
-                    >
-                      <option value="">-- No Role --</option>
-                      {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                    </select>
+                    />
                     {isDemotingSelf && (
                       <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-md px-3 py-2 mt-1">
                         ⚠️ You are changing your own role. You may lose admin access after saving.

@@ -31,6 +31,7 @@ interface Product {
   requiresWeighing?: boolean;
   minWeightPerUnit?: number;
   maxWeightPerUnit?: number;
+  packSizeG?: number;
 }
 
 export default function ProductsPage() {
@@ -71,6 +72,7 @@ export default function ProductsPage() {
               requiresWeighing: Boolean(data.requiresWeighing),
               minWeightPerUnit: Number(data.minWeightPerUnit || 0),
               maxWeightPerUnit: Number(data.maxWeightPerUnit || 0),
+              packSizeG: data.packSizeG ? Number(data.packSizeG) : undefined,
             };
           })
           .filter((p) => p.name && p.price > 0)

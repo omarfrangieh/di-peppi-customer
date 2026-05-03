@@ -8,6 +8,7 @@ import { formatPrice } from "@/lib/formatters";
 import { showToast } from "@/lib/toast";
 import { useRouter } from "next/navigation";
 import SearchInput from "@/components/SearchInput";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import LocationPicker from "../../customer/components/LocationPicker";
 import type { MapLocation } from "../../customer/components/LocationPicker";
 
@@ -47,6 +48,9 @@ export default function AdminCustomersPage() {
   const [editMapLocation, setEditMapLocation] = useState<MapLocation | null>(null);
   const [showEditMap, setShowEditMap] = useState(false);
   const [editMapFlyTo, setEditMapFlyTo] = useState<MapLocation | null>(null);
+  const [newMapLocation, setNewMapLocation] = useState<MapLocation | null>(null);
+  const [showNewMap, setShowNewMap] = useState(false);
+  const [newMapFlyTo, setNewMapFlyTo] = useState<MapLocation | null>(null);
 
   function parseMapsUrl(url: string): MapLocation | null {
     const at = url.match(/@(-?\d+\.?\d+),(-?\d+\.?\d+)/);
@@ -219,6 +223,9 @@ export default function AdminCustomersPage() {
     setPricingOpen(false);
     setNewDocFile(null);
     setNewCustomer({ customerType: "", country: "Lebanon" });
+    setNewMapLocation(null);
+    setShowNewMap(false);
+    setNewMapFlyTo(null);
   };
 
   const addCustomer = async () => {
@@ -236,6 +243,7 @@ export default function AdminCustomersPage() {
       clientMargin: Number(newCustomer.clientMargin || 0),
       clientDiscount: Number(newCustomer.clientDiscount || 0),
       specialPrices: {},
+      mapLocation: newMapLocation || null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -614,14 +622,12 @@ export default function AdminCustomersPage() {
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Customer Type *</label>
-                  <select
+                  <SearchableSelect
                     value={newCustomer.customerType}
-                    onChange={e => setNewCustomer((p: any) => ({ ...p, customerType: e.target.value }))}
-                    className={`w-full border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-900 ${hasAttemptedSubmit && !newCustomer.customerType ? "border-red-400 dark:border-red-500" : "border-gray-200 dark:border-gray-600"}`}
-                  >
-                    <option value="">— Select —</option>
-                    {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
-                  </select>
+                    onChange={v => setNewCustomer((p: any) => ({ ...p, customerType: v }))}
+                    options={CUSTOMER_TYPES}
+                    placeholder="— Select —"
+                  />
                   {hasAttemptedSubmit && !newCustomer.customerType && <p className="text-xs text-red-500 mt-0.5">Type is required</p>}
                 </div>
                 <div>
@@ -691,10 +697,43 @@ export default function AdminCustomersPage() {
                         placeholder="Apt" className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400" />
                     </div>
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Google Maps Link</label>
-                    <input value={newCustomer.mapsLink || ""} onChange={e => setNewCustomer((p: any) => ({ ...p, mapsLink: e.target.value }))}
-                      placeholder="https://maps.app.goo.gl/..." className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400" />
+                  {/* Location block */}
+                  <div className="border border-gray-100 dark:border-gray-700 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
+                        📍 Location
+                        {newMapLocation && (
+                          <span className="text-green-600 font-medium bg-green-50 border border-green-200 px-2 py-0.5 rounded-full normal-case tracking-normal">✓ Pinned</span>
+                        )}
+                      </span>
+                      <button type="button" onClick={() => setShowNewMap(v => !v)}
+                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-600 dark:text-gray-400">
+                        🗺️ {showNewMap ? "Hide Map" : "Show Map"}
+                      </button>
+                    </div>
+                    {showNewMap && (
+                      <LocationPicker initial={newMapLocation} flyTo={newMapFlyTo} height={220} onChange={(loc) => { setNewMapLocation(loc); setNewMapFlyTo(null); }} />
+                    )}
+                    {!showNewMap && newMapLocation && (
+                      <p className="text-xs text-gray-400">
+                        📍 {newMapLocation.lat.toFixed(5)}, {newMapLocation.lng.toFixed(5)} —{" "}
+                        <button type="button" onClick={() => setNewMapLocation(null)} className="text-red-400 hover:text-red-600">Remove pin</button>
+                      </p>
+                    )}
+                    <input
+                      type="url"
+                      value={newCustomer.mapsLink || ""}
+                      onChange={e => {
+                        setNewCustomer((p: any) => ({ ...p, mapsLink: e.target.value }));
+                        const coords = parseMapsUrl(e.target.value);
+                        if (coords) { setNewMapFlyTo(coords); setNewMapLocation(coords); }
+                      }}
+                      placeholder="Or paste a Google Maps link — https://maps.app.goo.gl/..."
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white placeholder:text-gray-400"
+                    />
+                    {newCustomer.mapsLink && !parseMapsUrl(newCustomer.mapsLink) && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠️ Short link — coordinates can't be auto-read. Tap on the map above to pin the exact location.</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -921,10 +960,7 @@ export default function AdminCustomersPage() {
                     <Field label="Company Name" value={editData.companyName} onChange={(v: string) => setEditData((p: any) => ({ ...p, companyName: v }))} />
                     <div>
                       <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Customer Type</label>
-                      <select value={editData.customerType || ""} onChange={e => setEditData((p: any) => ({ ...p, customerType: e.target.value }))}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-white">
-                        {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
-                      </select>
+                      <SearchableSelect value={editData.customerType || ""} onChange={v => setEditData((p: any) => ({ ...p, customerType: v }))} options={CUSTOMER_TYPES} placeholder="— Select —" />
                     </div>
                     <Field label="Phone" value={editData.phoneNumber} onChange={(v: string) => setEditData((p: any) => ({ ...p, phoneNumber: v }))} />
                     <Field label="Delivery Fee $" value={editData.deliveryFee} onChange={(v: string) => setEditData((p: any) => ({ ...p, deliveryFee: v }))} type="number" />

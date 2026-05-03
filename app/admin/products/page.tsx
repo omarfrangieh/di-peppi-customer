@@ -10,6 +10,7 @@ import { formatQty, formatPrice } from "@/lib/formatters";
 import Image from "next/image";
 import BarcodeDisplay from "./components/BarcodeDisplay";
 import SearchInput from "@/components/SearchInput";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -61,7 +62,7 @@ export default function AdminProductsPage() {
     category: "", origin: "", unit: "KG", storageType: "",
     costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "",
     active: true, requiresWeighing: false, trackExpiry: false,
-    minWeightPerUnit: "", maxWeightPerUnit: "", barcodeNumber: "",
+    minWeightPerUnit: "", maxWeightPerUnit: "", packSizeG: "", barcodeNumber: "",
     vatRate: "",
   });
   const [addingSaving, setAddingSaving] = useState(false);
@@ -76,6 +77,10 @@ export default function AdminProductsPage() {
     try { return (localStorage.getItem("dp-products-view") as "grid" | "list") || "grid"; } catch { return "grid"; }
   });
   const [selectedSuppliers, setSelectedSuppliers] = useState<Set<string>>(new Set());
+  const [supplierDropdownOpen, setSupplierDropdownOpen] = useState(false);
+  const [supplierSearch, setSupplierSearch] = useState("");
+  const [newProductSupplierDropdownOpen, setNewProductSupplierDropdownOpen] = useState(false);
+  const [newProductSupplierSearch, setNewProductSupplierSearch] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, Set<string>>>({
     pricing: new Set(),
@@ -618,6 +623,7 @@ export default function AdminProductsPage() {
         requiresWeighing: Boolean(newProduct.requiresWeighing),
         trackExpiry: Boolean(newProduct.trackExpiry),
         minWeightPerUnit: newProduct.minWeightPerUnit ? Number(newProduct.minWeightPerUnit) : null,
+        packSizeG: newProduct.packSizeG ? Number(newProduct.packSizeG) : null,
         maxWeightPerUnit: newProduct.maxWeightPerUnit ? Number(newProduct.maxWeightPerUnit) : null,
         barcodeNumber: newProduct.barcodeNumber || "",
         vatRate: newProduct.vatRate ? Number(newProduct.vatRate) : null,
@@ -625,7 +631,7 @@ export default function AdminProductsPage() {
         updatedAt: new Date().toISOString(),
       });
       setShowAddProduct(false);
-      setNewProduct({ name: "", productSubName: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "", barcodeNumber: "", vatRate: "", initialExpiry: "" });
+      setNewProduct({ name: "", productSubName: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "", packSizeG: "", barcodeNumber: "", vatRate: "", initialExpiry: "" });
       await load();
     } finally {
       setAddingSaving(false);
@@ -684,6 +690,7 @@ export default function AdminProductsPage() {
         minStock: Number(editData.minStock || 0),
         minWeightPerUnit: editData.minWeightPerUnit ? Number(editData.minWeightPerUnit) : null,
         maxWeightPerUnit: editData.maxWeightPerUnit ? Number(editData.maxWeightPerUnit) : null,
+        packSizeG: editData.packSizeG ? Number(editData.packSizeG) : null,
         requiresWeighing: Boolean(editData.requiresWeighing || false),
         trackExpiry: Boolean(editData.trackExpiry || false),
         updatedAt: new Date().toISOString(),
@@ -1214,42 +1221,94 @@ export default function AdminProductsPage() {
                   <input value={editData.productSubName || ""} onChange={e => setEditData((p: any) => ({ ...p, productSubName: e.target.value }))}
                     placeholder="Sub name..." className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
 
-                  <select value={editData.supplierId || ""} onChange={e => {
-                      const s = suppliers.find((s:any) => s.id === e.target.value);
-                      setEditData((p: any) => ({ ...p, supplierId: e.target.value, supplier: s?.name || "" }));
-                    }} className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white">
-                    <option value="">— Supplier —</option>
-                    {suppliers.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <select value={editData.category || ""} onChange={e => setEditData((p: any) => ({ ...p, category: e.target.value }))}
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white">
-                      <option value="">Category</option>
-                      {editData.category && !options.category.includes(editData.category) && <option value={editData.category}>{editData.category}</option>}
-                      {options.category.map(o => <option key={o}>{o}</option>)}
-                    </select>
-                    <select value={editData.origin || ""} onChange={e => setEditData((p: any) => ({ ...p, origin: e.target.value }))}
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white">
-                      <option value="">Origin</option>
-                      {editData.origin && !options.origin.includes(editData.origin) && <option value={editData.origin}>{editData.origin}</option>}
-                      {options.origin.map(o => <option key={o}>{o}</option>)}
-                    </select>
+                  {/* Supplier searchable dropdown */}
+                  <div className="relative">
+                    <div
+                      onClick={() => { setSupplierDropdownOpen(o => !o); setSupplierSearch(""); }}
+                      className="w-full flex items-center justify-between border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white cursor-pointer hover:border-gray-400"
+                    >
+                      <span className={(editData.supplierId || editData.supplier) ? "text-gray-900 dark:text-white" : "text-gray-400"}>
+                        {editData.supplierId
+                          ? (suppliers.find((s:any) => s.id === editData.supplierId)?.name || editData.supplier || "— Supplier —")
+                          : (editData.supplier || "— Supplier —")}
+                      </span>
+                      <span className="text-gray-400 text-xs">{supplierDropdownOpen ? "▲" : "▼"}</span>
+                    </div>
+                    {supplierDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => { setSupplierDropdownOpen(false); setSupplierSearch(""); }} />
+                        <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden" style={{ minWidth: "220px" }}>
+                          <div className="p-2 border-b border-gray-100 dark:border-gray-700">
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder="Search suppliers..."
+                              value={supplierSearch}
+                              onChange={e => setSupplierSearch(e.target.value)}
+                              className="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                            />
+                          </div>
+                          <div className="max-h-52 overflow-y-auto">
+                            {(editData.supplierId || editData.supplier) && (
+                              <div
+                                onClick={() => { setEditData((p: any) => ({ ...p, supplierId: "", supplier: "" })); setSupplierDropdownOpen(false); setSupplierSearch(""); }}
+                                className="px-3 py-2 text-xs cursor-pointer text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-1.5 border-b border-gray-100 dark:border-gray-700"
+                              >
+                                <span>✕</span> Clear supplier
+                              </div>
+                            )}
+                            {suppliers
+                              .filter((s:any) => (s.name || "").toLowerCase().includes(supplierSearch.toLowerCase()))
+                              .map((s:any) => (
+                                <div
+                                  key={s.id}
+                                  onClick={() => { setEditData((p: any) => ({ ...p, supplierId: s.id, supplier: s.name })); setSupplierDropdownOpen(false); setSupplierSearch(""); }}
+                                  className={`px-3 py-2 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 ${s.id === editData.supplierId ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold" : "text-gray-800 dark:text-gray-200"}`}
+                                >
+                                  {s.name}
+                                </div>
+                              ))}
+                            {suppliers.filter((s:any) => (s.name || "").toLowerCase().includes(supplierSearch.toLowerCase())).length === 0 && (
+                              <div className="px-3 py-3 text-xs text-gray-400 text-center">No suppliers found</div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <select value={editData.unit || ""} onChange={e => setEditData((p: any) => ({ ...p, unit: e.target.value }))}
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white">
-                      <option value="">Unit</option>
-                      {editData.unit && !options.unit.includes(editData.unit) && <option value={editData.unit}>{editData.unit}</option>}
-                      {options.unit.map(o => <option key={o}>{o}</option>)}
-                    </select>
-                    <select value={editData.storageType || ""} onChange={e => setEditData((p: any) => ({ ...p, storageType: e.target.value }))}
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white">
-                      <option value="">Storage</option>
-                      {editData.storageType && !options.storageType.includes(editData.storageType) && <option value={editData.storageType}>{editData.storageType}</option>}
-                      {options.storageType.map(o => <option key={o}>{o}</option>)}
-                    </select>
+                    <SearchableSelect
+                      value={editData.category || ""}
+                      onChange={v => setEditData((p: any) => ({ ...p, category: v }))}
+                      options={options.category}
+                      placeholder="Category"
+                      size="xs"
+                    />
+                    <SearchableSelect
+                      value={editData.origin || ""}
+                      onChange={v => setEditData((p: any) => ({ ...p, origin: v }))}
+                      options={options.origin}
+                      placeholder="Origin"
+                      size="xs"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <SearchableSelect
+                      value={editData.unit || ""}
+                      onChange={v => setEditData((p: any) => ({ ...p, unit: v }))}
+                      options={options.unit}
+                      placeholder="Unit"
+                      size="xs"
+                    />
+                    <SearchableSelect
+                      value={editData.storageType || ""}
+                      onChange={v => setEditData((p: any) => ({ ...p, storageType: v }))}
+                      options={options.storageType}
+                      placeholder="Storage"
+                      size="xs"
+                    />
                   </div>
 
                   <div className="flex gap-2 items-end">
@@ -1346,6 +1405,20 @@ export default function AdminProductsPage() {
                       <span className="font-medium">📦 FIFO / Track Expiry</span>
                     </label>
                   </div>
+                  {!editData.requiresWeighing && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-lg p-3">
+                      <label className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-1 block">📦 Pack Size (g) <span className="font-normal text-blue-600 dark:text-blue-400">— optional, for fixed-weight packs</span></label>
+                      <input type="number" step="1" min="0" placeholder="e.g. 100"
+                        value={editData.packSizeG || ""}
+                        onChange={e => setEditData((p: any) => ({ ...p, packSizeG: e.target.value }))}
+                        className="w-full border border-blue-200 dark:border-blue-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                      {editData.packSizeG && Number(editData.packSizeG) > 0 && editData.b2cPrice > 0 && (
+                        <p className="text-xs text-blue-700 dark:text-blue-400 font-medium mt-1">
+                          B2C price per pack: ${formatPrice(editData.b2cPrice * Number(editData.packSizeG) / 1000)}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {editData.requiresWeighing && (
                     <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 space-y-2">
                       <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">⚖️ Weight range per unit (g) <span className="text-red-500">*</span></p>
@@ -1682,44 +1755,98 @@ export default function AdminProductsPage() {
                 </div>
                 <div className="col-span-2">
                   <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Supplier</label>
-                  <select value={newProduct.supplierId} onChange={e => {
-                    const s = suppliers.find((s:any) => s.id === e.target.value);
-                    setNewProduct((p:any) => ({...p, supplierId: e.target.value, supplier: s?.name || ""}));
-                  }} className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white">
-                    <option value="">— Select Supplier —</option>
-                    {suppliers.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
+                  <div className="relative">
+                    <div
+                      onClick={() => { setNewProductSupplierDropdownOpen(o => !o); setNewProductSupplierSearch(""); }}
+                      className="w-full flex items-center justify-between border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white cursor-pointer hover:border-gray-400"
+                    >
+                      <span className={newProduct.supplierId ? "text-gray-900 dark:text-white" : "text-gray-400"}>
+                        {newProduct.supplierId ? (suppliers.find((s:any) => s.id === newProduct.supplierId)?.name || "— Select Supplier —") : "— Select Supplier —"}
+                      </span>
+                      <span className="text-gray-400 text-xs">{newProductSupplierDropdownOpen ? "▲" : "▼"}</span>
+                    </div>
+                    {newProductSupplierDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => { setNewProductSupplierDropdownOpen(false); setNewProductSupplierSearch(""); }} />
+                        <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden">
+                          <div className="p-2 border-b border-gray-100 dark:border-gray-700">
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder="Search suppliers..."
+                              value={newProductSupplierSearch}
+                              onChange={e => setNewProductSupplierSearch(e.target.value)}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                            />
+                          </div>
+                          <div className="max-h-52 overflow-y-auto">
+                            {newProduct.supplierId && (
+                              <div
+                                onClick={() => { setNewProduct((p:any) => ({ ...p, supplierId: "", supplier: "" })); setNewProductSupplierDropdownOpen(false); setNewProductSupplierSearch(""); }}
+                                className="px-3 py-2 text-sm cursor-pointer text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-1.5 border-b border-gray-100 dark:border-gray-700"
+                              >
+                                <span>✕</span> Clear supplier
+                              </div>
+                            )}
+                            {suppliers
+                              .filter((s:any) => (s.name || "").toLowerCase().includes(newProductSupplierSearch.toLowerCase()))
+                              .map((s:any) => (
+                                <div
+                                  key={s.id}
+                                  onClick={() => { setNewProduct((p:any) => ({ ...p, supplierId: s.id, supplier: s.name })); setNewProductSupplierDropdownOpen(false); setNewProductSupplierSearch(""); }}
+                                  className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 ${s.id === newProduct.supplierId ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold" : "text-gray-800 dark:text-gray-200"}`}
+                                >
+                                  {s.name}
+                                </div>
+                              ))}
+                            {suppliers.filter((s:any) => (s.name || "").toLowerCase().includes(newProductSupplierSearch.toLowerCase())).length === 0 && (
+                              <div className="px-3 py-3 text-sm text-gray-400 text-center">No suppliers found</div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Category</label>
-                  <select value={newProduct.category} onChange={e => setNewProduct((p:any) => ({...p, category: e.target.value}))}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white">
-                    <option value="">—</option>
-                    {options.category.map(o => <option key={o}>{o}</option>)}
-                  </select>
+                  <SearchableSelect
+                    value={newProduct.category}
+                    onChange={v => setNewProduct((p:any) => ({ ...p, category: v }))}
+                    options={options.category}
+                    placeholder="— Category —"
+                    size="sm"
+                  />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Origin</label>
-                  <select value={newProduct.origin} onChange={e => setNewProduct((p:any) => ({...p, origin: e.target.value}))}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white">
-                    <option value="">—</option>
-                    {options.origin.map(o => <option key={o}>{o}</option>)}
-                  </select>
+                  <SearchableSelect
+                    value={newProduct.origin}
+                    onChange={v => setNewProduct((p:any) => ({ ...p, origin: v }))}
+                    options={options.origin}
+                    placeholder="— Origin —"
+                    size="sm"
+                  />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Unit</label>
-                  <select value={newProduct.unit} onChange={e => setNewProduct((p:any) => ({...p, unit: e.target.value}))}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white">
-                    {options.unit.map(o => <option key={o}>{o}</option>)}
-                  </select>
+                  <SearchableSelect
+                    value={newProduct.unit}
+                    onChange={v => setNewProduct((p:any) => ({ ...p, unit: v }))}
+                    options={options.unit}
+                    placeholder="— Unit —"
+                    size="sm"
+                  />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Storage Type</label>
-                  <select value={newProduct.storageType} onChange={e => setNewProduct((p:any) => ({...p, storageType: e.target.value}))}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white">
-                    <option value="">—</option>
-                    {options.storageType.map(o => <option key={o}>{o}</option>)}
-                  </select>
+                  <SearchableSelect
+                    value={newProduct.storageType}
+                    onChange={v => setNewProduct((p:any) => ({ ...p, storageType: v }))}
+                    options={options.storageType}
+                    placeholder="— Storage Type —"
+                    size="sm"
+                  />
                 </div>
                 <div className="col-span-2">
                   <div className="flex gap-2 items-end">
@@ -1815,6 +1942,23 @@ export default function AdminProductsPage() {
                   </div>
                 )}
               </div>
+              {/* Pack Size (g) — shown when NOT requiresWeighing */}
+              {!newProduct.requiresWeighing && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-lg p-3 space-y-1">
+                  <label className="text-xs text-blue-700 dark:text-blue-400 font-medium block">📦 Pack Size (g) — optional, for fixed-weight packs</label>
+                  <input
+                    type="number" step="1" min="0" placeholder="e.g. 100"
+                    value={newProduct.packSizeG || ""}
+                    onChange={e => setNewProduct((p: any) => ({ ...p, packSizeG: e.target.value }))}
+                    className="w-full border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                  {newProduct.packSizeG && Number(newProduct.packSizeG) > 0 && Number(newProduct.b2cPrice) > 0 && (
+                    <p className="text-xs text-blue-700 dark:text-blue-400 font-medium">
+                      B2C price per pack: ${formatPrice(Number(newProduct.b2cPrice) * Number(newProduct.packSizeG) / 1000)}
+                    </p>
+                  )}
+                </div>
+              )}
               {/* Track expiry — always visible for any unit type */}
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-lg p-3 space-y-2">
                 <label className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-400 cursor-pointer font-medium">
