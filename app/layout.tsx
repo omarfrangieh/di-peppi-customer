@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import AuthWrapper from "@/components/AuthWrapper";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -12,6 +12,13 @@ const playfair = Playfair_Display({ variable: "--font-playfair", subsets: ["lati
 export const metadata: Metadata = {
   title: "Di Peppi",
   description: "Di Peppi Management App",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
