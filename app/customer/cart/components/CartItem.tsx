@@ -44,8 +44,9 @@ export default function CartItem({ item, maxStock = Infinity }: CartItemProps) {
         {/* Quantity Controls */}
         <div className={`flex items-center border rounded-lg px-2 py-1 ${atLimit ? "border-red-300" : "border-gray-300"}`}>
           <button
-            onClick={() => updateQty(item.productId, item.quantity - 1)}
-            className="px-2 py-0.5 text-gray-600 hover:bg-gray-100 font-semibold cursor-pointer text-base"
+            onClick={() => { if (item.quantity > 1) updateQty(item.productId, item.quantity - 1); }}
+            disabled={item.quantity <= 1}
+            className={`px-2 py-0.5 font-semibold rounded transition-colors text-base ${item.quantity <= 1 ? "text-gray-300 cursor-not-allowed" : "text-gray-600 hover:bg-gray-100 cursor-pointer"}`}
           >
             −
           </button>
@@ -55,7 +56,7 @@ export default function CartItem({ item, maxStock = Infinity }: CartItemProps) {
             max={maxStock < Infinity ? maxStock : undefined}
             value={item.quantity}
             onChange={(e) => {
-              const val = Math.min(parseInt(e.target.value) || 1, maxStock < Infinity ? maxStock : Infinity);
+              const val = Math.max(1, Math.min(parseInt(e.target.value) || 1, maxStock < Infinity ? maxStock : Infinity));
               updateQty(item.productId, val);
             }}
             className="w-10 text-center text-sm font-semibold border-0 focus:ring-0"
