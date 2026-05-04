@@ -150,8 +150,8 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
           {toTitleCase(product.name)}
         </h3>
 
-        {/* Info block — flex-grow pushes price to the same position across all cards regardless of content */}
-        <div className="flex-grow mb-2">
+        {/* Info block — natural height, mt-auto on bottom section handles alignment */}
+        <div className="mb-2">
           {product.productSubName && product.productSubName !== "0" && (
             <p className="text-xs text-gray-400 mb-0.5">{toTitleCase(product.productSubName)}</p>
           )}
@@ -175,36 +175,38 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
           )}
         </div>
 
-        {/* Price — min-h-[86px] covers: price line (~28px) + badge up to 3 lines on narrow mobile (~52px) + gap (6px) */}
-        <div className="min-h-[86px] mb-2">
-          {product.requiresWeighing ? (
-            <>
+        {/* Bottom section — mt-auto always pins this entire block to the card bottom */}
+        <div className="mt-auto">
+          {/* Price block: responsive min-h so same-type cards align on any screen width */}
+          <div className="min-h-[100px] sm:min-h-[76px] lg:min-h-[54px] mb-2">
+            {product.requiresWeighing ? (
+              <>
+                <p className="text-lg font-bold text-gray-900">
+                  ${formatPrice(product.price)} <span className="text-sm font-medium text-gray-500">/kg</span>
+                </p>
+                <p className="text-xs font-semibold px-2.5 py-1 rounded-xl mt-1 block" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>Final price based on confirmed weight</p>
+              </>
+            ) : product.packSizeG ? (
               <p className="text-lg font-bold text-gray-900">
-                ${formatPrice(product.price)} <span className="text-sm font-medium text-gray-500">/kg</span>
+                ${formatPrice(product.price * product.packSizeG / 1000)}
+                <span className="text-sm font-medium text-gray-500"> / {product.packSizeG}g</span>
               </p>
-              <p className="text-xs font-semibold px-2.5 py-1 rounded-xl mt-1" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>Final price based on confirmed weight</p>
-            </>
-          ) : product.packSizeG ? (
-            <p className="text-lg font-bold text-gray-900">
-              ${formatPrice(product.price * product.packSizeG / 1000)}
-              <span className="text-sm font-medium text-gray-500"> / {product.packSizeG}g</span>
-            </p>
-          ) : (
-            <p className="text-lg font-bold text-gray-900">
-              ${formatPrice(product.price)}
-            </p>
-          )}
-        </div>
+            ) : (
+              <p className="text-lg font-bold text-gray-900">
+                ${formatPrice(product.price)}
+              </p>
+            )}
+          </div>
 
-        {/* Stock Status */}
-        <div className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stockColor} mb-3 w-fit`}>
-          {product.currentStock > 0 && product.currentStock < 5
-            ? `Only ${formatQty(product.currentStock)}${product.requiresWeighing ? " kg" : product.unit ? ` ${product.unit}` : ""} left`
-            : stockStatus}
-        </div>
+          {/* Stock Status */}
+          <div className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stockColor} mb-3 w-fit`}>
+            {product.currentStock > 0 && product.currentStock < 5
+              ? `Only ${formatQty(product.currentStock)}${product.requiresWeighing ? " kg" : product.unit ? ` ${product.unit}` : ""} left`
+              : stockStatus}
+          </div>
 
-        {/* Quantity stepper + add to cart — mt-auto pins button to card bottom */}
-        <div className="flex flex-col gap-2 mt-auto">
+          {/* Quantity stepper + add to cart */}
+          <div className="flex flex-col gap-2">
           <div className={`flex items-center justify-between border rounded-lg ${product.currentStock === 0 ? "border-gray-200 opacity-50" : "border-gray-300"}`}>
             <button
               onClick={() => setQuantity(Math.max(1, quantity - 1))}
@@ -248,6 +250,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
             {isAdding ? "Adding..." : product.currentStock === 0 ? "Out of Stock" : "Add to Cart"}
           </button>
         </div>
+        </div>{/* end mt-auto bottom section */}
       </div>
 
       {/* Click to View Detail */}
