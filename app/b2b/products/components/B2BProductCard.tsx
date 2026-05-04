@@ -114,8 +114,8 @@ export default function B2BProductCard({ product }: { product: Product }) {
           )}
         </div>
 
-        {/* Pricing — fixed height so stock badge always aligns at the same Y */}
-        <div className="h-[64px] flex flex-col justify-start mb-3">
+        {/* Pricing */}
+        <div className="mb-3">
           <div className="flex items-baseline gap-2">
             <span className="text-lg font-bold" style={{ color: "#1B2A5E" }}>${formatPrice(product.price)}</span>
             <span className="text-xs text-gray-400">/ {product.unit}</span>

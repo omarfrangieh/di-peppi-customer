@@ -175,38 +175,36 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
           )}
         </div>
 
-        {/* Bottom section: price + stock + cart */}
-        <div className="flex flex-col">
-          {/* Price — fixed height so stock badge always aligns at the same Y position */}
-          <div className="h-[64px] flex flex-col justify-start mb-2">
-            {product.requiresWeighing ? (
-              <>
-                <p className="text-lg font-bold text-gray-900">
-                  ${formatPrice(product.price)} <span className="text-sm font-medium text-gray-500">/kg</span>
-                </p>
-                <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full mt-1" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>Final price based on confirmed weight</span>
-              </>
-            ) : product.packSizeG ? (
+        {/* Price */}
+        <div className="mb-2">
+          {product.requiresWeighing ? (
+            <>
               <p className="text-lg font-bold text-gray-900">
-                ${formatPrice(product.price * product.packSizeG / 1000)}
-                <span className="text-sm font-medium text-gray-500"> / {product.packSizeG}g</span>
+                ${formatPrice(product.price)} <span className="text-sm font-medium text-gray-500">/kg</span>
               </p>
-            ) : (
-              <p className="text-lg font-bold text-gray-900">
-                ${formatPrice(product.price)}
-              </p>
-            )}
-          </div>
+              <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full mt-1" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>Final price based on confirmed weight</span>
+            </>
+          ) : product.packSizeG ? (
+            <p className="text-lg font-bold text-gray-900">
+              ${formatPrice(product.price * product.packSizeG / 1000)}
+              <span className="text-sm font-medium text-gray-500"> / {product.packSizeG}g</span>
+            </p>
+          ) : (
+            <p className="text-lg font-bold text-gray-900">
+              ${formatPrice(product.price)}
+            </p>
+          )}
+        </div>
 
-          {/* Stock Status */}
-          <div className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stockColor} mb-3 w-fit`}>
-            {product.currentStock > 0 && product.currentStock < 5
-              ? `Only ${formatQty(product.currentStock)}${product.requiresWeighing ? " kg" : product.unit ? ` ${product.unit}` : ""} left`
-              : stockStatus}
-          </div>
+        {/* Stock Status */}
+        <div className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stockColor} mb-3 w-fit`}>
+          {product.currentStock > 0 && product.currentStock < 5
+            ? `Only ${formatQty(product.currentStock)}${product.requiresWeighing ? " kg" : product.unit ? ` ${product.unit}` : ""} left`
+            : stockStatus}
+        </div>
 
-          {/* Quantity stepper + add to cart */}
-          <div className="flex flex-col gap-2">
+        {/* Quantity stepper + add to cart — mt-auto pins button to card bottom */}
+        <div className="flex flex-col gap-2 mt-auto">
           <div className={`flex items-center justify-between border rounded-lg ${product.currentStock === 0 ? "border-gray-200 opacity-50" : "border-gray-300"}`}>
             <button
               onClick={() => setQuantity(Math.max(1, quantity - 1))}
@@ -250,7 +248,6 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
             {isAdding ? "Adding..." : product.currentStock === 0 ? "Out of Stock" : "Add to Cart"}
           </button>
         </div>
-        </div>{/* end mt-auto bottom section */}
       </div>
 
       {/* Click to View Detail */}
