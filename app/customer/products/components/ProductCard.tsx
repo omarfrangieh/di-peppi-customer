@@ -175,14 +175,14 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
           )}
         </div>
 
-        {/* Price */}
-        <div className="mb-2">
+        {/* Price — min-h-[86px] covers: price line (~28px) + badge up to 3 lines on narrow mobile (~52px) + gap (6px) */}
+        <div className="min-h-[86px] mb-2">
           {product.requiresWeighing ? (
             <>
               <p className="text-lg font-bold text-gray-900">
                 ${formatPrice(product.price)} <span className="text-sm font-medium text-gray-500">/kg</span>
               </p>
-              <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full mt-1" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>Final price based on confirmed weight</span>
+              <p className="text-xs font-semibold px-2.5 py-1 rounded-xl mt-1" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>Final price based on confirmed weight</p>
             </>
           ) : product.packSizeG ? (
             <p className="text-lg font-bold text-gray-900">
