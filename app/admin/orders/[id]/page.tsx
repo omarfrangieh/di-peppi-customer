@@ -1684,7 +1684,9 @@ export default function Page() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Quantity</label>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                    Quantity{selectedProduct?.unit ? ` (${selectedProduct.unit})` : ""}
+                  </label>
                   <Input type="number" placeholder="0" value={quantity}
                     max={selectedProduct?.currentStock || undefined}
                     onChange={(e) => setQuantity(e.target.value)} />
