@@ -1106,7 +1106,7 @@ export default function Dashboard() {
                       </thead>
                       <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
                         {topProducts.map((p, i) => (
-                          <tr key={p.name} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                          <tr key={`${p.name}-${i}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                             <td className="py-2">
                               <div className="flex items-center gap-2">
                                 <span className="text-gray-300 dark:text-gray-600 font-bold w-4">{i + 1}</span>
