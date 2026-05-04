@@ -1772,12 +1772,13 @@ export default function AdminProductsPage() {
                       </div>
                       <span className="font-medium">📦 FIFO / Track Expiry</span>
                     </label>
-                    <label className="col-span-2 flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-purple-200 dark:border-purple-700 hover:bg-purple-50 dark:hover:bg-purple-900/20 dark:text-purple-300">
+                    <label className="col-span-2 flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border hover:opacity-90" style={{ borderColor: "#B5535A33", backgroundColor: editData.b2cOnly ? "#B5535A0D" : "transparent" }}>
                       <div onClick={() => setEditData((p: any) => ({ ...p, b2cOnly: !p.b2cOnly }))}
-                        className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${editData.b2cOnly ? "bg-purple-500" : "bg-gray-300"}`}>
+                        className="w-8 h-4 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer"
+                        style={{ backgroundColor: editData.b2cOnly ? "#B5535A" : "#d1d5db" }}>
                         <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${editData.b2cOnly ? "translate-x-4" : "translate-x-0"}`} />
                       </div>
-                      <span className="font-medium text-purple-700 dark:text-purple-300">🛍️ B2C Only — hide from wholesale orders</span>
+                      <span className="font-medium" style={{ color: "#B5535A" }}>Retail Only — hide from wholesale orders</span>
                     </label>
                     <label className="col-span-2 flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:text-blue-300">
                       <div onClick={() => setEditData((p: any) => ({ ...p, b2bOnly: !p.b2bOnly }))}
@@ -1917,8 +1918,8 @@ export default function AdminProductsPage() {
                           {product.active !== false ? "✓ Active" : "○ Inactive"}
                         </span>
                         {product.b2cOnly && (
-                          <span className="text-sm font-semibold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                            🛍️ B2C Only
+                          <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ backgroundColor: "#FAF0F0", color: "#B5535A" }}>
+                            Retail Only
                           </span>
                         )}
                         {product.b2bOnly && (
@@ -2522,10 +2523,10 @@ export default function AdminProductsPage() {
                   </div>
                 )}
               </div>
-              <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-purple-200 dark:border-purple-700 hover:bg-purple-50 dark:hover:bg-purple-900/20">
+              <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border" style={{ borderColor: "#B5535A33" }}>
                 <input type="checkbox" checked={!!newProduct.b2cOnly}
                   onChange={e => setNewProduct((p:any) => ({...p, b2cOnly: e.target.checked}))} />
-                <span className="font-medium text-purple-700 dark:text-purple-300">🛍️ B2C Only — hide from wholesale orders</span>
+                <span className="font-medium" style={{ color: "#B5535A" }}>Retail Only — hide from wholesale orders</span>
               </label>
               <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20">
                 <input type="checkbox" checked={!!newProduct.b2bOnly}
