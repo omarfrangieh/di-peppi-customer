@@ -21,11 +21,11 @@ interface Notification {
 }
 
 const STATUS_ICONS: Record<string, string> = {
-  Confirmed:    "✅",
+  Confirmed:    "✓",
   Preparing:    "🐟",
   "To Deliver": "🚚",
-  Delivered:    "🎉",
-  Cancelled:    "❌",
+  Delivered:    "✓",
+  Cancelled:    "✕",
 };
 
 function timeAgo(val: any) {
@@ -115,7 +115,7 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-80 bg-white rounded-xl border border-gray-200 shadow-lg z-50 overflow-hidden">
+        <div className="fixed inset-x-2 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-1.5 sm:w-80 bg-white rounded-xl border border-gray-200 shadow-lg z-50 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <p className="text-sm font-semibold text-gray-900">Notifications</p>
