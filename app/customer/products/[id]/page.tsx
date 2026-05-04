@@ -213,7 +213,7 @@ export default function ProductDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-2xl mb-4">❌</p>
+          <p className="text-2xl mb-4" style={{ color: "#B5535A" }}>✕</p>
           <p className="text-gray-900 font-semibold mb-4">{error || "Product not found"}</p>
           <button
             onClick={() => router.push("/customer/products")}
@@ -271,49 +271,47 @@ export default function ProductDetailPage() {
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-          {/* Product Image Gallery */}
-          <div className="space-y-3">
-            {(() => {
-              const images: string[] = (product.productImages && product.productImages.length > 0)
-                ? product.productImages
-                : (product.productImage ? [product.productImage] : []);
-              const current = images[selectedImageIndex] || null;
-              return (
-                <>
-                  {/* Main image */}
-                  <div className="relative w-full aspect-square bg-gray-100 rounded-lg overflow-hidden">
-                    {isValidUrl(current ?? undefined) ? (
-                      <Image
-                        src={current!}
-                        alt={product.name}
-                        fill
-                        className="object-contain p-2"
-                        priority
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400">
-                        <span className="text-6xl">📦</span>
-                      </div>
-                    )}
+          {/* Product Image Gallery — thumbnails left, main image right */}
+          {(() => {
+            const images: string[] = (product.productImages && product.productImages.length > 0)
+              ? product.productImages
+              : (product.productImage ? [product.productImage] : []);
+            const current = images[selectedImageIndex] || null;
+            return (
+              <div className="flex gap-3">
+                {/* Vertical thumbnail strip — only when multiple images */}
+                {images.length > 1 && (
+                  <div className="flex flex-col gap-2 shrink-0">
+                    {images.map((url, idx) => (
+                      <button
+                        key={url}
+                        onClick={() => setSelectedImageIndex(idx)}
+                        className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${idx === selectedImageIndex ? "border-[#1B2A5E] shadow-sm" : "border-gray-200 hover:border-gray-400 opacity-70 hover:opacity-100"}`}
+                      >
+                        <img src={url} alt={`View ${idx + 1}`} className="w-full h-full object-contain p-0.5 bg-white" />
+                      </button>
+                    ))}
                   </div>
-                  {/* Thumbnail strip — only shown when there are multiple images */}
-                  {images.length > 1 && (
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {images.map((url, idx) => (
-                        <button
-                          key={url}
-                          onClick={() => setSelectedImageIndex(idx)}
-                          className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-colors ${idx === selectedImageIndex ? "border-[#1B2A5E]" : "border-gray-200 hover:border-gray-400"}`}
-                        >
-                          <img src={url} alt={`View ${idx + 1}`} className="w-full h-full object-contain p-0.5 bg-white" />
-                        </button>
-                      ))}
+                )}
+                {/* Main image */}
+                <div className="relative flex-1 aspect-square bg-gray-100 rounded-xl overflow-hidden">
+                  {isValidUrl(current ?? undefined) ? (
+                    <Image
+                      src={current!}
+                      alt={product.name}
+                      fill
+                      className="object-contain p-3"
+                      priority
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                      <span className="text-6xl">📦</span>
                     </div>
                   )}
-                </>
-              );
-            })()}
-          </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Product Info */}
           <div className="space-y-6">
