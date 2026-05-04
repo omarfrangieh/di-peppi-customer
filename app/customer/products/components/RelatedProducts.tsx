@@ -32,7 +32,7 @@ export default function RelatedProducts({
           p.id !== currentProduct.id &&
           p.category === currentProduct.category
       )
-      .slice(0, 4); // Show max 4 related products
+      .slice(0, 8); // Show max 8 related products
   }, [allProducts, currentProduct]);
 
   if (relatedProducts.length === 0) {
@@ -44,7 +44,7 @@ export default function RelatedProducts({
       <h2 className="text-2xl font-bold text-gray-900 mb-6">
         Related Products
       </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
         {relatedProducts.map((product) => (
           <ProductCard key={product.id} product={product} />
         ))}

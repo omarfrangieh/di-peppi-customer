@@ -129,15 +129,22 @@ export default function ProductDetailPage() {
         };
         setProduct(found);
 
-        // Fetch related products (same category, active, in-stock, B2C-visible)
+        // Fetch related products (same category) — filter in JS to avoid
+        // missing "active" field causing Firestore to skip valid products
         const relatedQuery = query(
           collection(db, "products"),
-          where("active", "==", true),
           where("category", "==", data.category || "")
         );
         const relatedSnap = await getDocs(relatedQuery);
         const related: Product[] = relatedSnap.docs
-          .filter(d => d.id !== productId && !d.data().b2bOnly && (d.data().b2cPrice ?? d.data().price ?? 0) > 0)
+          .filter(d => {
+            if (d.id === productId) return false;
+            const rd = d.data();
+            if (rd.discontinued === true) return false;
+            if (rd.active === false) return false;
+            if (rd.b2bOnly === true) return false;
+            return (rd.b2cPrice ?? rd.price ?? 0) > 0;
+          })
           .map(d => {
             const rd = d.data();
             return {
@@ -146,7 +153,7 @@ export default function ProductDetailPage() {
               unit: rd.unit || "",
               currentStock: rd.currentStock ?? 0,
               price: rd.b2cPrice ?? rd.price ?? 0,
-              productImage: resolveImageUrl(rd.productImage || ""),
+              productImage: resolveImageUrl(rd.productImage || (Array.isArray(rd.productImages) && rd.productImages[0]) || ""),
               category: rd.category || "",
             } as Product;
           });
