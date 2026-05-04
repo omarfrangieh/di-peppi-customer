@@ -1652,6 +1652,8 @@ export default function AdminProductsPage() {
                       options={options.storageType}
                       placeholder="Storage"
                       size="xs"
+                      allowCustom
+                      onAddOption={v => addOptionToList("storageType", v)}
                     />
                   </div>
 
@@ -2428,6 +2430,8 @@ export default function AdminProductsPage() {
                     options={options.storageType}
                     placeholder="— Storage Type —"
                     size="sm"
+                    allowCustom
+                    onAddOption={v => addOptionToList("storageType", v)}
                   />
                 </div>
                 <div className="col-span-2">
