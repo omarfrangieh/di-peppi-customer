@@ -365,18 +365,11 @@ export default function ProfilePage() {
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
           <h2 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">Personal Information</h2>
 
-          <div className={`grid gap-4 ${formData.customerType === "B2B" ? "grid-cols-2" : "grid-cols-1"}`}>
+          <div className="grid gap-4 grid-cols-1">
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Full Name</label>
               <input type="text" value={formData.name} onChange={e => set("name", e.target.value)} className={inputCls} />
             </div>
-            {formData.customerType === "B2B" && (
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Company Name</label>
-                <input type="text" value={formData.companyName} onChange={e => set("companyName", e.target.value)}
-                  placeholder="Company name" className={inputCls} />
-              </div>
-            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
