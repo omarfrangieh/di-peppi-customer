@@ -892,8 +892,19 @@ export default function AdminProductsPage() {
 
       // Use the verified data from Firestore so local state is truthful
       const savedData = verify.exists() ? { id, ...verify.data() } : { ...editData };
+      // Preserve scroll position — closing the edit form causes a big layout shift
+      const scrollY = window.scrollY;
       setProducts(prev => prev.map(p => p.id === id ? savedData : p));
       setEditing(null);
+      // Restore scroll after React re-renders the collapsed card
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: "instant" as ScrollBehavior });
+          // Then bring the saved card into view if it's now off screen
+          const card = document.getElementById(`product-card-${id}`);
+          card?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+      });
     } catch (err: any) {
       showToast(`Failed to save product: ${err.message || String(err)}`, "error");
     } finally {
@@ -1479,6 +1490,7 @@ export default function AdminProductsPage() {
             return (
             <div
               key={product.id}
+              id={`product-card-${product.id}`}
               ref={index === inactiveStartIndex && inactiveStartIndex !== -1 ? inactiveStartRef : null}
               onMouseDown={(e) => {
                 e.stopPropagation();
