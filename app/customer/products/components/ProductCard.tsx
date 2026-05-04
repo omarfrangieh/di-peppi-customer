@@ -123,13 +123,12 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
           {product.productSubName && product.productSubName !== "0" && (
             <p className="text-xs text-gray-400 mb-0.5">{toTitleCase(product.productSubName)}</p>
           )}
-          {(product.packSizeG || product.netWeightG || product.drainedWeightG || (product.caliber && product.caliber !== "0")) && (
+          {(product.packSizeG || product.netWeightG || product.drainedWeightG) && (
             <p className="text-xs font-bold text-gray-700 mb-0.5">
               {[
                 product.packSizeG ? `${product.packSizeG}g` : null,
                 product.netWeightG && !product.packSizeG ? `${product.netWeightG}g net` : null,
                 product.drainedWeightG ? `${product.drainedWeightG}g drained` : null,
-                product.caliber && product.caliber !== "0" ? `cal. ${product.caliber}` : null,
               ].filter(Boolean).join(" · ")}
             </p>
           )}
