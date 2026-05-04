@@ -110,7 +110,7 @@ export default function B2BProductCard({ product }: { product: Product }) {
             </p>
           )}
           {product.origin && (
-            <p className="text-xs text-gray-500">🌍 {product.origin}</p>
+            <p className="text-xs text-gray-500">from {product.origin}</p>
           )}
         </div>
 
