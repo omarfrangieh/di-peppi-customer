@@ -17,7 +17,7 @@ import html2canvas from "html2canvas";
 
 const DEFAULT_OPTIONS: { unit: string[]; storageType: string[]; category: string[]; origin: string[] } = {
   unit: ["Jar", "KG", "Piece", "Tin", "Tube"],
-  storageType: ["Ambient", "Chilled", "Fresh", "Frozen", "Refrigerated"],
+  storageType: ["Ambient", "Chilled", "Fresh", "Frozen"],
   category: [],
   origin: [],
 };
@@ -569,7 +569,7 @@ export default function AdminProductsPage() {
       "category",        // Optional — e.g. Anchovy, Octopus, Olive Oil
       "origin",          // Optional — country e.g. SPAIN, ITALY
       "unit",            // Required — Kg, Jar, Tin, Tube, Piece
-      "storageType",     // Optional — Ambient, Chilled, Fresh, Frozen, Refrigerated
+      "storageType",     // Optional — Ambient, Chilled, Fresh, Frozen
       "costPrice",       // Optional — cost price (per unit / per kg)
       "b2bPrice",        // Optional — wholesale price
       "b2cPrice",        // Optional — retail price
@@ -929,13 +929,25 @@ export default function AdminProductsPage() {
 
   /* ── Bulk selection helpers ── */
   const lastSelectedIndexRef = useRef<number>(-1);
-  const toggleSelectProduct = (id: string, index: number, shiftKey = false) => {
+  const isShiftHeldRef = useRef<boolean>(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => { if (e.key === "Shift") isShiftHeldRef.current = true; };
+    const up   = (e: KeyboardEvent) => { if (e.key === "Shift") isShiftHeldRef.current = false; };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup",   up);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
+  }, []);
+
+  const filteredRef = useRef<any[]>([]);
+
+  const toggleSelectProduct = (id: string, index: number) => {
+    const shift = isShiftHeldRef.current;
     setSelectedProducts(prev => {
       const n = new Set(prev);
-      if (shiftKey && lastSelectedIndexRef.current >= 0) {
+      if (shift && lastSelectedIndexRef.current >= 0) {
         const from = Math.min(lastSelectedIndexRef.current, index);
         const to   = Math.max(lastSelectedIndexRef.current, index);
-        filtered.slice(from, to + 1).forEach(p => n.add(p.id));
+        filteredRef.current.slice(from, to + 1).forEach(p => n.add(p.id));
       } else {
         n.has(id) ? n.delete(id) : n.add(id);
       }
@@ -1013,6 +1025,7 @@ export default function AdminProductsPage() {
       return (a.name || "").localeCompare(b.name || "");
     });
 
+  filteredRef.current = filtered;
   const inactiveCount = filtered.filter(p => p.active === false).length;
   const inactiveStartIndex = filtered.findIndex(p => p.active === false);
   const isAllSelected = filtered.length > 0 && filtered.every(p => selectedProducts.has(p.id));
@@ -1279,7 +1292,7 @@ export default function AdminProductsPage() {
                       <td className="px-4 py-2">
                         <input type="checkbox" checked={selectedProducts.has(product.id)}
                           onChange={() => {}}
-                          onClick={(e) => { e.stopPropagation(); toggleSelectProduct(product.id, index, e.shiftKey); }}
+                          onClick={(e) => { e.stopPropagation(); toggleSelectProduct(product.id, index); }}
                           className="w-3.5 h-3.5 rounded accent-indigo-600 cursor-pointer" />
                       </td>
                       <td className="px-4 py-2">
@@ -1336,7 +1349,7 @@ export default function AdminProductsPage() {
               {editing !== product.id && (
                 <div className="absolute top-2 left-2 z-10" onClick={e => e.stopPropagation()}>
                   <button
-                    onClick={(e) => toggleSelectProduct(product.id, index, e.shiftKey)}
+                    onClick={() => toggleSelectProduct(product.id, index)}
                     className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
                       selectedProducts.has(product.id)
                         ? "bg-indigo-600 border-indigo-600 text-white"
