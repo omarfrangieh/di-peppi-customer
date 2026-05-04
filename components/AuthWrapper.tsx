@@ -77,11 +77,17 @@ export default function AuthWrapper({ children }: { children: ReactNode }) {
 
       unsubscribe = onAuthStateChanged(auth, (user) => {
         setLoading(false);
-        // If Firebase loses the auth session after we were logged in, redirect to login
+        // If Firebase loses the auth session after we were logged in, redirect to login.
+        // Use a short grace period to avoid redirecting on transient token-refresh nulls.
         if (!user && !isLoginPage) {
-          localStorage.removeItem("session");
-          localStorage.removeItem("customToken");
-          router.push(getLoginRedirect());
+          const timer = setTimeout(() => {
+            if (!auth.currentUser) {
+              localStorage.removeItem("session");
+              localStorage.removeItem("customToken");
+              router.push(getLoginRedirect());
+            }
+          }, 3000);
+          return () => clearTimeout(timer);
         }
       });
     };
