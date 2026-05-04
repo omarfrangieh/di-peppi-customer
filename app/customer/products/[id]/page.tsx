@@ -281,7 +281,7 @@ export default function ProductDetailPage() {
               <div className="flex gap-3">
                 {/* Vertical thumbnail strip — only when multiple images */}
                 {images.length > 1 && (
-                  <div className="flex flex-col gap-2 shrink-0">
+                  <div className="flex flex-col gap-2 shrink-0 justify-center">
                     {images.map((url, idx) => (
                       <button
                         key={url}
