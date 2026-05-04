@@ -1790,12 +1790,7 @@ export default function AdminProductsPage() {
                             className={`w-full border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${!editData.maxWeightPerUnit ? "border-red-300 dark:border-red-600" : "border-amber-200 dark:border-amber-700"}`} />
                         </div>
                       </div>
-                      {editData.minWeightPerUnit && editData.maxWeightPerUnit && editData.b2cPrice > 0 && (
-                        <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                          B2C range: ~${formatPrice(editData.b2cPrice * editData.minWeightPerUnit / 1000)}–${formatPrice(editData.b2cPrice * editData.maxWeightPerUnit / 1000)}
-                        </p>
-                      )}
-                      <p className="text-xs text-amber-600 dark:text-amber-400">Used to estimate price range shown to customers.</p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">Weight range used when building orders.</p>
                     </div>
                   )}
                   {editData.trackExpiry && (
@@ -1985,30 +1980,21 @@ export default function AdminProductsPage() {
                   </button>
 
                   {expandedSections.pricing.has(product.id) && (() => {
-                    const isWeigh = product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit;
-                    const minKg = isWeigh ? Number(product.minWeightPerUnit) / 1000 : null;
-                    const maxKg = isWeigh ? Number(product.maxWeightPerUnit) / 1000 : null;
-                    const priceLabel = isWeigh ? "/kg · est. range" : "";
-                    const fmt = (price: number) => isWeigh && minKg && maxKg
-                      ? `~$${formatPrice(price * minKg)}–$${formatPrice(price * maxKg)}`
-                      : `$${formatPrice(price)}`;
+                    const isWeigh = product.requiresWeighing;
                     return (
                       <>
-                        {isWeigh && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 pb-1">⚖️ Prices shown as estimated range ({product.minWeightPerUnit}–{product.maxWeightPerUnit} g)</p>
-                        )}
                         <div className="grid grid-cols-3 gap-2 py-2">
                           <div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Cost{priceLabel && " /kg"}</p>
-                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{fmt(product.costPrice || 0)}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Cost{isWeigh ? " /kg" : ""}</p>
+                            <p className="font-semibold text-gray-900 dark:text-white text-sm">${formatPrice(product.costPrice || 0)}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2B{priceLabel && " /kg"}</p>
-                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{fmt(product.b2bPrice || 0)}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2B{isWeigh ? " /kg" : ""}</p>
+                            <p className="font-semibold text-gray-900 dark:text-white text-sm">${formatPrice(product.b2bPrice || 0)}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2C{priceLabel && " /kg"}</p>
-                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{fmt(product.b2cPrice || 0)}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">B2C{isWeigh ? " /kg" : ""}</p>
+                            <p className="font-semibold text-gray-900 dark:text-white text-sm">${formatPrice(product.b2cPrice || 0)}</p>
                           </div>
                         </div>
 
@@ -2480,12 +2466,7 @@ export default function AdminProductsPage() {
                           className={`w-full border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${!newProduct.maxWeightPerUnit ? "border-red-300 dark:border-red-600" : "border-amber-200 dark:border-amber-700"}`} />
                       </div>
                     </div>
-                    {Number(newProduct.b2cPrice) > 0 && Number(newProduct.minWeightPerUnit) > 0 && Number(newProduct.maxWeightPerUnit) > 0 && (
-                      <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                        B2C range: ~${formatPrice(Number(newProduct.b2cPrice) * Number(newProduct.minWeightPerUnit) / 1000)}–${formatPrice(Number(newProduct.b2cPrice) * Number(newProduct.maxWeightPerUnit) / 1000)}
-                      </p>
-                    )}
-                    <p className="text-xs text-amber-600 dark:text-amber-400">Used to estimate price range shown to customers.</p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400">Weight range used when building orders.</p>
                   </div>
                 )}
               </div>
