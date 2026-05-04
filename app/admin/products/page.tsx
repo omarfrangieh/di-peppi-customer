@@ -22,11 +22,19 @@ const DEFAULT_OPTIONS: { unit: string[]; storageType: string[]; category: string
   origin: [],
 };
 
+function resolveImageUrl(raw?: string | null): string {
+  if (!raw) return "";
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  const clean = raw.startsWith("/") ? raw.slice(1) : raw;
+  const encoded = clean.split("/").map(encodeURIComponent).join("/");
+  return `https://di-peppi-images.storage.googleapis.com/${encoded}`;
+}
+
 function ProductImage({ src, images, alt, className }: { src?: string | null; images?: string[]; alt: string; className?: string }) {
   const [failed, setFailed] = React.useState(false);
-  const resolved = (images && images.length > 0 ? images[0] : src) || null;
-  const isValid = resolved && (resolved.startsWith("/") || resolved.startsWith("http://") || resolved.startsWith("https://"));
-  if (!isValid || failed) return null;
+  const raw = (images && images.length > 0 ? images[0] : src) || null;
+  const resolved = resolveImageUrl(raw);
+  if (!resolved || failed) return null;
   return <img src={resolved} alt={alt} className={className} onError={() => setFailed(true)} />;
 }
 
