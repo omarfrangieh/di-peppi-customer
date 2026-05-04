@@ -23,6 +23,8 @@ interface Product {
   maxWeightPerUnit?: number;
   packSizeG?: number;
   netWeightG?: number;
+  drainedWeightG?: number;
+  caliber?: string;
 }
 
 interface ProductCardProps {
@@ -148,10 +150,19 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
           {toTitleCase(product.name)}
         </h3>
 
-        {/* Sub-name (e.g. "60g Tube", "500ml Jar") — no price impact */}
-        {product.productSubName && (
+        {/* Sub-name or weight spec */}
+        {product.productSubName ? (
           <p className="text-xs text-gray-400 mb-1">{toTitleCase(product.productSubName)}</p>
-        )}
+        ) : (product.packSizeG || product.netWeightG || product.drainedWeightG || product.caliber) ? (
+          <p className="text-xs text-gray-500 font-medium mb-1">
+            {[
+              product.packSizeG ? `${product.packSizeG}g` : null,
+              product.netWeightG && !product.packSizeG ? `${product.netWeightG}g net` : null,
+              product.drainedWeightG ? `${product.drainedWeightG}g drained` : null,
+              product.caliber ? `cal. ${product.caliber}` : null,
+            ].filter(Boolean).join(" · ")}
+          </p>
+        ) : null}
 
         {/* Weight range — shown under name for weigh items */}
         {product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit && (

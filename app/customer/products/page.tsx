@@ -33,6 +33,9 @@ interface Product {
   minWeightPerUnit?: number;
   maxWeightPerUnit?: number;
   packSizeG?: number;
+  netWeightG?: number;
+  drainedWeightG?: number;
+  caliber?: string;
   b2cOnly?: boolean;
 }
 
@@ -78,6 +81,9 @@ export default function ProductsPage() {
               minWeightPerUnit: Number(data.minWeightPerUnit || 0),
               maxWeightPerUnit: Number(data.maxWeightPerUnit || 0),
               packSizeG: data.packSizeG ? Number(data.packSizeG) : undefined,
+              netWeightG: data.netWeightG ? Number(data.netWeightG) : undefined,
+              drainedWeightG: data.drainedWeightG ? Number(data.drainedWeightG) : undefined,
+              caliber: data.caliber || undefined,
               b2cOnly: Boolean(data.b2cOnly),
             };
           })

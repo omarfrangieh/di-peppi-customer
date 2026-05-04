@@ -19,6 +19,10 @@ interface Product {
   category?: string;
   caseSize?: number; // units per case
   minOrderQty?: number;
+  packSizeG?: number;
+  netWeightG?: number;
+  drainedWeightG?: number;
+  caliber?: string;
 }
 
 function isValidUrl(url?: string): boolean {
@@ -89,7 +93,18 @@ export default function B2BProductCard({ product }: { product: Product }) {
       {/* Content */}
       <div className="p-4 flex flex-col flex-grow">
         <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 mb-0.5">{product.name}</h3>
-        {product.productSubName && <p className="text-xs text-gray-400 mb-1">{product.productSubName}</p>}
+        {product.productSubName ? (
+          <p className="text-xs text-gray-400 mb-1">{product.productSubName}</p>
+        ) : (product.packSizeG || product.netWeightG || product.drainedWeightG || product.caliber) ? (
+          <p className="text-xs text-gray-500 font-medium mb-1">
+            {[
+              product.packSizeG ? `${product.packSizeG}g` : null,
+              product.netWeightG && !product.packSizeG ? `${product.netWeightG}g net` : null,
+              product.drainedWeightG ? `${product.drainedWeightG}g drained` : null,
+              product.caliber ? `cal. ${product.caliber}` : null,
+            ].filter(Boolean).join(" · ")}
+          </p>
+        ) : null}
         {product.origin && <p className="text-xs text-gray-500 mb-2">🌍 {product.origin}</p>}
 
         {/* Pricing */}

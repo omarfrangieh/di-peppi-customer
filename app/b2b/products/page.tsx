@@ -31,6 +31,10 @@ interface Product {
   caseSize?: number;
   minOrderQty?: number;
   storageType?: string;
+  packSizeG?: number;
+  netWeightG?: number;
+  drainedWeightG?: number;
+  caliber?: string;
 }
 
 export default function B2BProductsPage() {
@@ -69,6 +73,10 @@ export default function B2BProductsPage() {
               caseSize: data.caseSize ?? undefined,
               minOrderQty: data.minOrderQty ?? undefined,
               storageType: data.storageType || "",
+              packSizeG: data.packSizeG ? Number(data.packSizeG) : undefined,
+              netWeightG: data.netWeightG ? Number(data.netWeightG) : undefined,
+              drainedWeightG: data.drainedWeightG ? Number(data.drainedWeightG) : undefined,
+              caliber: data.caliber || undefined,
             };
           })
           .filter((p) => p.name && p.price > 0);
