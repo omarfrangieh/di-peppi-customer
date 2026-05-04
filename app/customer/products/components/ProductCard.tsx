@@ -169,7 +169,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
           {/* Stock Status */}
           <div className={`text-xs font-semibold px-2.5 py-1 rounded-full ${stockColor} mb-3 w-fit`}>
             {product.currentStock > 0 && product.currentStock < 5
-              ? `Only ${formatQty(product.currentStock)}${product.requiresWeighing ? " kg" : product.unit ? ` ${product.unit}` : ""} left`
+              ? `Only ${formatQty(product.currentStock)}${product.requiresWeighing ? " kg" : product.unit ? ` ${toTitleCase(product.unit)}` : ""} left`
               : stockStatus}
           </div>
 
@@ -198,7 +198,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
               />
               {product.packSizeG
                 ? <span className="text-sm font-semibold text-gray-700">× {product.packSizeG}g</span>
-                : product.unit && <span className="text-sm font-semibold text-gray-700">{product.unit}</span>
+                : product.unit && <span className="text-sm font-semibold text-gray-700">{toTitleCase(product.unit)}</span>
               }
             </div>
             <button

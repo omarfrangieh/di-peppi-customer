@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { showToast } from "@/lib/toast";
 import useB2BCart from "../../hooks/useCart";
-import { formatPrice } from "@/lib/formatters";
+import { formatPrice, toTitleCase } from "@/lib/formatters";
 
 interface Product {
   id: string;
@@ -118,7 +118,7 @@ export default function B2BProductCard({ product }: { product: Product }) {
         <div className="mb-3">
           <div className="flex items-baseline gap-2">
             <span className="text-lg font-bold" style={{ color: "#1B2A5E" }}>${formatPrice(product.price)}</span>
-            <span className="text-xs text-gray-400">/ {product.unit}</span>
+            <span className="text-xs text-gray-400">/ {toTitleCase(product.unit)}</span>
           </div>
           {product.retailPrice && product.retailPrice > product.price && (
             <div className="flex items-center gap-1.5 mt-0.5">
@@ -179,7 +179,7 @@ export default function B2BProductCard({ product }: { product: Product }) {
                     />
                     {product.packSizeG
                       ? <span className="text-sm font-semibold text-gray-700">× {product.packSizeG}g</span>
-                      : product.unit && <span className="text-sm font-semibold text-gray-700">{product.unit}</span>
+                      : product.unit && <span className="text-sm font-semibold text-gray-700">{toTitleCase(product.unit)}</span>
                     }
                   </div>
                   <button
