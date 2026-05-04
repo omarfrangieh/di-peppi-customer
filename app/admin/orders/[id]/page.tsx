@@ -1084,34 +1084,32 @@ export default function Page() {
               style={{backgroundColor: "#1B2A5E"}}>
               ← Orders
             </button>
-            {(!order?.status || order?.status === "Draft" || order?.status === "Confirmed" || order?.status === "Preparing") && (
-              existingInvoiceId && existingInvoiceStatus !== "draft" ? (
-                <button
-                  onClick={() => showToast("Cannot delete — this order has an invoice record. Cancel the order instead.", "error")}
-                  className="px-3 py-1.5 text-xs rounded-lg font-medium bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed">
-                  🗑 Delete
-                </button>
-              ) : (
-                <button
-                  onClick={async () => {
-                    const msg = existingInvoiceId
-                      ? "Delete this order and its draft invoice? This cannot be undone."
-                      : "Delete this order? This cannot be undone.";
-                    if (!confirm(msg)) return;
-                    try {
-                      const { httpsCallable } = await import("firebase/functions");
-                      const { functions } = await import("@/lib/firebase");
-                      const deleteOrder = httpsCallable(functions, "deleteOrder");
-                      await deleteOrder({ orderId: selectedOrderId });
-                      router.push("/admin/orders");
-                    } catch (e: any) {
-                      showToast(`Failed to delete order: ${e.message}`, "error");
-                    }
-                  }}
-                  className="px-3 py-1.5 text-xs rounded-lg font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
-                  🗑 Delete
-                </button>
-              )
+            {existingInvoiceId && existingInvoiceStatus !== "draft" ? (
+              <button
+                onClick={() => showToast("Cannot delete — this order has an invoice record. Cancel the order instead.", "error")}
+                className="px-3 py-1.5 text-xs rounded-lg font-medium bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed">
+                🗑 Delete
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  const msg = existingInvoiceId
+                    ? "Delete this order and its draft invoice? This cannot be undone."
+                    : "Delete this order? This cannot be undone.";
+                  if (!confirm(msg)) return;
+                  try {
+                    const { httpsCallable } = await import("firebase/functions");
+                    const { functions } = await import("@/lib/firebase");
+                    const deleteOrder = httpsCallable(functions, "deleteOrder");
+                    await deleteOrder({ orderId: selectedOrderId });
+                    router.push("/admin/orders");
+                  } catch (e: any) {
+                    showToast(`Failed to delete order: ${e.message}`, "error");
+                  }
+                }}
+                className="px-3 py-1.5 text-xs rounded-lg font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
+                🗑 Delete
+              </button>
             )}
             <button onClick={() => router.push(`/invoices/${existingInvoiceId}`)}
               className="px-4 py-2 text-sm text-white rounded-lg font-medium"
@@ -1254,34 +1252,32 @@ export default function Page() {
                     ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
                 }`}>📦 POs {poReadiness[selectedOrderId].delivered}/{poReadiness[selectedOrderId].total}</span>
               )}
-              {(!orderStatus || orderStatus === "Draft" || orderStatus === "Confirmed" || orderStatus === "Preparing") && (
-                existingInvoiceId && existingInvoiceStatus !== "draft" && existingInvoiceStatus !== "cancelled" ? (
-                  <button
-                    onClick={() => showToast("Cannot delete — this order has an invoice record. Cancel the order instead.", "error")}
-                    className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed">
-                    🗑 Delete
-                  </button>
-                ) : (
-                  <button
-                    onClick={async () => {
-                      const msg = existingInvoiceId
-                        ? "Delete this order and its draft invoice? This cannot be undone."
-                        : "Delete this order? This cannot be undone.";
-                      if (!confirm(msg)) return;
-                      try {
-                        const { httpsCallable } = await import("firebase/functions");
-                        const { functions } = await import("@/lib/firebase");
-                        const deleteOrder = httpsCallable(functions, "deleteOrder");
-                        await deleteOrder({ orderId: selectedOrderId });
-                        router.push("/admin/orders");
-                      } catch (e: any) {
-                        alert(`Failed to delete order: ${e.message}`);
-                      }
-                    }}
-                    className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
-                    🗑 Delete
-                  </button>
-                )
+              {existingInvoiceId && existingInvoiceStatus !== "draft" && existingInvoiceStatus !== "cancelled" ? (
+                <button
+                  onClick={() => showToast("Cannot delete — this order has an invoice record. Cancel the order instead.", "error")}
+                  className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed">
+                  🗑 Delete
+                </button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    const msg = existingInvoiceId
+                      ? "Delete this order and its draft invoice? This cannot be undone."
+                      : "Delete this order? This cannot be undone.";
+                    if (!confirm(msg)) return;
+                    try {
+                      const { httpsCallable } = await import("firebase/functions");
+                      const { functions } = await import("@/lib/firebase");
+                      const deleteOrder = httpsCallable(functions, "deleteOrder");
+                      await deleteOrder({ orderId: selectedOrderId });
+                      router.push("/admin/orders");
+                    } catch (e: any) {
+                      alert(`Failed to delete order: ${e.message}`);
+                    }
+                  }}
+                  className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100">
+                  🗑 Delete
+                </button>
               )}
             </>
           )}
@@ -1468,8 +1464,9 @@ export default function Page() {
                       }}
                     >
                       <option value="Draft">📝 Draft</option>
+                      <option value="Confirmed">✔️ Confirmed</option>
                       <option value="Preparing">🟡 Preparing</option>
-                      {(orderStatus === "To Deliver" || orderStatus === "Delivered") && (
+                      {(["Preparing", "To Deliver", "Delivered"].includes(orderStatus)) && (
                         <option value="To Deliver">🚚 To Deliver</option>
                       )}
                       {orderStatus === "Delivered" && (
