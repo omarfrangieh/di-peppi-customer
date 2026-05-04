@@ -1877,6 +1877,16 @@ export default function AdminProductsPage() {
                     <div>
                       <h3 className="font-semibold text-gray-900 dark:text-white">{toTitleCase(product.name)}</h3>
                       {product.productSubName && <p className="text-xs text-gray-500 dark:text-gray-400">{toTitleCase(product.productSubName)}</p>}
+                      {!product.productSubName && (product.netWeightG || product.packSizeG || product.drainedWeightG || product.caliber) && (
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-0.5">
+                          {[
+                            product.packSizeG ? `${product.packSizeG}g` : null,
+                            product.netWeightG && !product.packSizeG ? `${product.netWeightG}g net` : null,
+                            product.drainedWeightG ? `${product.drainedWeightG}g drained` : null,
+                            product.caliber ? `cal. ${product.caliber}` : null,
+                          ].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <span className={`text-sm font-semibold px-2.5 py-1 rounded-full ${
                           (Number(product.currentStock || 0) === 0 || (Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock))) ? "bg-red-100 text-red-700" :
@@ -1906,6 +1916,8 @@ export default function AdminProductsPage() {
                   <div className="flex flex-wrap gap-2">
                     {product.caliber && <span className="text-xs font-semibold px-2 py-1 rounded" style={{ backgroundColor: "#EEF1F8", color: "#1B2A5E" }}>📏 {product.caliber}</span>}
                     {product.packSizeG && <span className="text-xs font-semibold px-2 py-1 rounded" style={{ backgroundColor: "#EEF8EE", color: "#166534" }}>📦 {product.packSizeG}g</span>}
+                    {product.netWeightG && !product.packSizeG && <span className="text-xs font-semibold px-2 py-1 rounded" style={{ backgroundColor: "#EEF8EE", color: "#166534" }}>⚖ {product.netWeightG}g net</span>}
+                    {product.drainedWeightG && <span className="text-xs font-semibold px-2 py-1 rounded bg-amber-50 text-amber-700">🫙 {product.drainedWeightG}g drained</span>}
                     {product.category && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{toTitleCase(product.category)}</span>}
                     {product.origin && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{toTitleCase(product.origin)}</span>}
                     {product.supplier && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">🏭 {toTitleCase(product.supplier)}</span>}

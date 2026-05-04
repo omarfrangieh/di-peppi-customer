@@ -55,6 +55,9 @@ type Product = {
   trackExpiry?: boolean;
   caliber?: string;
   brand?: string;
+  packSizeG?: number;
+  netWeightG?: number;
+  drainedWeightG?: number;
 };
 
 type Order = {
@@ -459,6 +462,11 @@ export default function Page() {
           minWeightPerUnit: raw.minWeightPerUnit ? Number(raw.minWeightPerUnit) : undefined,
           maxWeightPerUnit: raw.maxWeightPerUnit ? Number(raw.maxWeightPerUnit) : undefined,
           trackExpiry: Boolean(raw.trackExpiry),
+          caliber: raw.caliber ? String(raw.caliber) : undefined,
+          brand: raw.brand ? String(raw.brand) : undefined,
+          packSizeG: raw.packSizeG ? Number(raw.packSizeG) : undefined,
+          netWeightG: raw.netWeightG ? Number(raw.netWeightG) : undefined,
+          drainedWeightG: raw.drainedWeightG ? Number(raw.drainedWeightG) : undefined,
         };
       });
 
@@ -1574,14 +1582,21 @@ export default function Page() {
                               <div className="flex flex-col min-w-0">
                                 <span className="truncate">{toTitleCase(p.name)}</span>
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  {p.requiresWeighing && p.minWeightPerUnit && p.maxWeightPerUnit && (
-                                    <span className="text-xs text-purple-600 font-medium">⚖️ {p.minWeightPerUnit}–{p.maxWeightPerUnit} g</span>
-                                  )}
-                                  {p.caliber && (
-                                    <span className="text-xs font-semibold" style={{ color: "#1B2A5E" }}>📏 {p.caliber}</span>
-                                  )}
                                   {p.productSubName && (
-                                    <span className="text-xs text-gray-400 truncate">{p.productSubName}</span>
+                                    <span className="text-xs text-gray-500 font-medium truncate">{p.productSubName}</span>
+                                  )}
+                                  {!p.productSubName && (p.packSizeG || p.netWeightG || p.drainedWeightG || p.caliber) && (
+                                    <span className="text-xs text-gray-500 font-medium">
+                                      {[
+                                        p.packSizeG ? `${p.packSizeG}g` : null,
+                                        p.netWeightG && !p.packSizeG ? `${p.netWeightG}g net` : null,
+                                        p.drainedWeightG ? `${p.drainedWeightG}g drained` : null,
+                                        p.caliber ? `cal. ${p.caliber}` : null,
+                                      ].filter(Boolean).join(" · ")}
+                                    </span>
+                                  )}
+                                  {p.requiresWeighing && p.minWeightPerUnit && p.maxWeightPerUnit && (
+                                    <span className="text-xs text-purple-600 font-medium">⚖️ {p.minWeightPerUnit}–{p.maxWeightPerUnit}g</span>
                                   )}
                                 </div>
                               </div>
