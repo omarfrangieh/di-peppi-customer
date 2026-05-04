@@ -1279,7 +1279,13 @@ export default function AdminProductsPage() {
                   return (
                     <tr
                       key={product.id}
-                      className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 ${selectedProducts.has(product.id) ? "bg-indigo-50/60 dark:bg-indigo-950/20" : ""} ${product.active === false ? "opacity-50" : ""} ${isLowStock ? "border-l-4 border-orange-400" : ""}`}
+                      onClick={(e) => {
+                        // Don't trigger if clicking a button/link inside the row
+                        const tag = (e.target as HTMLElement).tagName;
+                        if (tag === "BUTTON" || tag === "A" || tag === "INPUT") return;
+                        toggleSelectProduct(product.id, index, e.shiftKey);
+                      }}
+                      className={`cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-gray-700/30 ${selectedProducts.has(product.id) ? "bg-indigo-50/60 dark:bg-indigo-950/20" : ""} ${product.active === false ? "opacity-50" : ""} ${isLowStock ? "border-l-4 border-orange-400" : ""}`}
                     >
                       <td className="px-4 py-2">
                         <input type="checkbox" checked={selectedProducts.has(product.id)}
@@ -1334,7 +1340,13 @@ export default function AdminProductsPage() {
             <div
               key={product.id}
               ref={index === inactiveStartIndex && inactiveStartIndex !== -1 ? inactiveStartRef : null}
-              className={`relative bg-white dark:bg-gray-800 rounded-lg border transition-colors ${isLowStock && editing !== product.id ? "border-l-4 border-l-orange-400" : ""} ${
+              onClick={(e) => {
+                if (editing === product.id) return;
+                const tag = (e.target as HTMLElement).tagName;
+                if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+                toggleSelectProduct(product.id, index, e.shiftKey);
+              }}
+              className={`relative select-none cursor-pointer bg-white dark:bg-gray-800 rounded-lg border transition-colors ${isLowStock && editing !== product.id ? "border-l-4 border-l-orange-400" : ""} ${
               editing === product.id ? "border-blue-300 bg-blue-50 dark:bg-blue-900/20" : selectedProducts.has(product.id) ? "border-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800" : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
             } ${product.active === false ? "opacity-50" : ""}`}>
               {/* Bulk select checkbox */}
