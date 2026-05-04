@@ -224,9 +224,9 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
                 const val = parseInt(e.target.value) || 1;
                 setQuantity(Math.min(val, product.currentStock));
               }}
-              className="w-8 text-center text-sm font-semibold border-0 focus:ring-0 disabled:bg-transparent"
+              className="w-7 text-center text-sm font-semibold border-0 focus:ring-0 disabled:bg-transparent"
             />
-            {product.unit && <span className="text-xs text-gray-400 font-medium pr-1">{product.unit}</span>}
+            {product.unit && <span className="text-sm font-semibold text-gray-700">{product.unit}</span>}
             <button
               onClick={() => setQuantity(Math.min(quantity + 1, product.currentStock))}
               disabled={product.currentStock === 0 || quantity >= product.currentStock}

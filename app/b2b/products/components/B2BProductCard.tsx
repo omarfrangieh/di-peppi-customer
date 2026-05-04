@@ -169,7 +169,7 @@ export default function B2BProductCard({ product }: { product: Product }) {
                     }}
                     className="flex-1 text-center text-sm font-semibold border-0 focus:ring-0 py-2"
                   />
-                  {product.unit && <span className="text-xs text-gray-400 font-medium pr-1">{product.unit}</span>}
+                  {product.unit && <span className="text-sm font-semibold text-gray-700">{product.unit}</span>}
                   <button
                     onClick={() => setQuantity(Math.min(quantity + (caseSize > 1 ? caseSize : 1), product.currentStock))}
                     className="px-3 py-2 text-gray-500 hover:bg-gray-50 transition-colors font-bold"
