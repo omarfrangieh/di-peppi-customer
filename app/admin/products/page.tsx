@@ -520,6 +520,8 @@ export default function AdminProductsPage() {
             if (!seen.has(key)) { seen.add(key); dedupedUnits.push(u.trim()); }
           }
           raw.unit = dedupedUnits.sort((a, b) => a.localeCompare(b));
+          // Remove Refrigerated — same as Chilled
+          raw.storageType = (raw.storageType as string[]).filter((s: string) => s !== "Refrigerated");
           setOptions(raw);
           // Persist the cleaned list if it changed
           if (dedupedUnits.length !== (optSnap.data().unit || []).length) {
