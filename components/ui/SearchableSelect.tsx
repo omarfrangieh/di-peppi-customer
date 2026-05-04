@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toTitleCase } from "@/lib/formatters";
 
 export function SearchableSelect({
   value,
@@ -42,7 +43,7 @@ export function SearchableSelect({
         }}
         className={`w-full flex items-center justify-between border border-gray-200 dark:border-gray-700 rounded${size === "sm" ? "-lg" : ""} ${px} bg-white dark:bg-gray-800 text-gray-900 dark:text-white ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:border-gray-400"}`}
       >
-        <span className={value ? "text-gray-900 dark:text-white" : "text-gray-400"}>{value || placeholder}</span>
+        <span className={value ? "text-gray-900 dark:text-white" : "text-gray-400"}>{value ? toTitleCase(value) : placeholder}</span>
         <span className="text-gray-400 text-xs ml-1">{open ? "▲" : "▼"}</span>
       </div>
       {open && !disabled && (
@@ -74,7 +75,7 @@ export function SearchableSelect({
                   onClick={() => { onChange(o); setOpen(false); setSearch(""); }}
                   className={`px-3 py-2 ${size === "xs" ? "text-xs" : "text-sm"} cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 ${o === value ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold" : "text-gray-800 dark:text-gray-200"}`}
                 >
-                  {o}
+                  {toTitleCase(o)}
                 </div>
               ))}
               {filtered.length === 0 && !showAddNew && (
@@ -91,7 +92,7 @@ export function SearchableSelect({
                   }}
                   className={`px-3 py-2 ${size === "xs" ? "text-xs" : "text-sm"} cursor-pointer hover:bg-green-50 dark:hover:bg-green-900/20 text-green-700 dark:text-green-400 font-medium flex items-center gap-1.5 border-t border-gray-100 dark:border-gray-700`}
                 >
-                  <span>＋</span> Add "{searchTrimmed.toUpperCase()}"
+                  <span>＋</span> Add "{toTitleCase(searchTrimmed)}"
                 </div>
               )}
             </div>
