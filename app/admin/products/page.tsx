@@ -80,6 +80,7 @@ export default function AdminProductsPage() {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [trashView, setTrashView] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
     try { return (localStorage.getItem("dp-products-view") as "grid" | "list") || "grid"; } catch { return "grid"; }
   });
@@ -500,7 +501,20 @@ export default function AdminProductsPage() {
     try {
       // Load products first — show them even if other collections fail
       const snap = await getDocs(collection(db, "products"));
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      let data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // Auto-purge products deleted more than 30 days ago
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const toAutoPurge = data.filter((p: any) => p.deleted && p.deletedAt && new Date(p.deletedAt) < thirtyDaysAgo);
+      if (toAutoPurge.length > 0) {
+        const purgeBatch = writeBatch(db);
+        toAutoPurge.forEach((p: any) => purgeBatch.delete(doc(db, "products", p.id)));
+        await purgeBatch.commit();
+        const purgeIds = new Set(toAutoPurge.map((p: any) => p.id));
+        data = data.filter((p: any) => !purgeIds.has(p.id));
+      }
+
       setProducts(data);
 
       // Load options and suppliers independently — don't block products on failure
@@ -788,15 +802,43 @@ export default function AdminProductsPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await deleteDoc(doc(db, "products", deleteTarget.id));
-      setProducts(prev => prev.filter(p => p.id !== deleteTarget.id));
+      const now = new Date().toISOString();
+      await updateDoc(doc(db, "products", deleteTarget.id), { deleted: true, deletedAt: now });
+      setProducts(prev => prev.map(p => p.id === deleteTarget.id ? { ...p, deleted: true, deletedAt: now } : p));
       setEditing(null);
       setEditData({});
       setDeleteTarget(null);
+      showToast("Moved to Trash — recoverable for 30 days", "success");
     } catch (err: any) {
       showToast(err.message || "Failed to delete product", "error");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleRestoreProducts = async (ids: Set<string>) => {
+    try {
+      const batch = writeBatch(db);
+      ids.forEach(id => batch.update(doc(db, "products", id), { deleted: false, deletedAt: null }));
+      await batch.commit();
+      setProducts(prev => prev.map(p => ids.has(p.id) ? { ...p, deleted: false, deletedAt: null } : p));
+      showToast(`${ids.size} product${ids.size !== 1 ? "s" : ""} restored`, "success");
+    } catch (err: any) {
+      showToast(err.message || "Failed to restore", "error");
+    }
+  };
+
+  const handlePermanentDelete = async (ids: Set<string>) => {
+    if (!window.confirm(`Permanently delete ${ids.size} product${ids.size !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+    try {
+      const batch = writeBatch(db);
+      ids.forEach(id => batch.delete(doc(db, "products", id)));
+      await batch.commit();
+      setProducts(prev => prev.filter(p => !ids.has(p.id)));
+      setSelectedProducts(new Set());
+      showToast(`${ids.size} product${ids.size !== 1 ? "s" : ""} permanently deleted`, "success");
+    } catch (err: any) {
+      showToast(err.message || "Failed to delete", "error");
     }
   };
 
@@ -973,14 +1015,16 @@ export default function AdminProductsPage() {
   };
   const handleBulkDelete = async () => {
     if (!selectedProducts.size) return;
-    if (!window.confirm(`Permanently delete ${selectedProducts.size} product${selectedProducts.size !== 1 ? "s" : ""}? This cannot be undone.`)) return;
     setBulkLoading(true);
     try {
       const batch = writeBatch(db);
-      selectedProducts.forEach(id => batch.delete(doc(db, "products", id)));
+      const now = new Date().toISOString();
+      selectedProducts.forEach(id => batch.update(doc(db, "products", id), { deleted: true, deletedAt: now }));
       await batch.commit();
-      setProducts(prev => prev.filter(p => !selectedProducts.has(p.id)));
+      const moved = selectedProducts.size;
+      setProducts(prev => prev.map(p => selectedProducts.has(p.id) ? { ...p, deleted: true, deletedAt: now } : p));
       setSelectedProducts(new Set());
+      showToast(`${moved} product${moved !== 1 ? "s" : ""} moved to Trash`, "success");
     } finally { setBulkLoading(false); }
   };
 
@@ -1000,8 +1044,13 @@ export default function AdminProductsPage() {
     )
   ).sort() as string[];
 
+  const trashedProducts = products
+    .filter(p => p.deleted)
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
   const filtered = products
     .filter(p => {
+      if (p.deleted) return false;
       const matchesSearch =
         (p.name || "").toLowerCase().includes(search.toLowerCase()) ||
         (p.category || "").toLowerCase().includes(search.toLowerCase());
@@ -1136,7 +1185,7 @@ export default function AdminProductsPage() {
             <button onClick={handleBulkDelete} disabled={bulkLoading}
               className="px-3 py-1.5 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-opacity hover:opacity-90"
               style={{ backgroundColor: "#7f1d1d" }}>
-              Delete
+              🗑️ Trash
             </button>
           </div>
         </div>
@@ -1208,15 +1257,20 @@ export default function AdminProductsPage() {
           />
           <div className="flex items-center gap-1 border border-gray-200 dark:border-gray-600 rounded-lg p-0.5">
             <button
-              onClick={() => { setViewMode("grid"); localStorage.setItem("dp-products-view", "grid"); }}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${viewMode === "grid" ? "bg-gray-900 dark:bg-gray-500 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
+              onClick={() => { setViewMode("grid"); localStorage.setItem("dp-products-view", "grid"); setTrashView(false); }}
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${viewMode === "grid" && !trashView ? "bg-gray-900 dark:bg-gray-500 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
               title="Grid view"
             >⊞</button>
             <button
-              onClick={() => { setViewMode("list"); localStorage.setItem("dp-products-view", "list"); }}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${viewMode === "list" ? "bg-gray-900 dark:bg-gray-500 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
+              onClick={() => { setViewMode("list"); localStorage.setItem("dp-products-view", "list"); setTrashView(false); }}
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${viewMode === "list" && !trashView ? "bg-gray-900 dark:bg-gray-500 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
               title="List view"
             >☰</button>
+            <button
+              onClick={() => setTrashView(v => !v)}
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${trashView ? "bg-red-700 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
+              title="Trash"
+            >🗑️{trashedProducts.length > 0 && <span className="ml-0.5">{trashedProducts.length}</span>}</button>
           </div>
         </div>
       </div>
@@ -1256,7 +1310,75 @@ export default function AdminProductsPage() {
       )}
 
       <div className="max-w-7xl mx-auto px-6 py-6" onMouseDown={() => { if (selectedProducts.size > 0) { setSelectedProducts(new Set()); lastSelectedIndexRef.current = -1; } }}>
-        {viewMode === "list" && (
+
+        {/* ── Trash View ── */}
+        {trashView && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 dark:text-white">🗑️ Trash</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Products are permanently deleted after 30 days.</p>
+              </div>
+              {selectedProducts.size > 0 && (
+                <div className="flex gap-2">
+                  <button onClick={() => { handleRestoreProducts(selectedProducts); setSelectedProducts(new Set()); }}
+                    className="px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-green-600 hover:bg-green-700">
+                    ↩ Restore {selectedProducts.size}
+                  </button>
+                  <button onClick={() => handlePermanentDelete(selectedProducts)}
+                    className="px-3 py-1.5 text-sm font-medium text-white rounded-lg bg-red-700 hover:bg-red-800">
+                    Delete Forever
+                  </button>
+                </div>
+              )}
+            </div>
+            {trashedProducts.length === 0 ? (
+              <div className="text-center py-16 text-gray-400 dark:text-gray-500 text-sm">Trash is empty</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {trashedProducts.map(product => {
+                  const deletedAt = product.deletedAt ? new Date(product.deletedAt) : null;
+                  const daysLeft = deletedAt ? Math.max(0, 30 - Math.floor((Date.now() - deletedAt.getTime()) / 86400000)) : 30;
+                  const isSelected = selectedProducts.has(product.id);
+                  return (
+                    <div key={product.id}
+                      onMouseDown={(e) => { e.stopPropagation(); toggleSelectProduct(product.id, 0, e.shiftKey); }}
+                      className={`relative select-none cursor-pointer bg-white dark:bg-gray-800 rounded-lg border transition-colors opacity-60 hover:opacity-80 ${isSelected ? "border-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800" : "border-gray-200 dark:border-gray-700"}`}>
+                      <div className="absolute top-2 left-2 z-10" onMouseDown={e => e.stopPropagation()}>
+                        <button onMouseDown={(e) => { e.stopPropagation(); toggleSelectProduct(product.id, 0, e.shiftKey); }}
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${isSelected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white dark:bg-gray-800/60 border-gray-300 dark:border-gray-500"}`}>
+                          {isSelected && <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>}
+                        </button>
+                      </div>
+                      <div className="h-32 flex items-center justify-center overflow-hidden rounded-t-lg bg-gray-50 dark:bg-gray-700/50">
+                        <ProductImage src={product.productImage} alt={product.name} className="max-h-28 max-w-full object-contain" />
+                      </div>
+                      <div className="p-3">
+                        <p className="font-medium text-sm text-gray-900 dark:text-white truncate">{product.name}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{product.supplier || "—"}</p>
+                        <p className={`text-xs mt-1 font-medium ${daysLeft <= 3 ? "text-red-500" : "text-amber-500"}`}>
+                          {daysLeft === 0 ? "Deletes today" : `${daysLeft}d left`}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 px-3 pb-3" onMouseDown={e => e.stopPropagation()}>
+                        <button onClick={() => handleRestoreProducts(new Set([product.id]))}
+                          className="flex-1 text-xs py-1.5 rounded border border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 font-medium">
+                          ↩ Restore
+                        </button>
+                        <button onClick={() => handlePermanentDelete(new Set([product.id]))}
+                          className="flex-1 text-xs py-1.5 rounded border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 font-medium">
+                          Delete Forever
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!trashView && viewMode === "list" && !loading && (
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden mb-4">
             <table className="w-full text-sm">
               <thead>
@@ -1334,7 +1456,7 @@ export default function AdminProductsPage() {
             </table>
           </div>
         )}
-        <div className={viewMode === "list" ? "hidden" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"} onMouseDown={(e) => { if (e.target === e.currentTarget && selectedProducts.size > 0) { setSelectedProducts(new Set()); lastSelectedIndexRef.current = -1; } }}>
+        <div className={trashView || viewMode === "list" ? "hidden" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"} onMouseDown={(e) => { if (e.target === e.currentTarget && selectedProducts.size > 0) { setSelectedProducts(new Set()); lastSelectedIndexRef.current = -1; } }}>
           {filtered.map((product, index) => {
             const isLowStock = Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock);
             return (
@@ -2473,9 +2595,9 @@ export default function AdminProductsPage() {
                 <span className="text-2xl">🗑</span>
               </div>
               <div>
-                <h3 className="text-base font-semibold text-gray-900 dark:text-white">Delete Product?</h3>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">Move to Trash?</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  <span className="font-medium text-gray-900 dark:text-white capitalize">{deleteTarget.name}</span> will be permanently deleted. This cannot be undone.
+                  <span className="font-medium text-gray-900 dark:text-white capitalize">{deleteTarget.name}</span> will be moved to Trash. You can restore it within 30 days.
                 </p>
               </div>
             </div>
@@ -2489,7 +2611,7 @@ export default function AdminProductsPage() {
                 onClick={confirmDelete}
                 disabled={deleting}
                 className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
-              >{deleting ? "Deleting..." : "Delete"}</button>
+              >{deleting ? "Moving..." : "Move to Trash"}</button>
             </div>
           </div>
         </div>
