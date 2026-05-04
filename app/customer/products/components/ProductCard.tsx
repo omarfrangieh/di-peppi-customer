@@ -195,11 +195,11 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
 
         {/* Quantity stepper + add to cart */}
         <div className="flex flex-col gap-2 mt-auto">
-          <div className={`flex items-center gap-1 border rounded-lg ${product.currentStock === 0 ? "border-gray-200 opacity-50" : "border-gray-300"}`}>
+          <div className={`flex items-center justify-between border rounded-lg ${product.currentStock === 0 ? "border-gray-200 opacity-50" : "border-gray-300"}`}>
             <button
               onClick={() => setQuantity(Math.max(1, quantity - 1))}
-              disabled={product.currentStock === 0}
-              className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 cursor-pointer disabled:cursor-not-allowed"
+              disabled={product.currentStock === 0 || quantity <= 1}
+              className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 cursor-pointer disabled:cursor-not-allowed disabled:text-gray-300"
             >
               −
             </button>
@@ -213,12 +213,12 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
                 const val = parseInt(e.target.value) || 1;
                 setQuantity(Math.min(val, product.currentStock));
               }}
-              className="flex-1 text-center text-sm font-semibold border-0 focus:ring-0 disabled:bg-transparent"
+              className="w-8 text-center text-sm font-semibold border-0 focus:ring-0 disabled:bg-transparent"
             />
             <button
               onClick={() => setQuantity(Math.min(quantity + 1, product.currentStock))}
-              disabled={product.currentStock === 0}
-              className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 cursor-pointer disabled:cursor-not-allowed"
+              disabled={product.currentStock === 0 || quantity >= product.currentStock}
+              className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 cursor-pointer disabled:cursor-not-allowed disabled:text-gray-300"
             >
               +
             </button>
