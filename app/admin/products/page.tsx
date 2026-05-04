@@ -1567,8 +1567,8 @@ export default function AdminProductsPage() {
                     >
                       <span className={(editData.supplierId || editData.supplier) ? "text-gray-900 dark:text-white" : "text-gray-400"}>
                         {editData.supplierId
-                          ? (suppliers.find((s:any) => s.id === editData.supplierId)?.name || editData.supplier || "— Supplier —")
-                          : (editData.supplier || "— Supplier —")}
+                          ? toTitleCase(suppliers.find((s:any) => s.id === editData.supplierId)?.name || editData.supplier || "") || "— Supplier —"
+                          : (toTitleCase(editData.supplier) || "— Supplier —")}
                       </span>
                       <span className="text-gray-400 text-xs">{supplierDropdownOpen ? "▲" : "▼"}</span>
                     </div>
@@ -1603,7 +1603,7 @@ export default function AdminProductsPage() {
                                   onClick={() => { setEditData((p: any) => ({ ...p, supplierId: s.id, supplier: s.name })); setSupplierDropdownOpen(false); setSupplierSearch(""); }}
                                   className={`px-3 py-2 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 ${s.id === editData.supplierId ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold" : "text-gray-800 dark:text-gray-200"}`}
                                 >
-                                  {s.name}
+                                  {toTitleCase(s.name)}
                                 </div>
                               ))}
                             {suppliers.filter((s:any) => (s.name || "").toLowerCase().includes(supplierSearch.toLowerCase())).length === 0 && (
