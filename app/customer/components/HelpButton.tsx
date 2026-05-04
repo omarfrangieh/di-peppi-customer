@@ -11,8 +11,12 @@ export default function HelpButton() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  // Hide on login page
-  if (pathname === "/customer/login") return null;
+  // Hide on login, checkout and cart pages
+  if (
+    pathname === "/customer/login" ||
+    pathname === "/customer/checkout" ||
+    pathname === "/customer/cart"
+  ) return null;
 
   return (
     <>
