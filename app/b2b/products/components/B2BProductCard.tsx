@@ -93,7 +93,7 @@ export default function B2BProductCard({ product }: { product: Product }) {
       {/* Content */}
       <div className="p-4 flex flex-col flex-grow">
         <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 mb-0.5">{product.name}</h3>
-        {product.productSubName ? (
+        {product.productSubName && product.productSubName !== "0" ? (
           <p className="text-xs text-gray-400 mb-1">{product.productSubName}</p>
         ) : (product.packSizeG || product.netWeightG || product.drainedWeightG || product.caliber) ? (
           <p className="text-xs text-gray-500 font-medium mb-1">
@@ -159,17 +159,22 @@ export default function B2BProductCard({ product }: { product: Product }) {
                     onClick={() => setQuantity(Math.max(minQty, quantity - (caseSize > 1 ? caseSize : 1)))}
                     className="px-3 py-2 text-gray-500 hover:bg-gray-50 transition-colors font-bold"
                   >−</button>
-                  <input
-                    type="number"
-                    min={minQty}
-                    value={quantity}
-                    onChange={(e) => {
-                      const v = parseInt(e.target.value) || minQty;
-                      setQuantity(Math.min(v, product.currentStock));
-                    }}
-                    className="flex-1 text-center text-sm font-semibold border-0 focus:ring-0 py-2"
-                  />
-                  {product.unit && <span className="text-sm font-semibold text-gray-700">{product.unit}</span>}
+                  <div className="flex items-center gap-1 flex-1 justify-center">
+                    <input
+                      type="number"
+                      min={minQty}
+                      value={quantity}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value) || minQty;
+                        setQuantity(Math.min(v, product.currentStock));
+                      }}
+                      className="w-8 text-center text-sm font-semibold border-0 focus:ring-0 py-2"
+                    />
+                    {product.packSizeG
+                      ? <span className="text-sm font-semibold text-gray-700">× {product.packSizeG}g</span>
+                      : product.unit && <span className="text-sm font-semibold text-gray-700">{product.unit}</span>
+                    }
+                  </div>
                   <button
                     onClick={() => setQuantity(Math.min(quantity + (caseSize > 1 ? caseSize : 1), product.currentStock))}
                     className="px-3 py-2 text-gray-500 hover:bg-gray-50 transition-colors font-bold"

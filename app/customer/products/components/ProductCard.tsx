@@ -103,7 +103,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
               <img
                 src={current!}
                 alt={product.name}
-                className="w-full h-full object-contain p-2"
+                className={`w-full h-full object-contain pt-2 px-2 ${imgs.length > 1 ? "pb-7" : "pb-2"}`}
                 onError={() => setImgError(true)}
               />
             ) : (
@@ -151,7 +151,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         </h3>
 
         {/* Sub-name or weight spec */}
-        {product.productSubName ? (
+        {product.productSubName && product.productSubName !== "0" ? (
           <p className="text-xs text-gray-400 mb-1">{toTitleCase(product.productSubName)}</p>
         ) : (product.packSizeG || product.netWeightG || product.drainedWeightG || product.caliber) ? (
           <p className="text-xs text-gray-500 font-medium mb-1">
@@ -214,19 +214,24 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
             >
               −
             </button>
-            <input
-              type="number"
-              min={1}
-              max={product.currentStock}
-              value={quantity}
-              disabled={product.currentStock === 0}
-              onChange={(e) => {
-                const val = parseInt(e.target.value) || 1;
-                setQuantity(Math.min(val, product.currentStock));
-              }}
-              className="w-7 text-center text-sm font-semibold border-0 focus:ring-0 disabled:bg-transparent"
-            />
-            {product.unit && <span className="text-sm font-semibold text-gray-700">{product.unit}</span>}
+            <div className="flex items-center gap-1 flex-1 justify-center">
+              <input
+                type="number"
+                min={1}
+                max={product.currentStock}
+                value={quantity}
+                disabled={product.currentStock === 0}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 1;
+                  setQuantity(Math.min(val, product.currentStock));
+                }}
+                className="w-7 text-center text-sm font-semibold border-0 focus:ring-0 disabled:bg-transparent"
+              />
+              {product.packSizeG
+                ? <span className="text-sm font-semibold text-gray-700">× {product.packSizeG}g</span>
+                : product.unit && <span className="text-sm font-semibold text-gray-700">{product.unit}</span>
+              }
+            </div>
             <button
               onClick={() => setQuantity(Math.min(quantity + 1, product.currentStock))}
               disabled={product.currentStock === 0 || quantity >= product.currentStock}

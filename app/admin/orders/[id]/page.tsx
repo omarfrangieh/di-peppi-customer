@@ -1767,7 +1767,7 @@ export default function Page() {
                             <p className="font-semibold text-sm text-gray-900 dark:text-white">{item.productName}</p>
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Qty (max: {getEditableMaxQty(item)})</label>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Qty{products.find(p => p.id === item.productId)?.unit ? ` (${products.find(p => p.id === item.productId)?.unit})` : ""} · max: {getEditableMaxQty(item)}</label>
                                 <Input type="number" value={editingQuantity} onChange={(e) => setEditingQuantity(e.target.value)} />
                               </div>
                               <div>

@@ -1093,7 +1093,7 @@ export default function AdminProductsPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Bulk Print Controls */}
       {selectedForPrint.size > 0 && (
-        <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 flex items-center justify-between sticky top-0 z-20">
+        <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 flex items-center justify-between sticky top-0 z-30">
           <div className="text-sm font-medium text-blue-900">
             {selectedForPrint.size} product{selectedForPrint.size !== 1 ? "s" : ""} selected for printing
           </div>
@@ -1164,7 +1164,7 @@ export default function AdminProductsPage() {
 
       {/* Bulk Actions Bar */}
       {selectedProducts.size > 0 && (
-        <div className="bg-indigo-50 dark:bg-indigo-950/40 border-b border-indigo-200 dark:border-indigo-800 px-6 py-3 flex items-center justify-between sticky top-0 z-20">
+        <div className="bg-indigo-50 dark:bg-indigo-950/40 border-b border-indigo-200 dark:border-indigo-800 px-6 py-3 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-3">
             <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
               {selectedProducts.size} product{selectedProducts.size !== 1 ? "s" : ""} selected
@@ -1191,7 +1191,7 @@ export default function AdminProductsPage() {
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center gap-4">
 
           <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
@@ -1279,15 +1279,22 @@ export default function AdminProductsPage() {
       {showOptionsFor && (
         <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
           <div className="flex gap-6">
-            {(["unit", "storageType", "category", "origin"] as const).map(field => (
+            {(["unit", "storageType", "category", "origin"] as const).map(field => {
+              const fieldLabel: Record<string, string> = {
+                unit: "Unit",
+                storageType: "Storage Type",
+                category: "Category",
+                origin: "Origin",
+              };
+              return (
               <div key={field} className="flex-1">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">{field}</p>
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 tracking-wide">{fieldLabel[field]}</p>
                 </div>
                 <div className="flex flex-wrap gap-1 mb-2">
                   {(options[field] as string[]).map(val => (
                     <span key={val} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs dark:text-gray-300">
-                      {val}
+                      {toTitleCase(val)}
                       <button onClick={() => removeOption(field, val)} className="text-gray-400 hover:text-red-500">×</button>
                     </span>
                   ))}
@@ -1304,7 +1311,8 @@ export default function AdminProductsPage() {
                   <button onClick={() => addOption(field)} className="px-2 py-1 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs rounded">+</button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1424,7 +1432,7 @@ export default function AdminProductsPage() {
                       </td>
                       <td className="px-4 py-2">
                         <p className="font-semibold text-gray-900 dark:text-white capitalize">{product.name}</p>
-                        {product.productSubName && <p className="text-xs text-gray-400">{product.productSubName}</p>}
+                        {product.productSubName && product.productSubName !== "0" && <p className="text-xs text-gray-400">{product.productSubName}</p>}
                         {Number(product.currentStock || 0) === 0
                           ? <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded mt-0.5">✕ Out of Stock</span>
                           : isLowStock
@@ -1876,8 +1884,8 @@ export default function AdminProductsPage() {
                   <div className="p-4 space-y-3">
                     <div>
                       <h3 className="font-semibold text-gray-900 dark:text-white">{toTitleCase(product.name)}</h3>
-                      {product.productSubName && <p className="text-xs text-gray-500 dark:text-gray-400">{toTitleCase(product.productSubName)}</p>}
-                      {!product.productSubName && (product.netWeightG || product.packSizeG || product.drainedWeightG || product.caliber) && (
+                      {product.productSubName && product.productSubName !== "0" && <p className="text-xs text-gray-500 dark:text-gray-400">{toTitleCase(product.productSubName)}</p>}
+                      {(!product.productSubName || product.productSubName === "0") && (product.netWeightG || product.packSizeG || product.drainedWeightG || product.caliber) && (
                         <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-0.5">
                           {[
                             product.packSizeG ? `${product.packSizeG}g` : null,
