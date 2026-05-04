@@ -934,6 +934,7 @@ export default function AdminProductsPage() {
   const filteredRef = useRef<any[]>([]);
 
   const toggleSelectProduct = (id: string, index: number, shiftKey: boolean) => {
+    showToast(`idx=${index} shift=${shiftKey} last=${lastSelectedIndexRef.current} filtered=${filteredRef.current.length}`, shiftKey ? "success" : "warning");
     setSelectedProducts(prev => {
       const n = new Set(prev);
       if (shiftKey && lastSelectedIndexRef.current >= 0) {
