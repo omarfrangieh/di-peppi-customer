@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toTitleCase } from "@/lib/formatters";
 
 interface Product {
   id: string;
@@ -111,7 +112,7 @@ export default function SearchFilter({ products, onFilterChange }: SearchFilterP
                   }`}
                   style={active ? { backgroundColor: "#1B2A5E" } : {}}
                 >
-                  {cat}
+                  {cat === "All" ? "All" : toTitleCase(cat)}
                 </button>
               );
             })}
