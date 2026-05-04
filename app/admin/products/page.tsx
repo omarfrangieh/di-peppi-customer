@@ -1643,6 +1643,8 @@ export default function AdminProductsPage() {
                       options={options.unit}
                       placeholder="Unit"
                       size="xs"
+                      allowCustom
+                      onAddOption={v => addOptionToList("unit", v)}
                     />
                     <SearchableSelect
                       value={editData.storageType || ""}
@@ -2414,6 +2416,8 @@ export default function AdminProductsPage() {
                     options={options.unit}
                     placeholder="— Unit —"
                     size="sm"
+                    allowCustom
+                    onAddOption={v => addOptionToList("unit", v)}
                   />
                 </div>
                 <div>
