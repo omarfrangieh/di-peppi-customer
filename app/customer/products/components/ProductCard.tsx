@@ -124,7 +124,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
             <p className="text-xs text-gray-400 mb-0.5">{toTitleCase(product.productSubName)}</p>
           )}
           {(product.packSizeG || product.netWeightG || product.drainedWeightG || (product.caliber && product.caliber !== "0")) && (
-            <p className="text-xs text-gray-500 font-medium mb-0.5">
+            <p className="text-xs font-bold text-gray-700 mb-0.5">
               {[
                 product.packSizeG ? `${product.packSizeG}g` : null,
                 product.netWeightG && !product.packSizeG ? `${product.netWeightG}g net` : null,
@@ -134,8 +134,8 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
             </p>
           )}
           {!!(product.requiresWeighing && product.minWeightPerUnit && product.maxWeightPerUnit) && (
-            <p className="text-xs font-semibold text-gray-600 mb-0.5">
-              ⚖️ {product.minWeightPerUnit}–{product.maxWeightPerUnit} g
+            <p className="text-xs font-bold text-gray-700 mb-0.5">
+              {product.minWeightPerUnit}–{product.maxWeightPerUnit} g
             </p>
           )}
           {product.origin && (

@@ -100,7 +100,7 @@ export default function B2BProductCard({ product }: { product: Product }) {
             <p className="text-xs text-gray-400 mb-0.5">{product.productSubName}</p>
           )}
           {(product.packSizeG || product.netWeightG || product.drainedWeightG || (product.caliber && product.caliber !== "0")) && (
-            <p className="text-xs text-gray-500 font-medium mb-0.5">
+            <p className="text-xs font-bold text-gray-700 mb-0.5">
               {[
                 product.packSizeG ? `${product.packSizeG}g` : null,
                 product.netWeightG && !product.packSizeG ? `${product.netWeightG}g net` : null,
