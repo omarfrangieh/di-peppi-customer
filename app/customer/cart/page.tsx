@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import useCart from "../hooks/useCart";
 import CartItem from "./components/CartItem";
 import CartSummary from "./components/CartSummary";
@@ -11,12 +13,35 @@ export default function CartPage() {
   const { items, clear } = useCart();
   const [isHydrated, setIsHydrated] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [deliveryFee] = useState(0); // Could be fetched from customer profile
+  const [deliveryFee] = useState(0);
+  const [stockMap, setStockMap] = useState<Record<string, number>>({});
 
   // Ensure component is hydrated before rendering (for localStorage)
   useEffect(() => {
     setIsHydrated(true);
   }, []);
+
+  // Fetch live stock for all cart items
+  useEffect(() => {
+    if (!isHydrated || items.length === 0) return;
+    const fetchStock = async () => {
+      try {
+        const ids = items.map((i) => i.productId);
+        // Firestore "in" query supports up to 30 items
+        const chunks: string[][] = [];
+        for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
+        const map: Record<string, number> = {};
+        for (const chunk of chunks) {
+          const snap = await getDocs(
+            query(collection(db, "products"), where("__name__", "in", chunk))
+          );
+          snap.forEach((d) => { map[d.id] = Number(d.data().currentStock ?? 0); });
+        }
+        setStockMap(map);
+      } catch {}
+    };
+    fetchStock();
+  }, [isHydrated, items]);
 
   const handleCheckout = async () => {
     setIsCheckingOut(true);
@@ -38,7 +63,7 @@ export default function CartPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto">
           <h1 className="text-xl font-bold text-gray-900">Shopping Cart</h1>
           <p className="text-sm text-gray-600 mt-0.5">
@@ -47,7 +72,7 @@ export default function CartPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {items.length === 0 ? (
           /* Empty Cart */
           <div className="text-center py-12">
@@ -72,7 +97,7 @@ export default function CartPage() {
                   Order Summary
                 </h2>
                 {items.map((item) => (
-                  <CartItem key={item.productId} item={item} />
+                  <CartItem key={item.productId} item={item} maxStock={stockMap[item.productId] ?? Infinity} />
                 ))}
               </div>
             </div>
