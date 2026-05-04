@@ -136,8 +136,8 @@ export default function ProductsPage() {
 
       <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 pb-6">
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-            <p className="text-red-700 font-semibold">{error}</p>
+          <div className="rounded-lg p-4 mb-4" style={{ backgroundColor: "#FAF0F0", border: "1px solid #B5535A33" }}>
+            <p className="font-semibold" style={{ color: "#B5535A" }}>{error}</p>
           </div>
         )}
 

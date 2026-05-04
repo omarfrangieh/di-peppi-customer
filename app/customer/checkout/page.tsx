@@ -439,8 +439,8 @@ export default function CheckoutPage() {
             </div>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                <p className="text-red-700 text-sm font-medium">{error}</p>
+              <div className="rounded-xl p-4" style={{ backgroundColor: "#FAF0F0", border: "1px solid #B5535A33" }}>
+                <p className="text-sm font-medium" style={{ color: "#B5535A" }}>{error}</p>
               </div>
             )}
           </div>

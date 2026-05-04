@@ -145,7 +145,7 @@ export default function B2BLoginPage() {
           </div>
 
           {message && (
-            <div className="mb-4 p-3 rounded-lg text-sm text-center bg-red-50 text-red-700 font-medium">{message}</div>
+            <div className="mb-4 p-3 rounded-lg text-sm text-center font-medium" style={{ backgroundColor: "#FAF0F0", color: "#B5535A" }}>{message}</div>
           )}
 
           <p className="text-sm text-gray-600 mb-5 text-center">
@@ -205,7 +205,7 @@ export default function B2BLoginPage() {
           <div className="mb-5 p-3 rounded-lg text-sm bg-green-50 text-green-700 text-center font-medium">✓ OTP sent to your email</div>
         )}
         {message && !otpSuccess && (
-          <div className="mb-5 p-3 rounded-lg text-sm bg-red-50 text-red-700 text-center font-medium">{message}</div>
+          <div className="mb-5 p-3 rounded-lg text-sm text-center font-medium" style={{ backgroundColor: "#FAF0F0", color: "#B5535A" }}>{message}</div>
         )}
 
         <div className="space-y-4">

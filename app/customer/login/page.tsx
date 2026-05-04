@@ -204,8 +204,9 @@ export default function CustomerLoginPage() {
               className={`mb-6 p-4 rounded-lg text-sm text-center font-semibold ${
                 message.includes("✓")
                   ? "bg-green-50 text-green-700"
-                  : "bg-red-50 text-red-700"
+                  : ""
               }`}
+              style={message.includes("✓") ? {} : { backgroundColor: "#FAF0F0", color: "#B5535A" }}
             >
               {message}
             </div>
@@ -275,7 +276,7 @@ export default function CustomerLoginPage() {
         )}
 
         {message && !otpSuccess && (
-          <div className="mb-6 p-4 rounded-lg text-sm bg-red-50 text-red-700 text-center font-semibold">
+          <div className="mb-6 p-4 rounded-lg text-sm text-center font-semibold" style={{ backgroundColor: "#FAF0F0", color: "#B5535A" }}>
             {message}
           </div>
         )}

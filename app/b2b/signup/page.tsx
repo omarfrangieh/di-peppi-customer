@@ -147,7 +147,7 @@ export default function B2BSignupPage() {
         </div>
 
         {error && (
-          <div className="mb-5 p-3 rounded-lg text-sm bg-red-50 text-red-700 text-center font-medium border border-red-200">
+          <div className="mb-5 p-3 rounded-lg text-sm text-center font-medium" style={{ backgroundColor: "#FAF0F0", color: "#B5535A", border: "1px solid #B5535A33" }}>
             {error}
           </div>
         )}

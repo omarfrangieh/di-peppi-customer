@@ -12,7 +12,7 @@ const STATUS_COLORS: Record<string, string> = {
   Preparing:    "bg-yellow-100 text-yellow-800",
   "To Deliver": "bg-orange-100 text-orange-700",
   Delivered:    "bg-green-100 text-green-800",
-  Cancelled:    "bg-red-100 text-red-700",
+  Cancelled:    "bg-[#FAF0F0] text-[#B5535A]",
 };
 
 function formatDate(val: any) {

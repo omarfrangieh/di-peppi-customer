@@ -356,8 +356,8 @@ export default function ProfilePage() {
           </div>
         )}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <p className="text-red-700 font-medium text-sm">{error}</p>
+          <div className="rounded-xl p-4" style={{ backgroundColor: "#FAF0F0", border: "1px solid #B5535A33" }}>
+            <p className="font-medium text-sm" style={{ color: "#B5535A" }}>{error}</p>
           </div>
         )}
 

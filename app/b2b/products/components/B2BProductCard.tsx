@@ -48,7 +48,7 @@ export default function B2BProductCard({ product }: { product: Product }) {
     : "In Stock";
 
   const stockColor = isOutOfStock
-    ? "text-red-600 bg-red-50 border-red-200"
+    ? "text-[#B5535A] bg-[#FAF0F0] border-[#B5535A33]"
     : product.currentStock < 10
     ? "text-orange-600 bg-orange-50 border-orange-200"
     : "text-green-700 bg-green-50 border-green-200";

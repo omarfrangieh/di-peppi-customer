@@ -60,7 +60,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
 
   const stockColor =
     product.currentStock === 0
-      ? "text-red-600 bg-red-50"
+      ? "text-[#B5535A] bg-[#FAF0F0]"
       : product.currentStock < 5
       ? "text-orange-600 bg-orange-50"
       : "text-green-600 bg-green-50";

@@ -15,7 +15,7 @@ const STATUS_COLORS: Record<string, string> = {
   Preparing:    "bg-yellow-100 text-yellow-800",
   "To Deliver": "bg-orange-100 text-orange-700",
   Delivered:    "bg-green-100 text-green-800",
-  Cancelled:    "bg-red-100 text-red-700",
+  Cancelled:    "bg-[#FAF0F0] text-[#B5535A]",
 };
 
 function formatDate(val: any) {
@@ -210,9 +210,9 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
               </div>
               <button
                 onClick={() => setShowConfirm(true)}
-                className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white border border-red-200 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white text-xs font-semibold rounded-lg transition-colors cursor-pointer" style={{ border: "1px solid #B5535A33", color: "#B5535A" }}
               >
-                <span className="w-5 h-5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold flex items-center justify-center">
+                <span className="w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center" style={{ backgroundColor: "#FAF0F0", color: "#B5535A" }}>
                   {countdown}
                 </span>
                 Cancel
@@ -223,11 +223,11 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
 
         {/* Cancelled banner */}
         {order.status === "Cancelled" && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 text-center">
-            <p className="text-lg mb-1">❌</p>
-            <p className="font-semibold text-red-800 text-sm">Order Cancelled</p>
+          <div className="rounded-xl p-4 mb-4 text-center" style={{ backgroundColor: "#FAF0F0", border: "1px solid #B5535A33" }}>
+            <p className="text-lg mb-1">✕</p>
+            <p className="font-semibold text-sm" style={{ color: "#B5535A" }}>Order Cancelled</p>
             {order.paymentMethod === "wallet" && (
-              <p className="text-xs text-red-600 mt-1">
+              <p className="text-xs mt-1" style={{ color: "#B5535A" }}>
                 ${formatPrice(orderTotal)} has been refunded to your wallet.
               </p>
             )}
@@ -236,8 +236,8 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
 
         {/* Cancel error */}
         {cancelError && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
-            <p className="text-red-700 text-sm">{cancelError}</p>
+          <div className="rounded-xl p-3 mb-4" style={{ backgroundColor: "#FAF0F0", border: "1px solid #B5535A33" }}>
+            <p className="text-sm" style={{ color: "#B5535A" }}>{cancelError}</p>
           </div>
         )}
 
@@ -266,7 +266,7 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
                 <button
                   onClick={handleCancel}
                   disabled={cancelling}
-                  className="flex-1 py-2.5 bg-red-500 text-white font-semibold rounded-xl text-sm hover:bg-red-600 cursor-pointer disabled:opacity-60"
+                  className="flex-1 py-2.5 text-white font-semibold rounded-xl text-sm cursor-pointer disabled:opacity-60 hover:opacity-90" style={{ backgroundColor: "#B5535A" }}
                 >
                   {cancelling ? "Cancelling…" : "Yes, Cancel"}
                 </button>
@@ -347,7 +347,7 @@ export default function CustomerOrderDetailPage({ params }: { params: Promise<{ 
             <button
               onClick={() => setShowConfirm(true)}
               disabled={cancelling}
-              className="w-full py-3 border border-red-200 text-red-600 font-semibold rounded-xl text-sm hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50"
+              className="w-full py-3 font-semibold rounded-xl text-sm transition-colors cursor-pointer disabled:opacity-50" style={{ border: "1px solid #B5535A33", color: "#B5535A" }}
             >
               Cancel Order
             </button>

@@ -92,7 +92,7 @@ export default function CustomerSignupPage() {
         </div>
 
         {message && (
-          <div className="mb-6 p-4 rounded-lg text-sm bg-red-50 text-red-700 text-center font-semibold">
+          <div className="mb-6 p-4 rounded-lg text-sm text-center font-semibold" style={{ backgroundColor: "#FAF0F0", color: "#B5535A" }}>
             {message}
           </div>
         )}

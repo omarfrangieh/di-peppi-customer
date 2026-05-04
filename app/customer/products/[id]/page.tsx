@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
-import { httpsCallable } from "firebase/functions";
-import { functions } from "@/lib/firebase";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import useCart from "../../hooks/useCart";
 import QuantitySelector from "../components/QuantitySelector";
 import RelatedProducts from "../components/RelatedProducts";
@@ -36,6 +36,14 @@ interface Product {
   ingredients?: string;
   allergens?: string;
   caliber?: string;
+}
+
+function resolveImageUrl(raw?: string): string {
+  if (!raw) return "";
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  const clean = raw.startsWith("/") ? raw.slice(1) : raw;
+  const encoded = clean.split("/").map(encodeURIComponent).join("/");
+  return `https://di-peppi-images.storage.googleapis.com/${encoded}`;
 }
 
 // Helper function to validate URL
@@ -80,34 +88,69 @@ export default function ProductDetailPage() {
       setError(null);
 
       try {
-        // Get customer ID from localStorage
         const sessionStr = localStorage.getItem("session");
-        if (!sessionStr) {
-          router.push("/customer/login");
-          return;
-        }
-
+        if (!sessionStr) { router.push("/customer/login"); return; }
         const session = JSON.parse(sessionStr);
-        const customerId = session.userId;
         const customerType = session.customerType || "B2C";
 
-        // Fetch all products
-        const getProductCatalog = httpsCallable(functions, "getProductCatalog");
-        const result: any = await getProductCatalog({ customerId, customerType });
-
-        if (result.data && Array.isArray(result.data)) {
-          setAllProducts(result.data);
-
-          // Find the specific product
-          const found = result.data.find((p: Product) => p.id === productId);
-          if (found) {
-            setProduct(found);
-          } else {
-            setError("Product not found");
-          }
-        } else {
-          setError("Failed to load product");
+        // Fetch the specific product directly from Firestore
+        const productSnap = await getDoc(doc(db, "products", productId));
+        if (!productSnap.exists()) {
+          setError("Product not found");
+          setLoading(false);
+          return;
         }
+        const data = productSnap.data();
+        // Resolve price: b2cPrice preferred, fall back to price
+        const price = data.b2cPrice ?? data.price ?? 0;
+        const found: Product = {
+          id: productSnap.id,
+          name: data.name || "",
+          productSubName: data.productSubName || "",
+          brand: data.brand || "",
+          origin: data.origin || "",
+          unit: data.unit || "",
+          currentStock: data.currentStock ?? 0,
+          price,
+          productImage: resolveImageUrl(data.productImage || (Array.isArray(data.productImages) && data.productImages[0]) || ""),
+          productImages: Array.isArray(data.productImages) ? data.productImages.map(resolveImageUrl) : undefined,
+          description: data.description || "",
+          category: data.category || "",
+          storageType: data.storageType || "",
+          requiresWeighing: Boolean(data.requiresWeighing),
+          minWeightPerUnit: Number(data.minWeightPerUnit || 0),
+          maxWeightPerUnit: Number(data.maxWeightPerUnit || 0),
+          packSizeG: data.packSizeG ? Number(data.packSizeG) : undefined,
+          netWeightG: data.netWeightG ? Number(data.netWeightG) : undefined,
+          drainedWeightG: data.drainedWeightG ? Number(data.drainedWeightG) : undefined,
+          ingredients: data.ingredients || "",
+          allergens: data.allergens || "",
+          caliber: data.caliber || undefined,
+        };
+        setProduct(found);
+
+        // Fetch related products (same category, active, in-stock, B2C-visible)
+        const relatedQuery = query(
+          collection(db, "products"),
+          where("active", "==", true),
+          where("category", "==", data.category || "")
+        );
+        const relatedSnap = await getDocs(relatedQuery);
+        const related: Product[] = relatedSnap.docs
+          .filter(d => d.id !== productId && !d.data().b2bOnly && (d.data().b2cPrice ?? d.data().price ?? 0) > 0)
+          .map(d => {
+            const rd = d.data();
+            return {
+              id: d.id,
+              name: rd.name || "",
+              unit: rd.unit || "",
+              currentStock: rd.currentStock ?? 0,
+              price: rd.b2cPrice ?? rd.price ?? 0,
+              productImage: resolveImageUrl(rd.productImage || ""),
+              category: rd.category || "",
+            } as Product;
+          });
+        setAllProducts(related);
       } catch (err: any) {
         console.error("Error fetching product:", err);
         setError(err.message || "Failed to load product");
@@ -186,7 +229,7 @@ export default function ProductDetailPage() {
 
   const stockColor =
     product.currentStock === 0
-      ? "text-red-600 bg-red-50"
+      ? "text-[#B5535A] bg-[#FAF0F0]"
       : product.currentStock < 5
       ? "text-orange-600 bg-orange-50"
       : "text-green-600 bg-green-50";

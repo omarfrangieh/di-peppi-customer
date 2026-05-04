@@ -1435,13 +1435,13 @@ export default function AdminProductsPage() {
                         <p className="font-semibold text-gray-900 dark:text-white capitalize">{product.name}</p>
                         {product.productSubName && product.productSubName !== "0" && <p className="text-xs text-gray-400">{product.productSubName}</p>}
                         {Number(product.currentStock || 0) === 0
-                          ? <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded mt-0.5">✕ Out of Stock</span>
+                          ? <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded mt-0.5" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>✕ Out of Stock</span>
                           : isLowStock
                           ? <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded mt-0.5">⚠ Low Stock</span>
                           : null}
                       </td>
                       <td className="px-4 py-2 text-right">
-                        <span className={`text-sm font-semibold ${Number(product.currentStock || 0) === 0 ? "text-red-600 dark:text-red-400" : isLowStock ? "text-orange-600 dark:text-orange-400" : "text-gray-900 dark:text-white"}`}>
+                        <span className={`text-sm font-semibold ${Number(product.currentStock || 0) === 0 ? "text-[#B5535A]" : isLowStock ? "text-orange-600 dark:text-orange-400" : "text-gray-900 dark:text-white"}`}>
                           {formatQty(product.currentStock)}
                         </span>
                         <span className="text-xs text-gray-400"> / {product.minStock || "—"}</span>
@@ -1763,14 +1763,14 @@ export default function AdminProductsPage() {
                         className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${editData.requiresWeighing ? "bg-blue-500" : "bg-gray-300"}`}>
                         <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${editData.requiresWeighing ? "translate-x-4" : "translate-x-0"}`} />
                       </div>
-                      <span className="font-medium">⚖️ Requires Weighing</span>
+                      <span className="font-medium">Requires Weighing</span>
                     </label>
                     <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:text-gray-300">
                       <div onClick={() => setEditData((p: any) => ({ ...p, trackExpiry: !p.trackExpiry }))}
                         className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${editData.trackExpiry ? "bg-orange-500" : "bg-gray-300"}`}>
                         <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${editData.trackExpiry ? "translate-x-4" : "translate-x-0"}`} />
                       </div>
-                      <span className="font-medium">📦 FIFO / Track Expiry</span>
+                      <span className="font-medium">FIFO / Track Expiry</span>
                     </label>
                     <label className="col-span-2 flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border hover:opacity-90" style={{ borderColor: "#B5535A33", backgroundColor: editData.b2cOnly ? "#B5535A0D" : "transparent" }}>
                       <div onClick={() => setEditData((p: any) => ({ ...p, b2cOnly: !p.b2cOnly }))}
@@ -1778,19 +1778,19 @@ export default function AdminProductsPage() {
                         style={{ backgroundColor: editData.b2cOnly ? "#B5535A" : "#d1d5db" }}>
                         <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${editData.b2cOnly ? "translate-x-4" : "translate-x-0"}`} />
                       </div>
-                      <span className="font-medium" style={{ color: "#B5535A" }}>Retail Only — hide from wholesale orders</span>
+                      <span className="font-medium" style={{ color: "#B5535A" }}>B2C Only — hide from wholesale orders</span>
                     </label>
                     <label className="col-span-2 flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:text-blue-300">
                       <div onClick={() => setEditData((p: any) => ({ ...p, b2bOnly: !p.b2bOnly }))}
                         className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${editData.b2bOnly ? "bg-blue-500" : "bg-gray-300"}`}>
                         <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${editData.b2bOnly ? "translate-x-4" : "translate-x-0"}`} />
                       </div>
-                      <span className="font-medium text-blue-700 dark:text-blue-300">🏢 B2B Only — hide from retail orders</span>
+                      <span className="font-medium text-blue-700 dark:text-blue-300">B2B Only — hide from retail orders</span>
                     </label>
                   </div>
                   {editData.requiresWeighing && (
                     <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 space-y-2">
-                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">⚖️ Weight range per unit (g) <span className="text-red-500">*</span></p>
+                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Weight range per unit (g) <span className="text-red-500">*</span></p>
                       <div className="flex items-center gap-3">
                         <div className="flex-1">
                           <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Min (g)</label>
@@ -1835,9 +1835,10 @@ export default function AdminProductsPage() {
                     <button
                       onClick={() => deleteProduct(product.id, product.name)}
                       disabled={saving === product.id}
-                      className="w-full mt-1 text-xs text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-50 py-1"
+                      className="w-full mt-1 text-xs disabled:opacity-50 py-1 hover:opacity-70 transition-opacity"
+                      style={{ color: "#B5535A" }}
                     >
-                      🗑 Delete Product
+                      Delete Product
                     </button>
                   )}
                 </div>
@@ -1906,7 +1907,7 @@ export default function AdminProductsPage() {
                       )}
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <span className={`text-sm font-semibold px-2.5 py-1 rounded-full ${
-                          (Number(product.currentStock || 0) === 0 || (Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock))) ? "bg-red-100 text-red-700" :
+                          (Number(product.currentStock || 0) === 0 || (Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock))) ? "bg-[#FAF0F0] text-[#B5535A]" :
                           (Number(product.minStock) > 0 && Number(product.currentStock || 0) === Number(product.minStock)) ? "bg-yellow-100 text-yellow-700" :
                           "bg-green-100 text-green-700"
                         }`}>
@@ -1919,16 +1920,16 @@ export default function AdminProductsPage() {
                         </span>
                         {product.b2cOnly && (
                           <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ backgroundColor: "#FAF0F0", color: "#B5535A" }}>
-                            Retail Only
+                            B2C Only
                           </span>
                         )}
                         {product.b2bOnly && (
                           <span className="text-sm font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                            🏢 B2B Only
+                            B2B Only
                           </span>
                         )}
                         {Number(product.currentStock || 0) === 0 ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">✕ Out of Stock</span>
+                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full" style={{ color: "#B5535A", backgroundColor: "#FAF0F0" }}>✕ Out of Stock</span>
                         ) : isLowStock ? (
                           <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 rounded-full">⚠ Low Stock</span>
                         ) : null}
@@ -1943,7 +1944,7 @@ export default function AdminProductsPage() {
                     {product.category && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{toTitleCase(product.category)}</span>}
                     {product.origin && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{toTitleCase(product.origin)}</span>}
                     {product.supplier && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">🏭 {toTitleCase(product.supplier)}</span>}
-                    {product.brand && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">🏷️ {toTitleCase(product.brand)}</span>}
+                    {product.brand && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{toTitleCase(product.brand)}</span>}
                   </div>
 
                   {product.barcodeNumber && (
@@ -2479,7 +2480,7 @@ export default function AdminProductsPage() {
                 <label className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300 cursor-pointer font-medium">
                   <input type="checkbox" checked={!!newProduct.requiresWeighing}
                     onChange={e => setNewProduct((p:any) => ({...p, requiresWeighing: e.target.checked, minWeightPerUnit: "", maxWeightPerUnit: ""}))} />
-                  ⚖️ Requires weighing at delivery
+                  Requires weighing at delivery
                 </label>
                 {newProduct.requiresWeighing && (
                   <div className="space-y-2">
@@ -2509,7 +2510,7 @@ export default function AdminProductsPage() {
                 <label className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-400 cursor-pointer font-medium">
                   <input type="checkbox" checked={!!newProduct.trackExpiry}
                     onChange={e => setNewProduct((p:any) => ({...p, trackExpiry: e.target.checked}))} />
-                  📅 Track expiry / FIFO
+                  Track expiry / FIFO
                 </label>
                 {newProduct.trackExpiry && (
                   <div>
@@ -2526,12 +2527,12 @@ export default function AdminProductsPage() {
               <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border" style={{ borderColor: "#B5535A33" }}>
                 <input type="checkbox" checked={!!newProduct.b2cOnly}
                   onChange={e => setNewProduct((p:any) => ({...p, b2cOnly: e.target.checked}))} />
-                <span className="font-medium" style={{ color: "#B5535A" }}>Retail Only — hide from wholesale orders</span>
+                <span className="font-medium" style={{ color: "#B5535A" }}>B2C Only — hide from wholesale orders</span>
               </label>
               <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20">
                 <input type="checkbox" checked={!!newProduct.b2bOnly}
                   onChange={e => setNewProduct((p:any) => ({...p, b2bOnly: e.target.checked}))} />
-                <span className="font-medium text-blue-700 dark:text-blue-300">🏢 B2B Only — hide from retail orders</span>
+                <span className="font-medium text-blue-700 dark:text-blue-300">B2B Only — hide from retail orders</span>
               </label>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => { setShowAddProduct(false); setNewProductImageFiles([]); setNewProductImagePreviews([]); }}

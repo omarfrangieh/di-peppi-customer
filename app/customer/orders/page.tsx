@@ -12,7 +12,7 @@ const STATUS_COLORS: Record<string, string> = {
   Preparing:    "bg-yellow-100 text-yellow-800",
   "To Deliver": "bg-orange-100 text-orange-700",
   Delivered:    "bg-green-100 text-green-800",
-  Cancelled:    "bg-red-100 text-red-700",
+  Cancelled:    "bg-[#FAF0F0] text-[#B5535A]",
 };
 
 function formatDate(val: any) {
@@ -123,8 +123,8 @@ export default function CustomerOrdersPage() {
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-            <p className="text-red-700 text-sm">{error}</p>
+          <div className="rounded-xl p-4 mb-6" style={{ backgroundColor: "#FAF0F0", border: "1px solid #B5535A33" }}>
+            <p className="text-sm" style={{ color: "#B5535A" }}>{error}</p>
           </div>
         )}
 

@@ -167,8 +167,8 @@ export default function B2BProductsPage() {
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-            <p className="text-red-700 font-semibold text-sm">{error}</p>
+          <div className="rounded-xl p-4 mb-6" style={{ backgroundColor: "#FAF0F0", border: "1px solid #B5535A33" }}>
+            <p className="font-semibold text-sm" style={{ color: "#B5535A" }}>{error}</p>
           </div>
         )}
 
