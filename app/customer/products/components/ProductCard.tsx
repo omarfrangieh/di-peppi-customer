@@ -162,6 +162,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
             ) : (
               <p className="text-lg font-bold text-gray-900">
                 ${formatPrice(product.price)}
+                {product.unit && <span className="text-sm font-medium text-gray-500"> /{product.unit.toLowerCase()}</span>}
               </p>
             )}
           </div>
