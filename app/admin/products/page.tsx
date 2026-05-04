@@ -67,7 +67,7 @@ export default function AdminProductsPage() {
     costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "",
     active: true, requiresWeighing: false, trackExpiry: false,
     minWeightPerUnit: "", maxWeightPerUnit: "", packSizeG: "", barcodeNumber: "",
-    vatRate: "", netWeightG: "", drainedWeightG: "", ingredients: "", allergens: "", description: "", b2cOnly: false, caliber: "",
+    vatRate: "", netWeightG: "", drainedWeightG: "", ingredients: "", allergens: "", description: "", b2cOnly: false, b2bOnly: false, caliber: "",
   });
   const [addingSaving, setAddingSaving] = useState(false);
   const [newProductImageFiles, setNewProductImageFiles] = useState<File[]>([]);
@@ -755,6 +755,7 @@ export default function AdminProductsPage() {
         allergens: newProduct.allergens || "",
         description: newProduct.description || "",
         b2cOnly: Boolean(newProduct.b2cOnly),
+        b2bOnly: Boolean(newProduct.b2bOnly),
         caliber: newProduct.caliber || "",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -778,7 +779,7 @@ export default function AdminProductsPage() {
         }
       }
       setShowAddProduct(false);
-      setNewProduct({ name: "", productSubName: "", brand: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "", packSizeG: "", barcodeNumber: "", vatRate: "", initialExpiry: "", netWeightG: "", drainedWeightG: "", ingredients: "", allergens: "", description: "", b2cOnly: false, caliber: "" });
+      setNewProduct({ name: "", productSubName: "", brand: "", supplierId: "", supplier: "", category: "", origin: "", unit: "KG", storageType: "", costPrice: "", b2bPrice: "", b2cPrice: "", minStock: "", active: true, requiresWeighing: false, trackExpiry: false, minWeightPerUnit: "", maxWeightPerUnit: "", packSizeG: "", barcodeNumber: "", vatRate: "", initialExpiry: "", netWeightG: "", drainedWeightG: "", ingredients: "", allergens: "", description: "", b2cOnly: false, b2bOnly: false, caliber: "" });
       setNewProductImageFiles([]);
       setNewProductImagePreviews([]);
       await load();
@@ -1778,6 +1779,13 @@ export default function AdminProductsPage() {
                       </div>
                       <span className="font-medium text-purple-700 dark:text-purple-300">🛍️ B2C Only — hide from wholesale orders</span>
                     </label>
+                    <label className="col-span-2 flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:text-blue-300">
+                      <div onClick={() => setEditData((p: any) => ({ ...p, b2bOnly: !p.b2bOnly }))}
+                        className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${editData.b2bOnly ? "bg-blue-500" : "bg-gray-300"}`}>
+                        <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${editData.b2bOnly ? "translate-x-4" : "translate-x-0"}`} />
+                      </div>
+                      <span className="font-medium text-blue-700 dark:text-blue-300">🏢 B2B Only — hide from retail orders</span>
+                    </label>
                   </div>
                   {editData.requiresWeighing && (
                     <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 space-y-2">
@@ -1911,6 +1919,11 @@ export default function AdminProductsPage() {
                         {product.b2cOnly && (
                           <span className="text-sm font-semibold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
                             🛍️ B2C Only
+                          </span>
+                        )}
+                        {product.b2bOnly && (
+                          <span className="text-sm font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                            🏢 B2B Only
                           </span>
                         )}
                         {Number(product.currentStock || 0) === 0 ? (
@@ -2513,6 +2526,11 @@ export default function AdminProductsPage() {
                 <input type="checkbox" checked={!!newProduct.b2cOnly}
                   onChange={e => setNewProduct((p:any) => ({...p, b2cOnly: e.target.checked}))} />
                 <span className="font-medium text-purple-700 dark:text-purple-300">🛍️ B2C Only — hide from wholesale orders</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer select-none p-2 rounded border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20">
+                <input type="checkbox" checked={!!newProduct.b2bOnly}
+                  onChange={e => setNewProduct((p:any) => ({...p, b2bOnly: e.target.checked}))} />
+                <span className="font-medium text-blue-700 dark:text-blue-300">🏢 B2B Only — hide from retail orders</span>
               </label>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => { setShowAddProduct(false); setNewProductImageFiles([]); setNewProductImagePreviews([]); }}

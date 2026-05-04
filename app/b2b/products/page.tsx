@@ -83,7 +83,8 @@ export default function B2BProductsPage() {
               caliber: data.caliber || undefined,
             };
           })
-          .filter((p) => p.name && p.price > 0);
+          // B2B shop never shows b2cOnly products
+          .filter((p) => p.name && p.price > 0 && !p.b2cOnly);
         setAllProducts(list);
         setLoading(false);
       },

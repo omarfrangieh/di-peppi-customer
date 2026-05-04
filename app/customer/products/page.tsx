@@ -85,10 +85,11 @@ export default function ProductsPage() {
               drainedWeightG: data.drainedWeightG ? Number(data.drainedWeightG) : undefined,
               caliber: data.caliber || undefined,
               b2cOnly: Boolean(data.b2cOnly),
+              b2bOnly: Boolean(data.b2bOnly),
             };
           })
-          // B2B customers cannot see b2cOnly products
-          .filter((p) => p.name && p.price > 0 && (customerType === "B2C" || !p.b2cOnly))
+          // B2C shop never shows b2bOnly products
+          .filter((p) => p.name && p.price > 0 && !p.b2bOnly && (customerType === "B2C" || !p.b2cOnly))
           .sort((a, b) => {
             // In stock first, then alphabetical
             const aInStock = a.currentStock > 0 ? 0 : 1;
