@@ -1278,8 +1278,8 @@ export default function AdminProductsPage() {
                     >
                       <td className="px-4 py-2">
                         <input type="checkbox" checked={selectedProducts.has(product.id)}
-                          onChange={(e) => toggleSelectProduct(product.id, index, e.nativeEvent instanceof MouseEvent && (e.nativeEvent as MouseEvent).shiftKey)}
-                          onClick={(e) => toggleSelectProduct(product.id, index, e.shiftKey)}
+                          onChange={() => {}}
+                          onClick={(e) => { e.stopPropagation(); toggleSelectProduct(product.id, index, e.shiftKey); }}
                           className="w-3.5 h-3.5 rounded accent-indigo-600 cursor-pointer" />
                       </td>
                       <td className="px-4 py-2">
