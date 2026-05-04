@@ -1277,7 +1277,7 @@ export default function AdminProductsPage() {
 
       {/* Options Manager */}
       {showOptionsFor && (
-        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 sticky top-[60px] z-20">
           <div className="flex gap-6">
             {(["unit", "storageType", "category", "origin"] as const).map(field => {
               const fieldLabel: Record<string, string> = {

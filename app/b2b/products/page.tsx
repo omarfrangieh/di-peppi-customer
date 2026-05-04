@@ -67,7 +67,11 @@ export default function B2BProductsPage() {
               currentStock: data.currentStock ?? 0,
               price: data.b2bPrice ?? data.price ?? 0,
               retailPrice: data.b2cPrice ?? undefined,
-              productImage: resolveImageUrl(data.productImage),
+              productImage: resolveImageUrl(
+                data.productImage ||
+                (Array.isArray(data.productImages) && data.productImages[0]) ||
+                ""
+              ),
               description: data.description || "",
               category: data.category || "",
               caseSize: data.caseSize ?? undefined,

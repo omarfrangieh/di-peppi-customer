@@ -93,22 +93,29 @@ export default function B2BProductCard({ product }: { product: Product }) {
       {/* Content */}
       <div className="p-4 flex flex-col flex-grow">
         <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 mb-0.5">{product.name}</h3>
-        {product.productSubName && product.productSubName !== "0" ? (
-          <p className="text-xs text-gray-400 mb-1">{product.productSubName}</p>
-        ) : (product.packSizeG || product.netWeightG || product.drainedWeightG || product.caliber) ? (
-          <p className="text-xs text-gray-500 font-medium mb-1">
-            {[
-              product.packSizeG ? `${product.packSizeG}g` : null,
-              product.netWeightG && !product.packSizeG ? `${product.netWeightG}g net` : null,
-              product.drainedWeightG ? `${product.drainedWeightG}g drained` : null,
-              product.caliber ? `cal. ${product.caliber}` : null,
-            ].filter(Boolean).join(" · ")}
-          </p>
-        ) : null}
-        {product.origin && <p className="text-xs text-gray-500 mb-2">🌍 {product.origin}</p>}
 
-        {/* Pricing */}
-        <div className="mb-3">
+        {/* Info block — flex-grow pushes price to same position across all cards */}
+        <div className="flex-grow mb-2">
+          {product.productSubName && product.productSubName !== "0" && (
+            <p className="text-xs text-gray-400 mb-0.5">{product.productSubName}</p>
+          )}
+          {(product.packSizeG || product.netWeightG || product.drainedWeightG || (product.caliber && product.caliber !== "0")) && (
+            <p className="text-xs text-gray-500 font-medium mb-0.5">
+              {[
+                product.packSizeG ? `${product.packSizeG}g` : null,
+                product.netWeightG && !product.packSizeG ? `${product.netWeightG}g net` : null,
+                product.drainedWeightG ? `${product.drainedWeightG}g drained` : null,
+                product.caliber && product.caliber !== "0" ? `cal. ${product.caliber}` : null,
+              ].filter(Boolean).join(" · ")}
+            </p>
+          )}
+          {product.origin && (
+            <p className="text-xs text-gray-500">🌍 {product.origin}</p>
+          )}
+        </div>
+
+        {/* Pricing — fixed height so stock badge always aligns at the same Y */}
+        <div className="h-[64px] flex flex-col justify-start mb-3">
           <div className="flex items-baseline gap-2">
             <span className="text-lg font-bold" style={{ color: "#1B2A5E" }}>${formatPrice(product.price)}</span>
             <span className="text-xs text-gray-400">/ {product.unit}</span>
@@ -137,7 +144,7 @@ export default function B2BProductCard({ product }: { product: Product }) {
         </div>
 
         {/* Add to Cart */}
-        <div className="mt-auto">
+        <div>
           {added ? (
             <div className="w-full py-2 bg-green-50 border border-green-200 text-green-700 font-semibold text-sm rounded-xl text-center">
               ✓ Added to cart
