@@ -49,7 +49,6 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
   const [quantity, setQuantity] = useState(1);
   const [isAdding, setIsAdding] = useState(false);
   const [imgError, setImgError] = useState(false);
-  const [activeImgIndex, setActiveImgIndex] = useState(0);
 
   const stockStatus =
     product.currentStock === 0
@@ -90,53 +89,22 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
 
   return (
     <div className="relative bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow h-full flex flex-col">
-      {/* Image Container */}
+      {/* Image — single primary image; carousel available on detail page */}
       {(() => {
-        const imgs: string[] = (product.productImages && product.productImages.length > 0)
-          ? product.productImages
-          : (product.productImage ? [product.productImage] : []);
-        const current = imgs[activeImgIndex] || null;
+        const src = product.productImage || (product.productImages?.[0]) || null;
         return (
           <div className="relative w-full h-48 bg-white flex-shrink-0 flex items-center justify-center overflow-hidden">
-            {isValidUrl(current ?? undefined) && !imgError ? (
+            {isValidUrl(src ?? undefined) && !imgError ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={current!}
+                src={src!}
                 alt={product.name}
-                className={`w-full h-full object-contain pt-2 px-2 ${imgs.length > 1 ? "pb-7" : "pb-2"}`}
+                className="w-full h-full object-contain py-2 px-2"
                 onError={() => setImgError(true)}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gray-50">
                 <span className="text-5xl">📦</span>
-              </div>
-            )}
-            {/* Prev arrow */}
-            {imgs.length > 1 && (
-              <button
-                className="absolute left-1 top-1/2 -translate-y-1/2 text-white rounded-full w-7 h-7 flex items-center justify-center text-base leading-none z-10"
-                style={{ backgroundColor: "#1B2A5E" }}
-                onClick={e => { e.stopPropagation(); setActiveImgIndex(i => (i - 1 + imgs.length) % imgs.length); }}
-              >‹</button>
-            )}
-            {/* Next arrow */}
-            {imgs.length > 1 && (
-              <button
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-white rounded-full w-7 h-7 flex items-center justify-center text-base leading-none z-10"
-                style={{ backgroundColor: "#1B2A5E" }}
-                onClick={e => { e.stopPropagation(); setActiveImgIndex(i => (i + 1) % imgs.length); }}
-              >›</button>
-            )}
-            {/* Dot indicators */}
-            {imgs.length > 1 && (
-              <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
-                {imgs.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={e => { e.stopPropagation(); setActiveImgIndex(idx); }}
-                    className={`w-1.5 h-1.5 rounded-full transition-colors ${idx === activeImgIndex ? "bg-[#1B2A5E]" : "bg-gray-300"}`}
-                  />
-                ))}
               </div>
             )}
           </div>
