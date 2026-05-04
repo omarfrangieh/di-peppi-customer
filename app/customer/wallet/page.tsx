@@ -116,9 +116,18 @@ export default function WalletPage() {
 
       {/* Page title bar */}
       <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="text-lg font-bold leading-tight" style={{ color: "#B5535A", fontFamily: "var(--font-playfair)" }}>My Wallet</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Your credit balance & transactions</p>
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold leading-tight" style={{ color: "#B5535A", fontFamily: "var(--font-playfair)" }}>My Wallet</h1>
+            <p className="text-xs text-gray-400 mt-0.5">Your credit balance & transactions</p>
+          </div>
+          <button
+            onClick={() => router.push("/customer/products")}
+            className="px-3 py-1.5 text-white text-xs font-semibold rounded-lg hover:opacity-90 cursor-pointer"
+            style={{ backgroundColor: "#1B2A5E" }}
+          >
+            Shop
+          </button>
         </div>
       </div>
 
@@ -182,19 +191,22 @@ export default function WalletPage() {
         </div>
       )}
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
 
         {/* Balance Card */}
         <div
-          className="rounded-xl p-6 text-white mb-6"
+          className="rounded-xl px-5 py-4 text-white mb-4 flex items-center justify-between"
           style={{ background: "linear-gradient(135deg, #1B2A5E 0%, #2d4080 100%)" }}
         >
-          <p className="text-white/70 text-sm font-medium mb-1">Current Balance</p>
-          <p className="text-4xl font-bold">${formatPrice(customer.walletBalance)}</p>
+          <div>
+            <p className="text-white/60 text-xs font-medium mb-0.5">Current Balance</p>
+            <p className="text-2xl font-bold">${formatPrice(customer.walletBalance)}</p>
+          </div>
+          <span className="text-white/20 text-4xl">💳</span>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex gap-3 mb-6">
+        <div className="flex gap-3 mb-4">
           <button
             onClick={() => setShowAddCredit(true)}
             className="flex-1 py-2.5 text-white font-semibold rounded-xl hover:opacity-90 transition-opacity cursor-pointer text-sm"
