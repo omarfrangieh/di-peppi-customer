@@ -1279,10 +1279,10 @@ export default function AdminProductsPage() {
                   return (
                     <tr
                       key={product.id}
-                      onClick={(e) => {
-                        // Don't trigger if clicking a button/link inside the row
+                      onMouseDown={(e) => {
                         const tag = (e.target as HTMLElement).tagName;
                         if (tag === "BUTTON" || tag === "A" || tag === "INPUT") return;
+                        if (e.shiftKey) e.preventDefault(); // prevent text selection
                         toggleSelectProduct(product.id, index, e.shiftKey);
                       }}
                       className={`cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-gray-700/30 ${selectedProducts.has(product.id) ? "bg-indigo-50/60 dark:bg-indigo-950/20" : ""} ${product.active === false ? "opacity-50" : ""} ${isLowStock ? "border-l-4 border-orange-400" : ""}`}
@@ -1290,7 +1290,7 @@ export default function AdminProductsPage() {
                       <td className="px-4 py-2">
                         <input type="checkbox" checked={selectedProducts.has(product.id)}
                           onChange={() => {}}
-                          onClick={(e) => { e.stopPropagation(); toggleSelectProduct(product.id, index, e.shiftKey); }}
+                          onMouseDown={(e) => { e.stopPropagation(); if (e.shiftKey) e.preventDefault(); toggleSelectProduct(product.id, index, e.shiftKey); }}
                           className="w-3.5 h-3.5 rounded accent-indigo-600 cursor-pointer" />
                       </td>
                       <td className="px-4 py-2">
@@ -1340,10 +1340,11 @@ export default function AdminProductsPage() {
             <div
               key={product.id}
               ref={index === inactiveStartIndex && inactiveStartIndex !== -1 ? inactiveStartRef : null}
-              onClick={(e) => {
+              onMouseDown={(e) => {
                 if (editing === product.id) return;
                 const tag = (e.target as HTMLElement).tagName;
                 if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+                if (e.shiftKey) e.preventDefault(); // prevent text selection
                 toggleSelectProduct(product.id, index, e.shiftKey);
               }}
               className={`relative select-none cursor-pointer bg-white dark:bg-gray-800 rounded-lg border transition-colors ${isLowStock && editing !== product.id ? "border-l-4 border-l-orange-400" : ""} ${
@@ -1351,9 +1352,9 @@ export default function AdminProductsPage() {
             } ${product.active === false ? "opacity-50" : ""}`}>
               {/* Bulk select checkbox */}
               {editing !== product.id && (
-                <div className="absolute top-2 left-2 z-10" onClick={e => e.stopPropagation()}>
+                <div className="absolute top-2 left-2 z-10" onMouseDown={e => e.stopPropagation()}>
                   <button
-                    onClick={(e) => toggleSelectProduct(product.id, index, e.shiftKey)}
+                    onMouseDown={(e) => { e.stopPropagation(); if (e.shiftKey) e.preventDefault(); toggleSelectProduct(product.id, index, e.shiftKey); }}
                     className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
                       selectedProducts.has(product.id)
                         ? "bg-indigo-600 border-indigo-600 text-white"
