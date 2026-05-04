@@ -934,7 +934,6 @@ export default function AdminProductsPage() {
   const filteredRef = useRef<any[]>([]);
 
   const toggleSelectProduct = (id: string, index: number, shiftKey: boolean) => {
-    showToast(`idx=${index} shift=${shiftKey} last=${lastSelectedIndexRef.current} filtered=${filteredRef.current.length}`, shiftKey ? "success" : "warning");
     setSelectedProducts(prev => {
       const n = new Set(prev);
       if (shiftKey && lastSelectedIndexRef.current >= 0) {
@@ -946,7 +945,7 @@ export default function AdminProductsPage() {
       }
       return n;
     });
-    lastSelectedIndexRef.current = index;
+    if (!shiftKey) lastSelectedIndexRef.current = index;
   };
   const handleBulkActivate = async () => {
     if (!selectedProducts.size) return;
@@ -1256,7 +1255,7 @@ export default function AdminProductsPage() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="max-w-7xl mx-auto px-6 py-6" onMouseDown={() => { if (selectedProducts.size > 0) { setSelectedProducts(new Set()); lastSelectedIndexRef.current = -1; } }}>
         {viewMode === "list" && (
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden mb-4">
             <table className="w-full text-sm">
@@ -1281,6 +1280,7 @@ export default function AdminProductsPage() {
                     <tr
                       key={product.id}
                       onMouseDown={(e) => {
+                        e.stopPropagation();
                         const tag = (e.target as HTMLElement).tagName;
                         if (tag === "BUTTON" || tag === "A" || tag === "INPUT") return;
                         if (e.shiftKey) e.preventDefault(); // prevent text selection
@@ -1334,7 +1334,7 @@ export default function AdminProductsPage() {
             </table>
           </div>
         )}
-        <div className={viewMode === "list" ? "hidden" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"}>
+        <div className={viewMode === "list" ? "hidden" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"} onMouseDown={(e) => { if (e.target === e.currentTarget && selectedProducts.size > 0) { setSelectedProducts(new Set()); lastSelectedIndexRef.current = -1; } }}>
           {filtered.map((product, index) => {
             const isLowStock = Number(product.minStock) > 0 && Number(product.currentStock || 0) < Number(product.minStock);
             return (
@@ -1342,6 +1342,7 @@ export default function AdminProductsPage() {
               key={product.id}
               ref={index === inactiveStartIndex && inactiveStartIndex !== -1 ? inactiveStartRef : null}
               onMouseDown={(e) => {
+                e.stopPropagation();
                 if (editing === product.id) return;
                 const tag = (e.target as HTMLElement).tagName;
                 if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -1522,6 +1523,20 @@ export default function AdminProductsPage() {
                         <input type="number" value={editData.drainedWeightG || ""} onChange={e => setEditData((p: any) => ({ ...p, drainedWeightG: e.target.value }))}
                           placeholder="e.g. 85" className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
                       </div>
+                      {!editData.requiresWeighing && (
+                        <div className="col-span-2">
+                          <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">📦 Pack Size (g) <span className="font-normal text-gray-400">— for fixed-weight packs (e.g. 120g jar)</span></label>
+                          <input type="number" step="1" min="0" placeholder="e.g. 120"
+                            value={editData.packSizeG || ""}
+                            onChange={e => setEditData((p: any) => ({ ...p, packSizeG: e.target.value }))}
+                            className="w-full border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                          {editData.packSizeG && Number(editData.packSizeG) > 0 && editData.b2cPrice > 0 && (
+                            <p className="text-xs text-blue-700 dark:text-blue-400 font-medium mt-1">
+                              B2C price per pack: ${formatPrice(editData.b2cPrice * Number(editData.packSizeG) / 1000)}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <textarea value={editData.ingredients || ""} onChange={e => setEditData((p: any) => ({ ...p, ingredients: e.target.value }))}
                       placeholder="Ingredients..." rows={2}
@@ -1634,20 +1649,6 @@ export default function AdminProductsPage() {
                       <span className="font-medium text-purple-700 dark:text-purple-300">🛍️ B2C Only — hide from wholesale orders</span>
                     </label>
                   </div>
-                  {!editData.requiresWeighing && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-lg p-3">
-                      <label className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-1 block">📦 Pack Size (g) <span className="font-normal text-blue-600 dark:text-blue-400">— optional, for fixed-weight packs</span></label>
-                      <input type="number" step="1" min="0" placeholder="e.g. 100"
-                        value={editData.packSizeG || ""}
-                        onChange={e => setEditData((p: any) => ({ ...p, packSizeG: e.target.value }))}
-                        className="w-full border border-blue-200 dark:border-blue-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
-                      {editData.packSizeG && Number(editData.packSizeG) > 0 && editData.b2cPrice > 0 && (
-                        <p className="text-xs text-blue-700 dark:text-blue-400 font-medium mt-1">
-                          B2C price per pack: ${formatPrice(editData.b2cPrice * Number(editData.packSizeG) / 1000)}
-                        </p>
-                      )}
-                    </div>
-                  )}
                   {editData.requiresWeighing && (
                     <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 space-y-2">
                       <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">⚖️ Weight range per unit (g) <span className="text-red-500">*</span></p>
@@ -1787,6 +1788,7 @@ export default function AdminProductsPage() {
 
                   <div className="flex flex-wrap gap-2">
                     {product.caliber && <span className="text-xs font-semibold px-2 py-1 rounded" style={{ backgroundColor: "#EEF1F8", color: "#1B2A5E" }}>📏 {product.caliber}</span>}
+                    {product.packSizeG && <span className="text-xs font-semibold px-2 py-1 rounded" style={{ backgroundColor: "#EEF8EE", color: "#166534" }}>📦 {product.packSizeG}g</span>}
                     {product.category && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{toTitleCase(product.category)}</span>}
                     {product.origin && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{toTitleCase(product.origin)}</span>}
                     {product.supplier && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">🏭 {toTitleCase(product.supplier)}</span>}
@@ -2095,6 +2097,20 @@ export default function AdminProductsPage() {
                     placeholder="e.g. 85"
                     className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                 </div>
+                {!newProduct.requiresWeighing && (
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">📦 Pack Size (g)</label>
+                    <input type="number" step="1" min="0" placeholder="e.g. 120"
+                      value={newProduct.packSizeG || ""}
+                      onChange={e => setNewProduct((p: any) => ({ ...p, packSizeG: e.target.value }))}
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                    {newProduct.packSizeG && Number(newProduct.packSizeG) > 0 && Number(newProduct.b2cPrice) > 0 && (
+                      <p className="text-xs text-blue-700 dark:text-blue-400 font-medium mt-1">
+                        B2C price per pack: ${formatPrice(Number(newProduct.b2cPrice) * Number(newProduct.packSizeG) / 1000)}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="col-span-2">
                   <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Ingredients</label>
                   <textarea value={newProduct.ingredients} onChange={e => setNewProduct((p:any) => ({...p, ingredients: e.target.value}))}
@@ -2351,23 +2367,6 @@ export default function AdminProductsPage() {
                   </div>
                 )}
               </div>
-              {/* Pack Size (g) — shown when NOT requiresWeighing */}
-              {!newProduct.requiresWeighing && (
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-lg p-3 space-y-1">
-                  <label className="text-xs text-blue-700 dark:text-blue-400 font-medium block">📦 Pack Size (g) — optional, for fixed-weight packs</label>
-                  <input
-                    type="number" step="1" min="0" placeholder="e.g. 100"
-                    value={newProduct.packSizeG || ""}
-                    onChange={e => setNewProduct((p: any) => ({ ...p, packSizeG: e.target.value }))}
-                    className="w-full border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  />
-                  {newProduct.packSizeG && Number(newProduct.packSizeG) > 0 && Number(newProduct.b2cPrice) > 0 && (
-                    <p className="text-xs text-blue-700 dark:text-blue-400 font-medium">
-                      B2C price per pack: ${formatPrice(Number(newProduct.b2cPrice) * Number(newProduct.packSizeG) / 1000)}
-                    </p>
-                  )}
-                </div>
-              )}
               {/* Track expiry — always visible for any unit type */}
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-lg p-3 space-y-2">
                 <label className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-400 cursor-pointer font-medium">
