@@ -1,13 +1,41 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+import { Geist_Mono, Lora } from "next/font/google";
+import localFont from "next/font/local";
 import AuthWrapper from "@/components/AuthWrapper";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import ToastContainer from "@/app/components/ToastContainer";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
-const playfair = Playfair_Display({ variable: "--font-playfair", subsets: ["latin"] });
+
+const lora = Lora({
+  variable: "--font-lora",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
+});
+
+const objectivity = localFont({
+  src: [
+    { path: "../public/fonts/Objectivity-Regular.otf", weight: "400", style: "normal" },
+    { path: "../public/fonts/Objectivity-Medium.otf", weight: "500", style: "normal" },
+    { path: "../public/fonts/Objectivity-Black.otf", weight: "900", style: "normal" },
+    { path: "../public/fonts/Objectivity-ThinSlanted.otf", weight: "200", style: "italic" },
+  ],
+  variable: "--font-objectivity",
+});
+
+const avango = localFont({
+  src: "../public/fonts/Avango Display Serif Bold.ttf",
+  variable: "--font-avango",
+  weight: "700",
+});
+
+const belgietta = localFont({
+  src: "../public/fonts/Belgietta.ttf",
+  variable: "--font-belgietta",
+  weight: "400",
+});
 
 export const metadata: Metadata = {
   title: "Di Peppi",
@@ -17,15 +45,14 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   userScalable: false,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${geistMono.variable} ${lora.variable} ${objectivity.variable} ${avango.variable} ${belgietta.variable} antialiased`}>
       <body className="min-h-screen">
-        {/* Prevent flash of unstyled content — runs before React hydration */}
+        {/* Prevent flash of unstyled content – runs before React hydration */}
         <script
           dangerouslySetInnerHTML={{
             __html: `try{if(localStorage.getItem('dp-dark')==='1')document.documentElement.classList.add('dark')}catch(e){}`,
